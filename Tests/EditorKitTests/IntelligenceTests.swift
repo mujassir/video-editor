@@ -183,6 +183,15 @@ struct SegmentationTests {
         #expect(coverage > 0.15 && coverage < 0.95)
     }
 
+    /// Diagnostics: does Vision run at all in this environment?
+    @Test func visionFaceProbe() throws {
+        guard let url = fixture("portrait.jpg"),
+              let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let image = CGImageSourceCreateImageAtIndex(src, 0, nil) else { return }
+        let center = Reframer.subjectCenter(in: image)
+        print("SEGMENTATION face probe: \(String(describing: center)) error: \(VisionSupport.lastError ?? "-")")
+    }
+
     @Test func noPersonInAbstractImage() {
         let ctx = CGContext(data: nil, width: 256, height: 256, bitsPerComponent: 8, bytesPerRow: 0,
                             space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!

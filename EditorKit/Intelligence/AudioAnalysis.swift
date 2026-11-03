@@ -92,7 +92,7 @@ public enum BeatDetector {
 
     static let sampleRate = 11_025.0
     static let fftSize = 1024
-    static let hop = 256
+    static let hop = 128
 
     /// Onset strength envelope (one value per hop).
     static func onsetEnvelope(_ samples: [Float]) -> [Float] {
@@ -135,88 +135,71 @@ public enum BeatDetector {
     }
 
     public static func detect(samples: [Float]) -> Result? {
-        let env = onsetEnvelope(samples)
+        var env = onsetEnvelope(samples)
         let fps = sampleRate / Double(hop)
         guard env.count > Int(fps * 2) else { return nil }
+        // Light smoothing widens onset peaks so fractional periods still hit them.
+        if env.count > 2 {
+            var smoothed = env
+            for i in 1..<(env.count - 1) { smoothed[i] = 0.25 * env[i - 1] + 0.5 * env[i] + 0.25 * env[i + 1] }
+            env = smoothed
+        }
+        let n = env.count
 
-        // Autocorrelation over 60–180 BPM.
-        let minLag = Int(fps * 60 / 180), maxLag = Int(fps * 60 / 60)
-        var acf = [Float](repeating: 0, count: maxLag * 4 + 2)
-        for lag in 1..<acf.count where lag < env.count {
-            var acc: Float = 0
-            env.withUnsafeBufferPointer { p in
-                vDSP_dotpr(p.baseAddress!, 1, p.baseAddress! + lag, 1, &acc, vDSP_Length(env.count - lag))
+        // Comb search over fractional tempos: for each BPM, the best phase's mean
+        // onset strength. Using the mean (not the sum) means a half-time comb that
+        // skips every other kick scores lower than the true tempo.
+        func comb(period: Double) -> (score: Float, phase: Double) {
+            var best: Float = -1
+            var bestPhase = 0.0
+            let steps = max(1, Int(period.rounded()))
+            for p in 0..<steps {
+                var sum: Float = 0
+                var count = 0
+                var k = Double(p)
+                while k < Double(n) - 0.5 {
+                    sum += env[min(n - 1, Int(k.rounded()))]
+                    count += 1
+                    k += period
+                }
+                let mean = count > 0 ? sum / Float(count) : 0
+                if mean > best { best = mean; bestPhase = Double(p) }
             }
-            acf[lag] = acc / Float(env.count - lag)
+            return (best, bestPhase)
         }
-        // Comb score: a true beat period also correlates at 2× and 3× its lag,
-        // which suppresses half/third-tempo errors from syncopated patterns.
-        func comb(_ lag: Int) -> Float {
-            var s = acf[lag]
-            if 2 * lag < acf.count { s += 0.5 * acf[2 * lag] }
-            if 3 * lag < acf.count { s += 0.33 * acf[3 * lag] }
-            if 4 * lag < acf.count { s += 0.25 * acf[4 * lag] }
-            return s
-        }
-        var bestLag = minLag
+        var bestBPM = 120.0
         var bestScore = -Float.infinity
-        var scores: [Int: Float] = [:]
-        for lag in minLag...maxLag {
-            let score = comb(lag)
-            scores[lag] = acf[lag]
-            let bpm = 60 * fps / Double(lag)
-            let weight = Float(exp(-0.5 * pow(log2(bpm / 120) / 1.2, 2)))
+        var bestPhase = 0.0
+        var bpm = 60.0
+        while bpm <= 180 {
+            let (score, phase) = comb(period: 60 * fps / bpm)
+            // Mild prior towards ~120 BPM to break ties.
+            let weight = Float(exp(-0.5 * pow(log2(bpm / 120) / 1.5, 2)))
             if score * weight > bestScore {
                 bestScore = score * weight
-                bestLag = lag
-            }
-        }
-        // Prefer the faster of two octave-related tempos when it is nearly as strong
-        // (a kick on every beat should not be read as half time).
-        let half = bestLag / 2
-        if 60 * fps / Double(bestLag) < 90, half >= minLag, comb(half) > 0.55 * comb(bestLag) {
-            bestLag = half
-        }
-        // Parabolic interpolation for a fractional period.
-        var period = Double(bestLag)
-        if let a = scores[bestLag - 1], let b = scores[bestLag], let c = scores[bestLag + 1] {
-            let denom = a - 2 * b + c
-            if abs(denom) > 1e-9 { period += Double(0.5 * (a - c) / denom) }
-        }
-
-        // Phase: offset whose comb best matches the onsets.
-        var bestPhase = 0
-        var bestPhaseScore = -Float.infinity
-        for phase in 0..<bestLag {
-            var sum: Float = 0
-            var k = Double(phase)
-            while Int(k) < env.count {
-                sum += env[Int(k)]
-                k += period
-            }
-            if sum > bestPhaseScore {
-                bestPhaseScore = sum
+                bestBPM = bpm
                 bestPhase = phase
             }
+            bpm += 0.25
         }
+        let period = 60 * fps / bestBPM
 
         // Place beats on the grid, snapping each to the strongest nearby onset.
         var beats: [Double] = []
-        var position = Double(bestPhase)
+        var position = bestPhase
         let search = max(1, Int(period * 0.08))
-        while Int(position) < env.count {
+        while Int(position.rounded()) < n {
             let centre = Int(position.rounded())
             var best = centre
             var bestValue = -Float.infinity
-            for i in max(0, centre - search)...min(env.count - 1, centre + search) where env[i] > bestValue {
+            for i in max(0, centre - search)...min(n - 1, centre + search) where env[i] > bestValue {
                 bestValue = env[i]
                 best = i
             }
-            // Onset frame index → time of the frame centre.
             beats.append((Double(best) * Double(hop) + Double(fftSize) / 2) / sampleRate)
             position += period
         }
-        return Result(bpm: 60 * fps / period, beats: beats)
+        return Result(bpm: bestBPM, beats: beats)
     }
 
     public static func detect(url: URL) async throws -> Result? {

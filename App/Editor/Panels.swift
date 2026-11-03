@@ -159,7 +159,7 @@ struct FiltersPanel: View {
     }
 }
 
-enum FilterPreviewRenderer {
+nonisolated enum FilterPreviewRenderer {
     static func apply(_ preset: FilterPreset, to image: CGImage) -> CGImage? {
         let w = image.width, h = image.height
         var data = [UInt8](repeating: 0, count: w * h * 4)
