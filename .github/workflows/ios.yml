@@ -1,0 +1,66 @@
+name: iOS build & test
+on:
+  push:
+    branches: ['claude/**', main]
+  workflow_dispatch:
+    inputs:
+      ui_tests:
+        description: Run UI tests
+        type: boolean
+        default: true
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Environment
+        run: |
+          sw_vers; xcodebuild -version
+          ls /Applications | grep -i xcode || true
+          xcrun simctl list devices available | grep -iE "iphone (1[5-9]|2[0-9])" | head -20
+          say -v '?' | grep -iE "en_(US|GB)" | head -40
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate && mkdir -p build
+      - name: Pick simulator
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json,sys
+          d=json.load(sys.stdin)["devices"]
+          c=[(rt,x) for rt,l in d.items() if "iOS" in rt for x in l if x["name"].startswith("iPhone 1") and "Pro" in x["name"]]
+          c.sort(key=lambda t:t[0])
+          print(c[-1][1]["udid"])')
+          echo "udid=$UDID" >> $GITHUB_OUTPUT
+          xcrun simctl boot "$UDID" || true
+      - name: Unit tests (EditorKit)
+        run: |
+          set -o pipefail
+          xcodebuild test -project Cutline.xcodeproj -scheme EditorKit \
+            -destination "id=${{ steps.sim.outputs.udid }}" -resultBundlePath build/unit.xcresult \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/unit.log | grep -E "error:|warning: .*concurrency|Test (Suite|Case)|✔|✘|passed|failed|\*\* " | head -400
+      - name: Build app
+        run: |
+          set -o pipefail
+          xcodebuild build -project Cutline.xcodeproj -scheme Cutline \
+            -destination "id=${{ steps.sim.outputs.udid }}" CODE_SIGNING_ALLOWED=NO 2>&1 \
+            | grep -E "error:|\*\* " | head -200
+      - name: UI tests
+        if: ${{ github.event_name == 'push' || inputs.ui_tests }}
+        run: |
+          set -o pipefail
+          xcodebuild test -project Cutline.xcodeproj -scheme Cutline -only-testing:CutlineUITests \
+            -destination "id=${{ steps.sim.outputs.udid }}" -resultBundlePath build/ui.xcresult \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/ui.log | grep -E "error:|Test (Suite|Case)|passed|failed|\*\* |SCREENSHOT" | head -400
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: build/*.xcresult
+          retention-days: 7
