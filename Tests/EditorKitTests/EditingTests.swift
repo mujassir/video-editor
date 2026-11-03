@@ -25,7 +25,7 @@ struct MediaTimeTests {
 
     @Test func frameSnapping() {
         #expect(s(1.01).snappedToFrame(fps: 30) == s(1.0))
-        #expect(s(1.02).snappedToFrame(fps: 30) == MediaTime(ticks: 61_000))
+        #expect(s(1.02).snappedToFrame(fps: 30) == MediaTime(ticks: 62_000))
     }
 
     @Test func timecodeFormatting() {

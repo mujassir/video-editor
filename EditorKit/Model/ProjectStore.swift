@@ -46,14 +46,14 @@ public final class ProjectStore: Sendable {
 
     private static let encoder: JSONEncoder = {
         let e = JSONEncoder()
-        e.dateEncodingStrategy = .iso8601
+        e.dateEncodingStrategy = .deferredToDate
         e.outputFormatting = [.sortedKeys]
         return e
     }()
 
     private static let decoder: JSONDecoder = {
         let d = JSONDecoder()
-        d.dateDecodingStrategy = .iso8601
+        d.dateDecodingStrategy = .deferredToDate
         return d
     }()
 

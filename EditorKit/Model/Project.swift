@@ -20,6 +20,9 @@ public struct MediaItem: Codable, Hashable, Identifiable, Sendable {
     public var displayName: String
     /// Reversed copy of a video, generated on demand for reversed clips.
     public var reversedFileName: String?
+    /// Clockwise quarter turns needed to display the raw video frames upright
+    /// (from the track's preferredTransform). `naturalSize` is the upright size.
+    public var sourceQuarterTurns: Int = 0
 
     public init(id: UUID = UUID(), kind: MediaKind, fileName: String, naturalSize: CGSize,
                 duration: MediaTime, hasAudio: Bool, frameRate: Double = 30, displayName: String = "") {
