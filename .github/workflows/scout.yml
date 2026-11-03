@@ -13,18 +13,24 @@ jobs:
       - name: Download open movies (Blender Foundation, CC BY 3.0)
         run: |
           mkdir -p media && cd media
-          for f in TearsOfSteel BigBuckBunny ElephantsDream Sintel; do
-            curl -fsSL --retry 3 -o $f.mp4 "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/$f.mp4" || echo "failed $f"
-          done
+          get() { out=$1; shift; for u in "$@"; do curl -fsSL --retry 2 -A "Mozilla/5.0 CutlineCI" -o "$out" "$u" && { echo "ok $out <- $u"; return 0; }; done; echo "failed $out"; rm -f "$out"; }
+          get tos.mov https://download.blender.org/demo/movies/ToS/tears_of_steel_720p.mov \
+                      https://ftp.nluug.nl/pub/graphics/blender/demo/movies/ToS/tears_of_steel_720p.mov \
+                      https://mirror.clarkson.edu/blender/demo/movies/ToS/tears_of_steel_720p.mov
+          get bbb.mp4 https://download.blender.org/demo/movies/BBB/bbb_sunflower_1080p_30fps_normal.mp4 \
+                      https://ftp.nluug.nl/pub/graphics/blender/demo/movies/BBB/bbb_sunflower_1080p_30fps_normal.mp4
+          get sintel.mkv https://download.blender.org/durian/movies/Sintel.2010.720p.mkv \
+                      https://ftp.nluug.nl/pub/graphics/blender/demo/movies/Sintel.2010.720p.mkv
           ls -la
-          for f in *.mp4; do ffprobe -v error -show_entries format=duration:stream=width,height,codec_name -of compact $f; done
+          for f in tos.mov bbb.mp4 sintel.mkv; do [ -f $f ] && ffprobe -v error -show_entries format=duration:stream=width,height,codec_name -of compact $f; done; true
       - name: Contact sheets
         run: |
           cd media
-          for f in *.mp4; do
-            n=${f%.mp4}
+          for f in tos.mov bbb.mp4 sintel.mkv; do
+            [ -f $f ] || continue
+            n=${f%.*}
             # One frame every 8 s, 6x5 grid of 160x90 tiles, timestamp burned in.
-            ffmpeg -loglevel error -y -i $f -vf "fps=1/8,scale=160:-2,drawtext=fontfile=/System/Library/Fonts/Supplemental/Arial.ttf:text='%{pts\:hms}':x=2:y=2:fontsize=11:fontcolor=yellow:box=1:boxcolor=black@0.6,tile=6x5" -q:v 6 sheet-$n-%02d.jpg
+            ffmpeg -loglevel error -y -i $f -vf "fps=1/10,scale=160:-2,drawtext=fontfile=/System/Library/Fonts/Supplemental/Arial.ttf:text='%{pts\:hms}':x=2:y=2:fontsize=11:fontcolor=yellow:box=1:boxcolor=black@0.6,tile=8x6" -q:v 6 sheet-$n-%02d.jpg
           done
           ls -la sheet-*
           for s in sheet-*.jpg; do echo "SHEET $s $(base64 -i $s | tr -d '\n')"; done
