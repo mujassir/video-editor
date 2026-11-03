@@ -25,6 +25,15 @@ jobs:
           say -v '?' | grep -iE "en_(US|GB)" | head -40
       - name: Install XcodeGen
         run: brew install xcodegen
+      - name: Generate test fixtures
+        run: |
+          mkdir -p Tests/EditorKitTests/Fixtures
+          say -v Daniel -o /tmp/speech.aiff "Welcome to Cutline. [[slnc 1200]] This video was captioned entirely on device, with no cloud at all."
+          afconvert -f m4af -d aac /tmp/speech.aiff Tests/EditorKitTests/Fixtures/speech.m4a
+          curl -fsSL --retry 3 -A "CutlineCI/1.0 (test fixture)" -o Tests/EditorKitTests/Fixtures/portrait.jpg \
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Albert_Einstein_Head.jpg/640px-Albert_Einstein_Head.jpg" \
+            || echo "portrait fixture unavailable"
+          ls -la Tests/EditorKitTests/Fixtures
       - name: Generate project
         run: xcodegen generate && mkdir -p build
       - name: Pick simulator

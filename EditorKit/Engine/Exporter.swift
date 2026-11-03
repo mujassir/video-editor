@@ -57,8 +57,9 @@ public enum Exporter {
         session.audioTimePitchAlgorithm = .spectral
         session.shouldOptimizeForNetworkUse = true
 
-        let monitor = Task {
-            for await state in session.states(updateInterval: 0.1) {
+        nonisolated(unsafe) let observed = session
+        let monitor = Task.detached {
+            for await state in observed.states(updateInterval: 0.1) {
                 if case .exporting(let p) = state { progress(p.fractionCompleted) }
             }
         }
