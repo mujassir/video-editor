@@ -1,0 +1,30 @@
+name: Scout demo footage
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/ecstatic-tesla-bodmbq-ci]
+    paths: ['.github/workflows/scout.yml']
+jobs:
+  scout:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - run: brew install ffmpeg >/dev/null 2>&1; ffmpeg -version | head -1
+      - name: Download open movies (Blender Foundation, CC BY 3.0)
+        run: |
+          mkdir -p media && cd media
+          for f in TearsOfSteel BigBuckBunny ElephantsDream Sintel; do
+            curl -fsSL --retry 3 -o $f.mp4 "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/$f.mp4" || echo "failed $f"
+          done
+          ls -la
+          for f in *.mp4; do ffprobe -v error -show_entries format=duration:stream=width,height,codec_name -of compact $f; done
+      - name: Contact sheets
+        run: |
+          cd media
+          for f in *.mp4; do
+            n=${f%.mp4}
+            # One frame every 8 s, 6x5 grid of 160x90 tiles, timestamp burned in.
+            ffmpeg -loglevel error -y -i $f -vf "fps=1/8,scale=160:-2,drawtext=fontfile=/System/Library/Fonts/Supplemental/Arial.ttf:text='%{pts\:hms}':x=2:y=2:fontsize=11:fontcolor=yellow:box=1:boxcolor=black@0.6,tile=6x5" -q:v 6 sheet-$n-%02d.jpg
+          done
+          ls -la sheet-*
+          for s in sheet-*.jpg; do echo "SHEET $s $(base64 -i $s | tr -d '\n')"; done
