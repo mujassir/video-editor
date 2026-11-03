@@ -157,6 +157,30 @@ final class EditorModel {
         if selection == .none, case .some(let p) = panel, p != .canvas, p != .music, p != .captions { panel = nil }
     }
 
+    private var trimBase: Project?
+
+    /// Live trimming from the timeline handles: each change re-applies the total
+    /// drag to the project as it was when the drag began (one undo step).
+    func trimDrag(_ id: UUID, edge: Project.TrimEdge, delta: MediaTime, state: UIGestureRecognizer.State) {
+        switch state {
+        case .began:
+            pause()
+            trimBase = session.project
+        case .changed:
+            guard var p = trimBase else { return }
+            guard (try? p.trim(clipID: id, edge: edge, by: delta)) != nil else { return }
+            session.applyCoalescing("Trim", key: "trim-\(id)-\(edge)") { $0 = p }
+            if let entry = p.layout.entry(for: id) {
+                let t = edge == .leading ? entry.range.start : entry.range.end - MediaTime(seconds: 0.03)
+                seek(to: t, exact: false)
+            }
+            scheduleRebuild()
+        default:
+            trimBase = nil
+            scheduleRebuild(immediate: true)
+        }
+    }
+
     func split() {
         edit("Split") { try $0.split(at: currentTime) }
         showToast("Split at \(currentTime.timecode)", systemImage: "scissors")

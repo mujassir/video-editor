@@ -31,7 +31,7 @@ jobs:
           say -v Daniel -o /tmp/speech.aiff "Welcome to Cutline. [[slnc 1200]] This video was captioned entirely on device, with no cloud at all."
           afconvert -f m4af -d aac /tmp/speech.aiff Tests/EditorKitTests/Fixtures/speech.m4a
           curl -fsSL --retry 3 -A "CutlineCI/1.0 (test fixture)" -o Tests/EditorKitTests/Fixtures/portrait.jpg \
-            "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Albert_Einstein_Head.jpg/640px-Albert_Einstein_Head.jpg" \
+            "https://upload.wikimedia.org/wikipedia/commons/d/d3/Albert_Einstein_Head.jpg" \
             || echo "portrait fixture unavailable"
           ls -la Tests/EditorKitTests/Fixtures
       - name: Generate project
@@ -52,7 +52,7 @@ jobs:
           set -o pipefail
           xcodebuild test -project Cutline.xcodeproj -scheme EditorKit \
             -destination "id=${{ steps.sim.outputs.udid }}" -resultBundlePath build/unit.xcresult \
-            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/unit.log | grep -E "error:|warning: .*concurrency|Test (Suite|Case)|✔|✘|passed|failed|\*\* " | head -400
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/unit.log | grep -E "error:|warning: .*concurrency|Test (Suite|Case)|✔|✘|passed|failed|\*\* |BEAT|PERF|CAPTIONS|SEGMENTATION|REFRAME" | head -400
       - name: Build app
         run: |
           set -o pipefail
@@ -63,6 +63,9 @@ jobs:
         if: ${{ github.event_name == 'push' || inputs.ui_tests }}
         run: |
           set -o pipefail
+          for svc in photos photos-add microphone speech-recognition; do
+            xcrun simctl privacy ${{ steps.sim.outputs.udid }} grant $svc com.mujassir.cutline || true
+          done
           xcodebuild test -project Cutline.xcodeproj -scheme Cutline -only-testing:CutlineUITests \
             -destination "id=${{ steps.sim.outputs.udid }}" -resultBundlePath build/ui.xcresult \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/ui.log | grep -E "error:|Test (Suite|Case)|passed|failed|\*\* |SCREENSHOT" | head -400

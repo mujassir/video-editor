@@ -22,13 +22,18 @@ public enum CaptionError: Error, Sendable, LocalizedError {
 public enum CaptionGenerator {
     public enum Engine: String, Sendable { case speechAnalyzer, sfSpeech }
 
+    /// Why the SpeechAnalyzer path was skipped on the last run (diagnostics).
+    nonisolated(unsafe) public static var lastAnalyzerFailure: String?
+
     /// Transcribes an audio file into words with timestamps (seconds from file start).
     public static func transcribe(url: URL, locale: Locale = Locale(identifier: "en-US")) async throws -> (words: [CaptionWord], engine: Engine) {
         do {
             let words = try await transcribeWithAnalyzer(url: url, locale: locale)
             if !words.isEmpty { return (words, .speechAnalyzer) }
+            lastAnalyzerFailure = "no words"
         } catch {
             // Fall through to the legacy on-device recognizer.
+            lastAnalyzerFailure = String(describing: error)
         }
         let words = try await transcribeWithSFSpeech(url: url, locale: locale)
         return (words, .sfSpeech)

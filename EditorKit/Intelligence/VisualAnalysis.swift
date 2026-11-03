@@ -15,9 +15,9 @@ public enum Reframer {
     /// Where the subject is in an upright frame (nil if nothing stands out).
     public static func subjectCenter(in image: CGImage) -> SIMD2<Double>? {
         let faces = VNDetectFaceRectanglesRequest()
-        let saliency = VNGenerateAttentionBasedSaliencyImageRequest()
+        let objects = VNGenerateObjectnessBasedSaliencyImageRequest()
         let handler = VNImageRequestHandler(cgImage: image, options: [:])
-        try? handler.perform([faces, saliency])
+        try? handler.perform([faces, objects])
         func topLeft(_ r: CGRect) -> SIMD2<Double> { SIMD2(Double(r.midX), Double(1 - r.midY)) }
         if let found = faces.results, !found.isEmpty {
             // Favour the largest faces.
@@ -27,7 +27,7 @@ public enum Reframer {
             }
             return c / max(total, 1e-6)
         }
-        if let objects = saliency.results?.first?.salientObjects, let best = objects.max(by: {
+        if let found = objects.results?.first?.salientObjects, let best = found.max(by: {
             $0.confidence * Float($0.boundingBox.width * $0.boundingBox.height) < $1.confidence * Float($1.boundingBox.width * $1.boundingBox.height)
         }) {
             return topLeft(best.boundingBox)

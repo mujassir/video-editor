@@ -56,6 +56,7 @@ struct BeatTests {
         defer { try? FileManager.default.removeItem(at: url) }
         try SampleMedia.renderMusic(track, duration: 12, to: url)
         let result = try #require(try await BeatDetector.detect(url: url))
+        print("BEAT \(track.name): detected \(result.bpm)")
         // Allow octave errors only if the grid still lands on true beats.
         let ratio = result.bpm / track.bpm
         #expect(abs(ratio - 1) < 0.03 || abs(ratio - 2) < 0.05 || abs(ratio - 0.5) < 0.03,
@@ -118,6 +119,7 @@ struct ReframeTests {
         let keys = try await Reframer.analyze(url: url, range: MediaTimeRange(start: .zero, duration: s(3)))
         #expect(keys.count >= 8)
         let first = keys.first!.centerX, last = keys.last!.centerX
+        print("REFRAME path: \(keys.map { String(format: "%.2f", $0.centerX) }.joined(separator: " "))")
         #expect(last > first + 0.25, "reframe should pan with the subject: \(first) → \(last)")
     }
 }
@@ -158,6 +160,7 @@ struct CaptionTests {
             // Timestamps increase and fall inside the file.
             #expect(zip(words, words.dropFirst()).allSatisfy { $0.range.start <= $1.range.start })
         } catch {
+            print("CAPTIONS analyzer failure: \(CaptionGenerator.lastAnalyzerFailure ?? "-")")
             // The iOS simulator may not ship on-device speech models; report rather than fail silently.
             withKnownIssue("On-device speech recognition unavailable in this simulator: \(error)") {
                 throw error

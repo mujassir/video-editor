@@ -139,22 +139,35 @@ public enum BeatDetector {
         let fps = sampleRate / Double(hop)
         guard env.count > Int(fps * 2) else { return nil }
 
-        // Autocorrelation over 60–180 BPM, weighted towards ~120 BPM.
+        // Autocorrelation over 60–180 BPM.
         let minLag = Int(fps * 60 / 180), maxLag = Int(fps * 60 / 60)
-        var bestLag = minLag
-        var bestScore = -Float.infinity
-        var scores: [Int: Float] = [:]
-        for lag in minLag...maxLag {
+        var acf = [Float](repeating: 0, count: maxLag * 4 + 2)
+        for lag in 1..<acf.count where lag < env.count {
             var acc: Float = 0
             env.withUnsafeBufferPointer { p in
                 vDSP_dotpr(p.baseAddress!, 1, p.baseAddress! + lag, 1, &acc, vDSP_Length(env.count - lag))
             }
-            acc /= Float(env.count - lag)
-            scores[lag] = acc
+            acf[lag] = acc / Float(env.count - lag)
+        }
+        // Comb score: a true beat period also correlates at 2× and 3× its lag,
+        // which suppresses half/third-tempo errors from syncopated patterns.
+        func comb(_ lag: Int) -> Float {
+            var s = acf[lag]
+            if 2 * lag < acf.count { s += 0.5 * acf[2 * lag] }
+            if 3 * lag < acf.count { s += 0.33 * acf[3 * lag] }
+            if 4 * lag < acf.count { s += 0.25 * acf[4 * lag] }
+            return s
+        }
+        var bestLag = minLag
+        var bestScore = -Float.infinity
+        var scores: [Int: Float] = [:]
+        for lag in minLag...maxLag {
+            let score = comb(lag)
+            scores[lag] = acf[lag]
             let bpm = 60 * fps / Double(lag)
-            let weight = Float(exp(-0.5 * pow(log2(bpm / 120) / 0.9, 2)))
-            if acc * weight > bestScore {
-                bestScore = acc * weight
+            let weight = Float(exp(-0.5 * pow(log2(bpm / 120) / 1.2, 2)))
+            if score * weight > bestScore {
+                bestScore = score * weight
                 bestLag = lag
             }
         }
