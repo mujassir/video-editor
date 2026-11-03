@@ -43,7 +43,12 @@ cut 05-canal 231 5
 say -v "Reed (English (US))" -r 170 -o "$WORK/vlog.aiff" \
   "Hey everyone, welcome back. [[slnc 1400]] Today I'm editing this whole video on my iPhone. [[slnc 1500]] And everything runs on device."
 VLEN=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$WORK/vlog.aiff")
-read -r s d < <(shot_around 322 12)
+best_s=0; best_d=0
+for t in 322 352 383 335 345 360 372; do
+  read -r cs cd < <(shot_around $t 12)
+  if python3 -c "import sys; sys.exit(0 if $cd > $best_d else 1)"; then best_s=$cs; best_d=$cd; fi
+done
+s=$best_s; d=$best_d
 echo "vlog shot: start $s length $d, speech $VLEN"
 ffmpeg -loglevel error -y -ss "$s" -t "$d" -i "$SRC" -an -vf "scale=1280:-2" -c:v libx264 -crf 18 "$WORK/vlog-shot.mov"
 # Ping-pong loop the shot until it covers the speech.

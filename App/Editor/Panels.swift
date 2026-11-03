@@ -279,7 +279,7 @@ struct VolumePanel: View {
 struct TransitionPanel: View {
     @Bindable var model: EditorModel
     let clipID: UUID
-    private var transition: Transition? { model.project.clipIndex(clipID).flatMap { model.project.clips[$0].transitionOut } }
+    private var transition: EditorKit.Transition? { model.project.clipIndex(clipID).flatMap { model.project.clips[$0].transitionOut } }
 
     var body: some View {
         PanelContainer(title: "Transition", onDone: { model.panel = nil }) {
@@ -291,7 +291,7 @@ struct TransitionPanel: View {
                     ForEach(TransitionKind.allCases) { k in
                         ChipButton(title: k.displayName, isSelected: transition?.kind == k) {
                             model.edit("Transition") {
-                                try $0.setTransition(Transition(kind: k, duration: transition?.duration ?? MediaTime(seconds: 0.5)), after: clipID)
+                                try $0.setTransition(EditorKit.Transition(kind: k, duration: transition?.duration ?? MediaTime(seconds: 0.5)), after: clipID)
                             }
                             if let entry = model.project.layout.entry(for: clipID) {
                                 model.seek(to: max(.zero, entry.range.end - entry.overlapOut - MediaTime(seconds: 0.4)))
@@ -303,7 +303,7 @@ struct TransitionPanel: View {
                 if let t = transition {
                     LabeledSlider(title: "Duration", value: Binding(get: { t.duration.seconds }, set: { v in
                         model.editCoalescing("Transition length", key: "tl-\(clipID)") { p in
-                            try? p.setTransition(Transition(kind: t.kind, duration: MediaTime(seconds: v)), after: clipID)
+                            try? p.setTransition(EditorKit.Transition(kind: t.kind, duration: MediaTime(seconds: v)), after: clipID)
                         }
                     }), range: 0.2...2, format: { String(format: "%.1fs", $0) })
                 }
