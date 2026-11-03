@@ -1,0 +1,100 @@
+name: Demo video
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/ecstatic-tesla-bodmbq-ci]
+    paths: ['.github/workflows/demo.yml']
+jobs:
+  demo:
+    runs-on: macos-26
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: |
+          brew install xcodegen ffmpeg >/dev/null 2>&1
+          python3 -m pip install --quiet --break-system-packages pillow || python3 -m pip install --quiet --user pillow
+          python3 -c "import PIL; print('Pillow', PIL.__version__)"
+      - name: Demo footage
+        run: scripts/prepare_demo_media.sh "$RUNNER_TEMP/demo-media" "$RUNNER_TEMP/prep"
+      - name: Narration (male voice)
+        run: |
+          mkdir -p "$RUNNER_TEMP/narration"
+          python3 - <<'PY'
+          import json, os, subprocess
+          s = json.load(open("scripts/narration.json"))
+          out = os.environ["RUNNER_TEMP"] + "/narration"
+          durations = []
+          for i, ch in enumerate(s["chapters"]):
+              path = f"{out}/chapter-{i:02d}.aiff"
+              subprocess.run(["say", "-v", s["voice"], "-r", str(s["rate"]), "-o", path, ch["text"]], check=True)
+              d = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path],
+                                       capture_output=True, text=True).stdout)
+              durations.append(round(d, 2))
+          json.dump({"durations": durations}, open(f"{out}/script.json", "w"))
+          print("narration seconds:", durations, "total", round(sum(durations), 1))
+          PY
+      - name: Build
+        run: |
+          xcodegen generate
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json,sys
+          d=json.load(sys.stdin)["devices"]
+          c=[(rt,x) for rt,l in d.items() if "iOS" in rt for x in l if x["name"]=="iPhone 17 Pro"]
+          c.sort(key=lambda t:t[0]); print(c[-1][1]["udid"])')
+          echo "UDID=$UDID" >> $GITHUB_ENV
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          set -o pipefail
+          xcodebuild build-for-testing -project Cutline.xcodeproj -scheme Cutline -destination "id=$UDID" \
+            -derivedDataPath build/dd CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E "error:|\*\* " | head -50
+      - name: Record tour
+        run: |
+          xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 \
+            --cellularBars 4 --wifiBars 3 --dataNetwork wifi || true
+          xcrun simctl ui "$UDID" appearance dark || true
+          for svc in photos photos-add microphone speech-recognition; do xcrun simctl privacy "$UDID" grant $svc com.mujassir.cutline || true; done
+          mkdir -p build
+          xcrun simctl io "$UDID" recordVideo --codec=h264 --force build/recording.mp4 > build/rec.log 2>&1 &
+          REC=$!
+          sleep 2
+          python3 -c "import time; print(time.time())" > build/record_start.txt
+          set +e
+          TEST_RUNNER_DEMO_SCRIPT="$RUNNER_TEMP/narration/script.json" TEST_RUNNER_DEMO_MEDIA="$RUNNER_TEMP/demo-media" \
+          xcodebuild test-without-building -project Cutline.xcodeproj -scheme Cutline -destination "id=$UDID" \
+            -derivedDataPath build/dd -only-testing:CutlineUITests/DemoTourUITests CODE_SIGNING_ALLOWED=NO \
+            > build/tour.log 2>&1
+          STATUS=$?
+          sleep 1
+          kill -INT $REC; wait $REC
+          grep -E "CHAPTER|error|failed|passed|XCTAssert|Timed out" build/tour.log | head -80
+          ls -la build/recording.mp4
+          exit $STATUS
+      - name: Assemble video
+        if: always()
+        run: |
+          python3 scripts/assemble_demo.py --recording build/recording.mp4 --record-start $(cat build/record_start.txt) \
+            --log build/tour.log --script scripts/narration.json --narration "$RUNNER_TEMP/narration" \
+            --work build/demo-work --out build/Cutline-v1-demo.mp4
+          ls -la build/Cutline-v1-demo.mp4
+          # A few frames for review.
+          D=$(ffprobe -v error -show_entries format=duration -of csv=p=0 build/Cutline-v1-demo.mp4)
+          python3 - "$D" <<'PY'
+          import subprocess, sys, base64
+          d = float(sys.argv[1])
+          for i in range(12):
+              t = d * (i + 0.5) / 12
+              subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-ss", f"{t:.2f}", "-i", "build/Cutline-v1-demo.mp4",
+                              "-frames:v", "1", "-vf", "scale=640:-2", "-q:v", "7", f"build/f{i:02d}.jpg"], check=True)
+              print(f"FRAME {i:02d} {t:.1f} " + base64.b64encode(open(f"build/f{i:02d}.jpg", "rb").read()).decode())
+          PY
+      - name: Upload demo video
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cutline-v1-demo
+          path: |
+            build/Cutline-v1-demo.mp4
+            build/recording.mp4
+            build/tour.log
+          retention-days: 30

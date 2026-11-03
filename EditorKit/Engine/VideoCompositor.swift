@@ -282,6 +282,7 @@ final class SegmentationCache: @unchecked Sendable {
         let r = VNGeneratePersonSegmentationRequest()
         r.qualityLevel = level
         r.outputPixelFormat = kCVPixelFormatType_OneComponent8
+        VisionSupport.configure(r)
         requests[key] = r
         return r
     }
@@ -302,6 +303,7 @@ final class SegmentationCache: @unchecked Sendable {
         let r = VNGeneratePersonSegmentationRequest()
         r.qualityLevel = .accurate
         r.outputPixelFormat = kCVPixelFormatType_OneComponent8
+        VisionSupport.configure(r)
         let handler = VNImageRequestHandler(cgImage: image, options: [:])
         guard (try? handler.perform([r])) != nil, let m = r.results?.first?.pixelBuffer else { return nil }
         stillMasks[key] = m

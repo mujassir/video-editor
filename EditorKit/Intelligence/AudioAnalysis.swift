@@ -171,6 +171,12 @@ public enum BeatDetector {
                 bestLag = lag
             }
         }
+        // Prefer the faster of two octave-related tempos when it is nearly as strong
+        // (a kick on every beat should not be read as half time).
+        let half = bestLag / 2
+        if 60 * fps / Double(bestLag) < 90, half >= minLag, comb(half) > 0.55 * comb(bestLag) {
+            bestLag = half
+        }
         // Parabolic interpolation for a fractional period.
         var period = Double(bestLag)
         if let a = scores[bestLag - 1], let b = scores[bestLag], let c = scores[bestLag + 1] {

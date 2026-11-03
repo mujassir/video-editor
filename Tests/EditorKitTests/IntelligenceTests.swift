@@ -119,7 +119,7 @@ struct ReframeTests {
         let keys = try await Reframer.analyze(url: url, range: MediaTimeRange(start: .zero, duration: s(3)))
         #expect(keys.count >= 8)
         let first = keys.first!.centerX, last = keys.last!.centerX
-        print("REFRAME path: \(keys.map { String(format: "%.2f", $0.centerX) }.joined(separator: " "))")
+        print("REFRAME error: \(VisionSupport.lastError ?? "-") path: \(keys.map { String(format: "%.2f", $0.centerX) }.joined(separator: " "))")
         #expect(last > first + 0.25, "reframe should pan with the subject: \(first) → \(last)")
     }
 }
@@ -179,7 +179,7 @@ struct SegmentationTests {
             return
         }
         let coverage = SubjectSegmenter.personCoverage(in: image)
-        print("SEGMENTATION coverage: \(coverage)")
+        print("SEGMENTATION coverage: \(coverage) error: \(VisionSupport.lastError ?? "-")")
         #expect(coverage > 0.15 && coverage < 0.95)
     }
 

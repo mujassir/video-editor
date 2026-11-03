@@ -16,8 +16,10 @@ public enum Reframer {
     public static func subjectCenter(in image: CGImage) -> SIMD2<Double>? {
         let faces = VNDetectFaceRectanglesRequest()
         let objects = VNGenerateObjectnessBasedSaliencyImageRequest()
+        VisionSupport.configure(faces)
+        VisionSupport.configure(objects)
         let handler = VNImageRequestHandler(cgImage: image, options: [:])
-        try? handler.perform([faces, objects])
+        do { try handler.perform([faces, objects]) } catch { VisionSupport.lastError = String(describing: error) }
         func topLeft(_ r: CGRect) -> SIMD2<Double> { SIMD2(Double(r.midX), Double(1 - r.midY)) }
         if let found = faces.results, !found.isEmpty {
             // Favour the largest faces.
@@ -160,7 +162,10 @@ public enum SubjectSegmenter {
         let request = VNGeneratePersonSegmentationRequest()
         request.qualityLevel = .accurate
         request.outputPixelFormat = kCVPixelFormatType_OneComponent8
-        guard (try? VNImageRequestHandler(cgImage: image, options: [:]).perform([request])) != nil,
+        VisionSupport.configure(request)
+        do { try VNImageRequestHandler(cgImage: image, options: [:]).perform([request]) }
+        catch { VisionSupport.lastError = String(describing: error); return 0 }
+        guard
               let mask = request.results?.first?.pixelBuffer else { return 0 }
         CVPixelBufferLockBaseAddress(mask, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(mask, .readOnly) }

@@ -62,13 +62,14 @@ jobs:
             -destination "id=${{ steps.sim.outputs.udid }}" -resultBundlePath build/unit.xcresult \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/unit.log | grep -E "error:|warning: .*concurrency|Test (Suite|Case)|✔|✘|passed|failed|\*\* |BEAT|PERF|CAPTIONS|SEGMENTATION|REFRAME" | head -400
       - name: Build app
+        if: always()
         run: |
           set -o pipefail
           xcodebuild build -project Cutline.xcodeproj -scheme Cutline \
             -destination "id=${{ steps.sim.outputs.udid }}" CODE_SIGNING_ALLOWED=NO 2>&1 \
             | grep -E "error:|\*\* " | head -200
       - name: UI tests
-        if: ${{ github.event_name == 'push' || inputs.ui_tests }}
+        if: ${{ always() && (github.event_name == 'push' || inputs.ui_tests) }}
         run: |
           set -o pipefail
           for svc in photos photos-add microphone speech-recognition; do
