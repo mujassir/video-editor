@@ -1,0 +1,220 @@
+import XCTest
+
+/// One test per user-facing feature, run against the real app in the simulator.
+final class FeatureUITests: CutlineUITestCase {
+
+    func test01_ProjectLibraryAndImport() {
+        XCTAssertTrue(element("projects.new").waitForExistence(timeout: 10))
+        snapshot("01-projects-empty")
+        openProjectWithSamples()
+        XCTAssertEqual(count(prefix: "clip."), 3)
+        XCTAssertEqual(totalSeconds, 12, accuracy: 0.2)
+        snapshot("01-editor-imported")
+        // Close and confirm the project is listed and reopens.
+        tap("editor.close")
+        XCTAssertTrue(element("project.card").waitForExistence(timeout: 10))
+        snapshot("01-projects-list")
+        element("project.card").tap()
+        waitFor("project reopened") { count(prefix: "clip.") == 3 }
+    }
+
+    func test02_PlaybackAndScrub() {
+        openProjectWithSamples()
+        tap("editor.play")
+        RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+        tap("editor.play")
+        let current = element("time.current").label
+        XCTAssertNotEqual(current, "0:00.0", "playhead should advance during playback")
+        element("timeline").swipeLeft()
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        XCTAssertNotEqual(element("time.current").label, current, "scrubbing should move the playhead")
+        snapshot("02-scrubbed")
+    }
+
+    func test03_SplitDeleteUndoRedo() {
+        openProjectWithSamples()
+        // Move into the first clip and split.
+        element("timeline").swipeLeft(velocity: .slow)
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        selectClip(0)
+        tap("tool.Split")
+        waitFor("split clip") { count(prefix: "clip.") == 4 }
+        snapshot("03-split")
+        selectClip(0)
+        tap("tool.Delete")
+        waitFor("deleted clip") { count(prefix: "clip.") == 3 }
+        XCTAssertLessThan(totalSeconds, 12)
+        tap("editor.undo")
+        waitFor("undo restores clip") { count(prefix: "clip.") == 4 }
+        tap("editor.redo")
+        waitFor("redo deletes again") { count(prefix: "clip.") == 3 }
+    }
+
+    func test04_TrimWithHandles() {
+        openProjectWithSamples()
+        selectClip(1)
+        let handle = element("trim.trailing")
+        XCTAssertTrue(handle.waitForExistence(timeout: 5))
+        let before = totalSeconds
+        let start = handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: -90, dy: 0)))
+        waitFor("trim shortens the edit") { totalSeconds < before - 0.5 }
+        snapshot("04-trimmed")
+    }
+
+    func test05_SpeedReverseFreezeDuplicate() {
+        openProjectWithSamples()
+        selectClip(0)
+        tap("tool.Speed")
+        tap("chip.2×")
+        waitFor("2× speed halves clip 0") { abs(totalSeconds - 10) < 0.2 }
+        snapshot("05-speed")
+        tap("panel.done")
+        tap("tool.Duplicate")
+        waitFor("duplicate") { count(prefix: "clip.") == 4 }
+        tap("tool.Reverse")
+        waitUntilIdle()
+        XCTAssertNotNil(toastText)
+        tap("tool.Freeze")
+        waitFor("freeze frame inserted") { count(prefix: "clip.") >= 5 }
+        snapshot("05-freeze")
+    }
+
+    func test06_FiltersAdjustAutoEnhance() {
+        openProjectWithSamples()
+        selectClip(0)
+        tap("tool.Filters")
+        tap("filter.teal_orange")
+        let intensity = element("slider.Intensity")
+        XCTAssertTrue(intensity.waitForExistence(timeout: 5))
+        intensity.adjust(toNormalizedSliderPosition: 0.6)
+        snapshot("06-filter")
+        tap("panel.done")
+        tap("tool.Adjust")
+        element("slider.Exposure").adjust(toNormalizedSliderPosition: 0.7)
+        element("slider.Saturation").adjust(toNormalizedSliderPosition: 0.8)
+        snapshot("06-adjust")
+        tap("adjust.auto")
+        waitUntilIdle()
+        XCTAssertEqual(toastText, "Enhanced")
+    }
+
+    func test07_TextOverlay() {
+        openProjectWithSamples()
+        tap("tool.Text")
+        let field = element("text.field")
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.press(forDuration: 1.0)
+        if app.menuItems["Select All"].waitForExistence(timeout: 2) { app.menuItems["Select All"].tap() }
+        field.typeText("Summer Trip")
+        tap("font.Condensed")
+        tap("chip.Rise")
+        tap("chip.Outline")
+        snapshot("07-text")
+        tap("panel.done")
+        XCTAssertEqual(count(prefix: "text."), 1)
+    }
+
+    func test08_Transitions() {
+        openProjectWithSamples()
+        tap("transition.0")
+        tap("chip.Dissolve")
+        waitFor("dissolve overlaps clips") { totalSeconds < 11.8 }
+        snapshot("08-transition")
+        tap("panel.done")
+        tap("transition.1")
+        tap("chip.Slide")
+        tap("panel.done")
+        waitFor("second transition") { totalSeconds < 11.3 }
+    }
+
+    func test09_MusicAndBeatSync() {
+        openProjectWithSamples()
+        tap("tool.Music")
+        tap("music.use.sunrise")
+        waitUntilIdle()
+        waitFor("music lane") { count(prefix: "audio.") == 1 }
+        snapshot("09-music")
+        element("editor.aspect").tap() // dismiss selection state
+        tap("panel.done")
+        tap("tool.Beat Sync")
+        let toast = toastText ?? ""
+        XCTAssertTrue(toast.contains("Synced"), "unexpected toast: \(toast)")
+        snapshot("09-beatsync")
+    }
+
+    func test10_RemoveSilence() {
+        openProjectWithSamples()
+        let before = totalSeconds
+        tap("tool.Silence")
+        waitUntilIdle()
+        waitFor("silence removed") { totalSeconds < before - 2 }
+        let toast = toastText ?? ""
+        XCTAssertTrue(toast.contains("Removed"), "unexpected toast: \(toast)")
+        snapshot("10-silence")
+    }
+
+    func test11_CanvasAndBackground() {
+        openProjectWithSamples()
+        tap("editor.aspect")
+        tap("chip.1:1")
+        tap("swatch.4")
+        snapshot("11-canvas-square")
+        tap("chip.16:9")
+        tap("chip.Blur")
+        tap("panel.done")
+        XCTAssertEqual(element("editor.aspect").label, "16:9")
+    }
+
+    func test12_CutoutReframeCrop() {
+        openProjectWithSamples()
+        selectClip(0)
+        tap("tool.Cutout")
+        tap("chip.Blur")
+        tap("panel.done")
+        tap("tool.Reframe")
+        waitUntilIdle()
+        XCTAssertNotNil(toastText)
+        tap("tool.Crop")
+        tap("tool.Rotate")
+        tap("chip.1:1")
+        snapshot("12-crop")
+        tap("panel.done")
+    }
+
+    func test13_Export() {
+        openProjectWithSamples()
+        tap("editor.export")
+        tap("chip.720p")
+        tap("export.start")
+        XCTAssertTrue(element("export.done").waitForExistence(timeout: 300), "export did not finish")
+        snapshot("13-exported")
+        tap("export.close")
+    }
+}
+
+/// Captions need real speech, so they run against the demo footage when CI provides it.
+final class CaptionUITests: CutlineUITestCase {
+    override var useDemoMedia: Bool { true }
+
+    func test14_AutoCaptions() throws {
+        guard ProcessInfo.processInfo.environment["DEMO_MEDIA"] != nil else {
+            throw XCTSkip("Needs DEMO_MEDIA speech footage")
+        }
+        tap("projects.new")
+        tap("tool.Media")
+        app.buttons["Sample Clips"].tap()
+        waitFor("demo clips", timeout: 90) { count(prefix: "clip.") >= 1 }
+        waitUntilIdle()
+        tap("tool.Captions")
+        tap("captions.generate")
+        waitUntilIdle(timeout: 240)
+        let toast = toastText ?? ""
+        print("CAPTIONS toast: \(toast)")
+        XCTAssertTrue(toast.hasPrefix("Captioned"), "captions failed: \(toast)")
+        XCTAssertGreaterThan(count(prefix: "caption."), 0)
+        tap("chip.Bold")
+        snapshot("14-captions")
+    }
+}

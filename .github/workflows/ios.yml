@@ -34,6 +34,13 @@ jobs:
             "https://upload.wikimedia.org/wikipedia/commons/d/d3/Albert_Einstein_Head.jpg" \
             || echo "portrait fixture unavailable"
           ls -la Tests/EditorKitTests/Fixtures
+          # Speech footage for the captions UI test.
+          brew install ffmpeg >/dev/null 2>&1 || true
+          mkdir -p "$RUNNER_TEMP/demo-media"
+          say -v Daniel -o /tmp/talk.aiff "Hi, I'm testing Cutline. [[slnc 1500]] Captions are generated right here on the phone."
+          ffmpeg -loglevel error -y -f lavfi -i "testsrc2=size=1280x720:rate=30" -i /tmp/talk.aiff -shortest \
+            -c:v libx264 -pix_fmt yuv420p -c:a aac "$RUNNER_TEMP/demo-media/01-talk.mov"
+          ls -la "$RUNNER_TEMP/demo-media"
       - name: Generate project
         run: xcodegen generate && mkdir -p build
       - name: Pick simulator
@@ -66,9 +73,13 @@ jobs:
           for svc in photos photos-add microphone speech-recognition; do
             xcrun simctl privacy ${{ steps.sim.outputs.udid }} grant $svc com.mujassir.cutline || true
           done
+          TEST_RUNNER_PRINT_SCREENSHOTS=1 TEST_RUNNER_DEMO_MEDIA="$RUNNER_TEMP/demo-media" \
           xcodebuild test -project Cutline.xcodeproj -scheme Cutline -only-testing:CutlineUITests \
             -destination "id=${{ steps.sim.outputs.udid }}" -resultBundlePath build/ui.xcresult \
-            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/ui.log | grep -E "error:|Test (Suite|Case)|passed|failed|\*\* |SCREENSHOT" | head -400
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/ui.log | grep -E "error:|Test (Suite|Case)|passed|failed|\*\* |CAPTIONS|XCTAssert|Timed out" | head -400
+      - name: Screenshots (base64, for log review)
+        if: always()
+        run: grep -oE "SCREENSHOT [^ ]+ [A-Za-z0-9+/=]+" build/ui.log || echo "no screenshots"
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
