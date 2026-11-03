@@ -17,7 +17,8 @@ jobs:
           get tos.mov https://download.blender.org/demo/movies/ToS/tears_of_steel_720p.mov \
                       https://ftp.nluug.nl/pub/graphics/blender/demo/movies/ToS/tears_of_steel_720p.mov \
                       https://mirror.clarkson.edu/blender/demo/movies/ToS/tears_of_steel_720p.mov
-          get bbb.mp4 https://download.blender.org/demo/movies/BBB/bbb_sunflower_1080p_30fps_normal.mp4 \
+          get bbb.mp4 https://download.blender.org/peach/bigbuckbunny_movies/big_buck_bunny_720p_h264.mov \
+                      https://download.blender.org/demo/movies/BBB/bbb_sunflower_1080p_30fps_normal.mp4 \
                       https://ftp.nluug.nl/pub/graphics/blender/demo/movies/BBB/bbb_sunflower_1080p_30fps_normal.mp4
           get sintel.mkv https://download.blender.org/durian/movies/Sintel.2010.720p.mkv \
                       https://ftp.nluug.nl/pub/graphics/blender/demo/movies/Sintel.2010.720p.mkv
@@ -30,7 +31,7 @@ jobs:
             [ -f $f ] || continue
             n=${f%.*}
             # One frame every 8 s, 6x5 grid of 160x90 tiles, timestamp burned in.
-            ffmpeg -loglevel error -y -i $f -vf "fps=1/10,scale=160:-2,drawtext=fontfile=/System/Library/Fonts/Supplemental/Arial.ttf:text='%{pts\:hms}':x=2:y=2:fontsize=11:fontcolor=yellow:box=1:boxcolor=black@0.6,tile=8x6" -q:v 6 sheet-$n-%02d.jpg
+            ffmpeg -loglevel error -y -i $f -vf "fps=1/10,scale=160:-2,tile=8x6" -q:v 6 sheet-$n-%02d.jpg
           done
           ls -la sheet-*
           for s in sheet-*.jpg; do echo "SHEET $s $(base64 -i $s | tr -d '\n')"; done

@@ -2,6 +2,7 @@ name: iOS build & test
 on:
   push:
     branches: ['claude/**', main]
+    paths-ignore: ['.github/workflows/scout.yml', '.github/workflows/demo.yml', 'scripts/**', '**.md']
   workflow_dispatch:
     inputs:
       ui_tests:
