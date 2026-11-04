@@ -54,11 +54,24 @@ struct ToolButton: View {
 struct PanelHeader: View {
     let title: String
     let onDone: () -> Void
+    var onUndo: (() -> Void)? = nil
+    var canUndo = true
 
     var body: some View {
         HStack {
             Text(title).font(.headline)
             Spacer()
+            if let onUndo {
+                Button(action: onUndo) {
+                    Image(systemName: "arrow.uturn.backward")
+                        .font(.system(size: 15, weight: .bold))
+                        .frame(width: 34, height: 34)
+                        .background(Theme.surfaceRaised, in: Circle())
+                        .foregroundStyle(canUndo ? .white : Theme.secondaryText)
+                }
+                .disabled(!canUndo)
+                .accessibilityIdentifier("panel.undo")
+            }
             Button(action: onDone) {
                 Image(systemName: "checkmark")
                     .font(.system(size: 15, weight: .bold))
