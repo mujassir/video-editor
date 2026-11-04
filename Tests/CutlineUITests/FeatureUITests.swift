@@ -186,7 +186,9 @@ final class FeatureUITests: CutlineUITestCase {
         XCTAssertEqual(element("editor.aspect").label, "3:4")
         snapshot("11-canvas-3x4")
         tap("chip.1:1")
-        tap("swatch.4")
+        // Background is always blurred: no background options in the canvas panel.
+        XCTAssertFalse(element("chip.Blur").exists)
+        XCTAssertFalse(element("swatch.4").exists)
         snapshot("11-canvas-square")
         tap("chip.Fill")
         tap("chip.Top")
@@ -194,7 +196,6 @@ final class FeatureUITests: CutlineUITestCase {
         tap("chip.Stretch")
         tap("chip.Fit")
         tap("chip.16:9")
-        tap("chip.Blur")
         tap("panel.done")
         XCTAssertEqual(element("editor.aspect").label, "16:9")
     }

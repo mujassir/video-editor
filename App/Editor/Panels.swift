@@ -97,15 +97,6 @@ struct CanvasPanel: View {
                         }
                     }
                 }
-                Text("Background").font(.subheadline).foregroundStyle(Theme.secondaryText)
-                HStack(spacing: 12) {
-                    ChipButton(title: "Blur", isSelected: model.project.background == .blur) {
-                        model.edit("Background") { $0.background = .blur }
-                    }
-                    SwatchRow(selected: { if case .color(let c) = model.project.background { return c }; return nil }()) { c in
-                        if let c { model.edit("Background") { $0.background = .color(c) } }
-                    }
-                }
             }
         }
     }
