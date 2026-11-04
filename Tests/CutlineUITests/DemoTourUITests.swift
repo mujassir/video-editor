@@ -156,17 +156,14 @@ final class DemoTourUITests: CutlineUITestCase {
         // 8 – Transitions.
         chapter(8) {
             selectNone()
-            tap("transition.0")
+            revealAndTap("transition.0")
             pause(0.5)
             tap("chip.Dissolve")
             pause(2.2)
             tap("chip.Zoom")
             pause(2.2)
             tap("panel.done")
-            let tl = element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
-            tl.press(forDuration: 0.05, thenDragTo: tl.withOffset(CGVector(dx: -200, dy: 0)))
-            pause(0.6)
-            tap("transition.1")
+            revealAndTap("transition.1")
             tap("chip.Glitch")
             pause(2.2)
             tap("panel.done")
@@ -208,8 +205,8 @@ final class DemoTourUITests: CutlineUITestCase {
 
         // 12 – Auto reframe on the vlog close-up (9:16 canvas).
         chapter(12) {
-            seekToVlog()
-            selectClipAtPlayhead()
+            revealAndTap("clip.1")
+            XCTAssertTrue(element("tool.Reframe").waitForExistence(timeout: 5))
             tap("tool.Reframe")
             waitUntilIdle(timeout: 300)
             pause(0.5)

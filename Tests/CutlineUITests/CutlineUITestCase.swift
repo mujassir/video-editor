@@ -109,6 +109,22 @@ class CutlineUITestCase: XCTestCase {
         waitUntilIdle()
     }
 
+    /// Drags the timeline until the element with `id` sits near the playhead, then taps it.
+    func revealAndTap(_ id: String) {
+        let e = element(id)
+        XCTAssertTrue(e.waitForExistence(timeout: 10), "\(id) not found")
+        let timeline = element("timeline")
+        for _ in 0..<8 {
+            let dx = e.frame.midX - timeline.frame.midX
+            if abs(dx) < timeline.frame.width * 0.3 { break }
+            let step = max(-300, min(300, dx))
+            let from = timeline.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15))
+            from.press(forDuration: 0.05, thenDragTo: from.withOffset(CGVector(dx: -step, dy: 0)))
+            RunLoop.current.run(until: Date().addingTimeInterval(0.8))
+        }
+        e.tap()
+    }
+
     /// Taps the main track right under the playhead.
     func selectClipAtPlayhead() {
         let timeline = element("timeline")
