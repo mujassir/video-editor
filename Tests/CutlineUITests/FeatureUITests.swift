@@ -131,6 +131,10 @@ final class FeatureUITests: CutlineUITestCase {
         waitFor("dissolve overlaps clips") { totalSeconds < 11.8 }
         snapshot("08-transition")
         tap("panel.done")
+        // Bring the second cut on screen.
+        let tl = element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
+        tl.press(forDuration: 0.05, thenDragTo: tl.withOffset(CGVector(dx: -260, dy: 0)))
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
         tap("transition.1")
         tap("chip.Slide")
         tap("panel.done")

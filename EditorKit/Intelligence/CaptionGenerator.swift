@@ -136,13 +136,37 @@ public enum CaptionGenerator {
         return segments
     }
 
+    /// Mixes the edit's speech (main track + voiceovers, no music) to 16 kHz mono PCM, in timeline time.
+    static func writeSpeechMix(project: Project, resolver: MediaResolver, to url: URL) async throws {
+        var speechOnly = project
+        speechOnly.audioClips.removeAll { $0.role == .music || $0.role == .effect }
+        let built = try await CompositionBuilder().build(project: speechOnly, resolver: resolver,
+                                                         renderSize: CGSize(width: 64, height: 64))
+        let tracks = try await built.composition.loadTracks(withMediaType: .audio)
+        guard !tracks.isEmpty else { throw CaptionError.noSpeechFound }
+        let sampleRate = 16_000.0
+        let samples = try Waveform.readMixedMono(asset: built.composition, tracks: tracks,
+                                                 audioMix: built.audioMix, sampleRate: sampleRate)
+        guard !samples.isEmpty, let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count)) else {
+            throw CaptionError.noSpeechFound
+        }
+        buffer.frameLength = AVAudioFrameCount(samples.count)
+        samples.withUnsafeBufferPointer { src in
+            buffer.floatChannelData![0].update(from: src.baseAddress!, count: samples.count)
+        }
+        try? FileManager.default.removeItem(at: url)
+        let file = try AVAudioFile(forWriting: url, settings: format.settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+        try file.write(from: buffer)
+    }
+
     /// Full pipeline: mix the edit's speech, transcribe on device, place captions on the timeline.
     public static func generate(project: Project, resolver: MediaResolver, workDirectory: URL,
                                 locale: Locale = Locale(identifier: "en-US")) async throws -> (CaptionTrack, Engine) {
-        let audioURL = workDirectory.appendingPathComponent("caption-audio-\(UUID().uuidString).m4a")
+        let audioURL = workDirectory.appendingPathComponent("caption-audio-\(UUID().uuidString).caf")
         defer { try? FileManager.default.removeItem(at: audioURL) }
         try FileManager.default.createDirectory(at: workDirectory, withIntermediateDirectories: true)
-        try await Exporter.exportAudio(project: project, resolver: resolver, to: audioURL)
+        try await writeSpeechMix(project: project, resolver: resolver, to: audioURL)
         let (words, engine) = try await transcribe(url: audioURL, locale: locale)
         guard !words.isEmpty else { throw CaptionError.noSpeechFound }
         var track = project.captions
