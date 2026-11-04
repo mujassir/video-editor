@@ -239,8 +239,9 @@ final class DemoTourUITests: CutlineUITestCase {
 
     private func selectNone() {
         // Tapping empty timeline space clears the selection.
+        // The ruler (top 18 pt of the timeline) never holds a clip.
         let timeline = element("timeline")
-        timeline.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.95)).tap()
+        timeline.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: timeline.frame.width * 0.8, dy: 8)).tap()
         pause(0.3)
     }
 
