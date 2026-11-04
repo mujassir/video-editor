@@ -511,6 +511,7 @@ final class EditorModel {
             clip.volume = 0.7
             clip.fadeOut = MediaTime(seconds: min(1.5, length.seconds / 4))
             clip.autoDuck = true
+            clip.fitsVideo = true
             clip.beats = beats.map { MediaTime(seconds: $0) }
             p.addAudio(clip)
         }

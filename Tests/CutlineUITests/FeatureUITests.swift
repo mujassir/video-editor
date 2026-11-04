@@ -307,9 +307,23 @@ final class FeatureUITests: CutlineUITestCase {
         element("audio.0").tap()
         XCTAssertTrue(element("tool.Trim").waitForExistence(timeout: 5))
         tap("tool.Trim")
-        XCTAssertTrue(element("audioTrim.summary").waitForExistence(timeout: 5))
-        element("slider.Start").adjust(toNormalizedSliderPosition: 0.1)
-        snapshot("18-audio-trim")
+        let summary = element("audioTrim.summary")
+        XCTAssertTrue(summary.waitForExistence(timeout: 5))
+        let before = summary.label
+        // Drag the start handle to the right, preview, then Trim.
+        let handle = element("audioTrim.startHandle")
+        let from = handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        from.press(forDuration: 0.1, thenDragTo: from.withOffset(CGVector(dx: 60, dy: 0)))
+        XCTAssertNotEqual(element("audioTrim.startTime").label, "0:00.0", "start handle should move")
+        tap("audioTrim.play")
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        snapshot("18-audio-trim-preview")
+        tap("audioTrim.play")
+        tap("audioTrim.trim")
+        waitFor("trim applied") { element("audioTrim.summary").label != before }
+        // Undo inside the panel restores the previous section.
+        tap("panel.undo")
+        waitFor("undo restores") { element("audioTrim.summary").label == before }
         tap("panel.done")
         tap("tool.Split")
         waitFor("audio split") { count(prefix: "audio.") == 2 }

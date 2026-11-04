@@ -8,11 +8,13 @@ import EditorKit
 struct PanelContainer<Content: View>: View {
     let title: String
     let onDone: () -> Void
+    var onUndo: (() -> Void)? = nil
+    var canUndo = true
     @ViewBuilder var content: Content
 
     var body: some View {
         VStack(spacing: 10) {
-            PanelHeader(title: title, onDone: onDone)
+            PanelHeader(title: title, onDone: onDone, onUndo: onUndo, canUndo: canUndo)
             content
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
@@ -861,50 +863,233 @@ struct MusicSourceLabel: View {
 
 // MARK: - Audio trim
 
+/// Single range slider over the whole song: two handles pick the section, the
+/// middle can be dragged to move it, ▶︎ previews the section with a cursor line,
+/// Trim applies it. ✓ saves (applying an untrimmed change) and closes.
 struct AudioTrimPanel: View {
     @Bindable var model: EditorModel
     let audioID: UUID
+    @State private var selStart: Double = 0
+    @State private var selEnd: Double = 1
+    @State private var loaded = false
+    @State private var preview = AudioPreview()
 
     private var clip: AudioClip? { model.project.audioClips.first { $0.id == audioID } }
-    private var songLength: Double {
-        clip.flatMap { model.project.mediaItem($0.mediaID) }.map { max($0.duration.seconds, 0.2) } ?? 1
-    }
-    private func secs(_ v: Double) -> String {
-        v >= 60 ? String(format: "%d:%04.1f", Int(v) / 60, v.truncatingRemainder(dividingBy: 60)) : String(format: "%.1fs", v)
+    private var media: MediaItem? { clip.flatMap { model.project.mediaItem($0.mediaID) } }
+    private var songLength: Double { max(media?.duration.seconds ?? 1, 0.5) }
+    private var changed: Bool {
+        guard let clip else { return false }
+        return abs(clip.sourceRange.start.seconds - selStart) > 0.02 || abs(clip.sourceRange.end.seconds - selEnd) > 0.02
     }
 
     var body: some View {
-        PanelContainer(title: "Trim Audio", onDone: { model.panel = nil }) {
-            if let clip {
-                VStack(spacing: 8) {
-                    Text("Plays \(secs(clip.sourceRange.start.seconds)) – \(secs(clip.sourceRange.end.seconds)) of the song · \(secs(clip.sourceRange.duration.seconds))")
-                        .font(.footnote.monospacedDigit()).foregroundStyle(Theme.secondaryText)
-                        .accessibilityIdentifier("audioTrim.summary")
-                    LabeledSlider(title: "Start", value: Binding(get: { clip.sourceRange.start.seconds }, set: { v in
-                        model.editCoalescing("Trim audio", key: "atrim-s-\(audioID)") { p in
-                            try? p.setAudioSourceRange(audioID, MediaTimeRange(start: MediaTime(seconds: v), end: clip.sourceRange.end))
+        PanelContainer(title: "Trim Audio", onDone: save,
+                       onUndo: { preview.stop(); model.undo(); loadFromClip() }, canUndo: model.session.canUndo) {
+            VStack(spacing: 12) {
+                HStack(spacing: 12) {
+                    Button { togglePreview() } label: {
+                        Image(systemName: preview.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 18, weight: .bold))
+                            .frame(width: 44, height: 44)
+                            .background(Theme.surfaceRaised, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("audioTrim.play")
+                    VStack(spacing: 4) {
+                        RangeTrimSlider(peaks: media.flatMap { model.waveforms[$0.id] } ?? [],
+                                        total: songLength, start: $selStart, end: $selEnd,
+                                        cursor: preview.isPlaying ? preview.position : nil,
+                                        onScrubBegan: { preview.stop() })
+                            .frame(height: 54)
+                        HStack {
+                            Text(Self.time(selStart)).accessibilityIdentifier("audioTrim.startTime")
+                            Spacer()
+                            Text("\(Self.time(selEnd - selStart)) selected").foregroundStyle(Theme.secondaryText)
+                            Spacer()
+                            Text(Self.time(selEnd)).accessibilityIdentifier("audioTrim.endTime")
                         }
-                    }), range: 0...songLength, format: secs)
-                    LabeledSlider(title: "End", value: Binding(get: { clip.sourceRange.end.seconds }, set: { v in
-                        model.editCoalescing("Trim audio", key: "atrim-e-\(audioID)") { p in
-                            try? p.setAudioSourceRange(audioID, MediaTimeRange(start: clip.sourceRange.start, end: MediaTime(seconds: v)))
-                        }
-                    }), range: 0...songLength, format: secs)
-                    LabeledSlider(title: "Section", value: Binding(get: { clip.sourceRange.start.seconds }, set: { v in
-                        model.editCoalescing("Move song section", key: "atrim-m-\(audioID)") { p in
-                            try? p.slideAudioContent(audioID, toSourceStart: MediaTime(seconds: v))
-                        }
-                    }), range: 0...max(0.01, songLength - clip.sourceRange.duration.seconds), format: secs)
-                    LabeledSlider(title: "Starts at", value: Binding(get: { clip.start.seconds }, set: { v in
-                        model.editCoalescing("Move audio", key: "atrim-t-\(audioID)") { p in
-                            try? p.moveAudio(audioID, toTimelineStart: MediaTime(seconds: v))
-                        }
-                    }), range: 0...max(0.01, model.project.layout.duration.seconds), format: secs)
-                    Text("Section picks which part of the song plays (same length). Starts at moves it on the timeline.")
-                        .font(.caption2).foregroundStyle(Theme.secondaryText)
+                        .font(.caption.monospacedDigit())
+                    }
                 }
+                HStack(spacing: 10) {
+                    Button { applyTrim() } label: {
+                        Label("Trim", systemImage: "scissors").font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity).padding(.vertical, 10)
+                            .background(changed ? Theme.accent : Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!changed)
+                    .accessibilityIdentifier("audioTrim.trim")
+                    if let clip {
+                        Toggle("Match video", isOn: Binding(get: { clip.followsVideo }, set: { v in
+                            model.edit("Match video length") { p in p.updateAudio(audioID) { $0.fitsVideo = v } }
+                            loadFromClip()
+                        }))
+                        .tint(Theme.accent).font(.subheadline).fixedSize()
+                        .accessibilityIdentifier("audioTrim.matchVideo")
+                    }
+                }
+                Text(clip.map { "Plays \(Self.time($0.sourceRange.start.seconds)) – \(Self.time($0.sourceRange.end.seconds)) of the song" } ?? "")
+                    .font(.caption2).foregroundStyle(Theme.secondaryText)
+                    .accessibilityIdentifier("audioTrim.summary")
             }
         }
+        .onAppear {
+            model.pause()
+            loadFromClip()
+            if let media { preview.load(model.resolver.url(for: media)) }
+        }
+        .onDisappear { preview.stop() }
+    }
+
+    private func loadFromClip() {
+        guard let clip else { return }
+        selStart = clip.sourceRange.start.seconds
+        selEnd = clip.sourceRange.end.seconds
+        loaded = true
+    }
+
+    private func togglePreview() {
+        if preview.isPlaying { preview.stop() } else { model.pause(); preview.play(from: selStart, to: selEnd) }
+    }
+
+    private func applyTrim() {
+        preview.stop()
+        let range = MediaTimeRange(start: MediaTime(seconds: selStart), end: MediaTime(seconds: selEnd))
+        model.edit("Trim audio") { p in try p.setAudioSourceRange(audioID, range) }
+        loadFromClip()
+        model.showToast("Trimmed to \(Self.time(selEnd - selStart))", systemImage: "scissors")
+    }
+
+    private func save() {
+        if changed { applyTrim() }
+        preview.stop()
+        model.panel = nil
+    }
+
+    static func time(_ v: Double) -> String {
+        let t = max(v, 0)
+        return String(format: "%d:%04.1f", Int(t) / 60, t.truncatingRemainder(dividingBy: 60))
+    }
+}
+
+/// Two-handle range slider over a waveform, with an optional playback cursor.
+struct RangeTrimSlider: View {
+    let peaks: [Float]
+    let total: Double
+    @Binding var start: Double
+    @Binding var end: Double
+    var cursor: Double?
+    var onScrubBegan: () -> Void = {}
+    @State private var dragOrigin: (start: Double, end: Double)?
+    private let minGap = 0.5
+    private let handleWidth: CGFloat = 16
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = max(geo.size.width - handleWidth * 2, 1)
+            let x = { (t: Double) -> CGFloat in handleWidth + CGFloat(t / max(total, 0.001)) * w }
+            let toTime = { (dx: CGFloat) -> Double in Double(dx / w) * total }
+            ZStack(alignment: .topLeading) {
+                // Waveform across the whole song.
+                Canvas { ctx, size in
+                    guard !peaks.isEmpty else { return }
+                    let barW = w / CGFloat(peaks.count)
+                    for (i, p) in peaks.enumerated() {
+                        let h = max(2, CGFloat(p) * (size.height - 10))
+                        let r = CGRect(x: handleWidth + CGFloat(i) * barW, y: (size.height - h) / 2, width: max(1, barW - 0.5), height: h)
+                        ctx.fill(Path(r), with: .color(Theme.clipAudio.opacity(0.85)))
+                    }
+                }
+                // Dim outside the selection.
+                Rectangle().fill(Color.black.opacity(0.55))
+                    .frame(width: max(0, x(start) - handleWidth)).offset(x: handleWidth)
+                Rectangle().fill(Color.black.opacity(0.55))
+                    .frame(width: max(0, handleWidth + w - x(end))).offset(x: x(end))
+                // Selection frame (drag to move the section).
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(Color.white, lineWidth: 2.5)
+                    .background(Color.white.opacity(0.001))
+                    .frame(width: max(2, x(end) - x(start)))
+                    .offset(x: x(start))
+                    .gesture(DragGesture(minimumDistance: 2).onChanged { v in
+                        if dragOrigin == nil { dragOrigin = (start, end); onScrubBegan() }
+                        guard let o = dragOrigin else { return }
+                        let len = o.end - o.start
+                        let s = min(max(0, o.start + toTime(v.translation.width)), total - len)
+                        start = s; end = s + len
+                    }.onEnded { _ in dragOrigin = nil })
+                    .accessibilityIdentifier("audioTrim.section")
+                handle(at: x(start) - handleWidth, id: "audioTrim.startHandle") { dx in
+                    if dragOrigin == nil { dragOrigin = (start, end); onScrubBegan() }
+                    guard let o = dragOrigin else { return }
+                    start = min(max(0, o.start + toTime(dx)), end - minGap)
+                }
+                handle(at: x(end), id: "audioTrim.endHandle") { dx in
+                    if dragOrigin == nil { dragOrigin = (start, end); onScrubBegan() }
+                    guard let o = dragOrigin else { return }
+                    end = max(min(total, o.end + toTime(dx)), start + minGap)
+                }
+                if let cursor {
+                    Rectangle().fill(Color.white).frame(width: 2).offset(x: x(cursor) - 1)
+                        .allowsHitTesting(false)
+                        .accessibilityIdentifier("audioTrim.cursor")
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+            .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 6))
+        }
+    }
+
+    private func handle(at offset: CGFloat, id: String, onDrag: @escaping (CGFloat) -> Void) -> some View {
+        RoundedRectangle(cornerRadius: 4)
+            .fill(Color.white)
+            .overlay(Capsule().fill(Color.black.opacity(0.45)).frame(width: 2, height: 18))
+            .frame(width: handleWidth)
+            .offset(x: offset)
+            .gesture(DragGesture(minimumDistance: 1)
+                .onChanged { v in onDrag(v.translation.width) }
+                .onEnded { _ in dragOrigin = nil })
+            .accessibilityIdentifier(id)
+    }
+}
+
+/// Plays one section of a song for the trim preview (separate from the edit preview).
+@Observable
+final class AudioPreview {
+    private(set) var isPlaying = false
+    private(set) var position: Double = 0
+    @ObservationIgnored private var player: AVPlayer?
+    @ObservationIgnored private var timeObserver: Any?
+    @ObservationIgnored private var endTime: Double = 0
+
+    func load(_ url: URL) {
+        player = AVPlayer(url: url)
+        player?.automaticallyWaitsToMinimizeStalling = false
+    }
+
+    func play(from start: Double, to end: Double) {
+        guard let player else { return }
+        stop()
+        endTime = end
+        position = start
+        player.seek(to: CMTime(seconds: start, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 30), queue: .main) { [weak self] t in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.position = t.seconds
+                if t.seconds >= self.endTime - 0.02 { self.stop() }
+            }
+        }
+        player.play()
+        isPlaying = true
+    }
+
+    func stop() {
+        player?.pause()
+        if let timeObserver { player?.removeTimeObserver(timeObserver) }
+        timeObserver = nil
+        isPlaying = false
     }
 }
 

@@ -457,6 +457,21 @@ public extension Project {
 
     // MARK: Audio clip editing
 
+    /// Re-fits music that follows the video so it ends with the video (or with the
+    /// song, if the song is shorter). Called after every edit.
+    mutating func refitMusic() {
+        let videoEnd = layout.duration
+        guard videoEnd > .zero else { return }
+        for i in audioClips.indices where audioClips[i].followsVideo {
+            guard let item = mediaItem(audioClips[i].mediaID) else { continue }
+            let clip = audioClips[i]
+            let available = item.duration - clip.sourceRange.start
+            let wanted = videoEnd - clip.start
+            let length = max(Self.minimumAudioDuration, min(available, wanted))
+            if length != clip.sourceRange.duration { audioClips[i].sourceRange.duration = length }
+        }
+    }
+
     static let minimumAudioDuration = MediaTime(seconds: 0.2)
 
     private func audioIndex(_ id: UUID) throws -> (Int, MediaTime) {
@@ -470,6 +485,8 @@ public extension Project {
         let (i, total) = try audioIndex(id)
         let start = range.start.clamped(to: .zero...max(.zero, total - Self.minimumAudioDuration))
         let end = range.end.clamped(to: (start + Self.minimumAudioDuration)...max(start + Self.minimumAudioDuration, total))
+        // A new end chosen by the user means the music no longer follows the video.
+        if min(end, total) != audioClips[i].sourceRange.end { audioClips[i].fitsVideo = false }
         audioClips[i].sourceRange = MediaTimeRange(start: start, end: min(end, total))
     }
 
@@ -498,6 +515,8 @@ public extension Project {
         }
         var left = clip, right = clip
         right.id = UUID()
+        left.fitsVideo = false
+        right.fitsVideo = false
         left.sourceRange.duration = local
         left.fadeOut = .zero
         right.sourceRange = MediaTimeRange(start: clip.sourceRange.start + local, end: clip.sourceRange.end)
@@ -514,6 +533,8 @@ public extension Project {
         let (i, _) = try audioIndex(id)
         var copy = audioClips[i]
         copy.id = UUID()
+        copy.fitsVideo = false
+        audioClips[i].fitsVideo = false
         copy.start = audioClips[i].timelineRange.end
         let collides = audioClips.contains { $0.lane == copy.lane && $0.timelineRange.intersection(copy.timelineRange) != nil }
         if collides {
