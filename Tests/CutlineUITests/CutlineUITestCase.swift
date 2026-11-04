@@ -140,7 +140,9 @@ class CutlineUITestCase: XCTestCase {
         let clip = element("clip.\(index)")
         XCTAssertTrue(clip.waitForExistence(timeout: 5))
         clip.tap()
-        XCTAssertTrue(element("tool.Split").waitForExistence(timeout: 5), "clip tools should appear")
+        // Video clips show Split first; photos and freeze frames show Duration.
+        let shown = element("tool.Split").waitForExistence(timeout: 5) || element("tool.Duration").exists
+        XCTAssertTrue(shown, "clip tools should appear")
     }
 
     /// Saves a screenshot as an attachment and prints a small JPEG for CI log review.
