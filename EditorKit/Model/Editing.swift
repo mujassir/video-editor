@@ -391,6 +391,75 @@ public extension Project {
         change(&audioClips[i])
     }
 
+    // MARK: Audio clip editing
+
+    static let minimumAudioDuration = MediaTime(seconds: 0.2)
+
+    private func audioIndex(_ id: UUID) throws -> (Int, MediaTime) {
+        guard let i = audioClips.firstIndex(where: { $0.id == id }),
+              let item = mediaItem(audioClips[i].mediaID) else { throw EditError.clipNotFound }
+        return (i, item.duration)
+    }
+
+    /// Sets which part of the song plays (source start/end), keeping its timeline start.
+    mutating func setAudioSourceRange(_ id: UUID, _ range: MediaTimeRange) throws {
+        let (i, total) = try audioIndex(id)
+        let start = range.start.clamped(to: .zero...max(.zero, total - Self.minimumAudioDuration))
+        let end = range.end.clamped(to: (start + Self.minimumAudioDuration)...max(start + Self.minimumAudioDuration, total))
+        audioClips[i].sourceRange = MediaTimeRange(start: start, end: min(end, total))
+    }
+
+    /// Slides the section of the song that plays, keeping its length ("use a part from the middle").
+    mutating func slideAudioContent(_ id: UUID, toSourceStart start: MediaTime) throws {
+        let (i, total) = try audioIndex(id)
+        let length = audioClips[i].sourceRange.duration
+        let s = start.clamped(to: .zero...max(.zero, total - length))
+        audioClips[i].sourceRange = MediaTimeRange(start: s, duration: length)
+    }
+
+    /// Moves where the audio starts on the timeline.
+    mutating func moveAudio(_ id: UUID, toTimelineStart start: MediaTime) throws {
+        let (i, _) = try audioIndex(id)
+        audioClips[i].start = max(.zero, start)
+    }
+
+    /// Splits an audio clip at a timeline time. Returns the new right-hand clip's id.
+    @discardableResult
+    mutating func splitAudio(_ id: UUID, at time: MediaTime) throws -> UUID {
+        let (i, _) = try audioIndex(id)
+        let clip = audioClips[i]
+        let local = time - clip.start
+        guard local >= Self.minimumAudioDuration, clip.sourceRange.duration - local >= Self.minimumAudioDuration else {
+            throw EditError.tooShort
+        }
+        var left = clip, right = clip
+        right.id = UUID()
+        left.sourceRange.duration = local
+        left.fadeOut = .zero
+        right.sourceRange = MediaTimeRange(start: clip.sourceRange.start + local, end: clip.sourceRange.end)
+        right.start = time
+        right.fadeIn = .zero
+        audioClips[i] = left
+        audioClips.insert(right, at: i + 1)
+        return right.id
+    }
+
+    /// Copies an audio clip and places it right after the original (same lane when free).
+    @discardableResult
+    mutating func duplicateAudio(_ id: UUID) throws -> UUID {
+        let (i, _) = try audioIndex(id)
+        var copy = audioClips[i]
+        copy.id = UUID()
+        copy.start = audioClips[i].timelineRange.end
+        let collides = audioClips.contains { $0.lane == copy.lane && $0.timelineRange.intersection(copy.timelineRange) != nil }
+        if collides {
+            addAudio(copy)
+        } else {
+            audioClips.insert(copy, at: i + 1)
+        }
+        return copy.id
+    }
+
     mutating func deleteAudio(_ id: UUID) {
         audioClips.removeAll { $0.id == id }
     }

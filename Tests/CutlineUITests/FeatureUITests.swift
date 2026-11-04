@@ -226,6 +226,29 @@ final class FeatureUITests: CutlineUITestCase {
         tap("export.close")
     }
 
+    func test18_AudioTrimSplitDuplicate() {
+        openProjectWithSamples()
+        tap("tool.Music")
+        tap("music.use.sunrise")
+        waitUntilIdle()
+        waitFor("music lane") { count(prefix: "audio.") == 1 }
+        // Playhead a little into the song, then select the music clip.
+        let tl = element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.2))
+        tl.press(forDuration: 0.05, thenDragTo: tl.withOffset(CGVector(dx: -120, dy: 0)))
+        element("audio.0").tap()
+        XCTAssertTrue(element("tool.Trim").waitForExistence(timeout: 5))
+        tap("tool.Trim")
+        XCTAssertTrue(element("audioTrim.summary").waitForExistence(timeout: 5))
+        element("slider.Start").adjust(toNormalizedSliderPosition: 0.1)
+        snapshot("18-audio-trim")
+        tap("panel.done")
+        tap("tool.Split")
+        waitFor("audio split") { count(prefix: "audio.") == 2 }
+        tap("tool.Duplicate")
+        waitFor("audio duplicated") { count(prefix: "audio.") == 3 }
+        snapshot("18-audio-split-duplicate")
+    }
+
     func test17_FilterPreviewShowsCleanFrame() {
         openProjectWithSamples()
         // Clip 1 spans 4–8 s and fades out; the playhead starts at 0 (outside it).

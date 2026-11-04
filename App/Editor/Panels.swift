@@ -881,3 +881,52 @@ struct MusicSourceLabel: View {
         .foregroundStyle(.white)
     }
 }
+
+// MARK: - Audio trim
+
+struct AudioTrimPanel: View {
+    @Bindable var model: EditorModel
+    let audioID: UUID
+
+    private var clip: AudioClip? { model.project.audioClips.first { $0.id == audioID } }
+    private var songLength: Double {
+        clip.flatMap { model.project.mediaItem($0.mediaID) }.map { max($0.duration.seconds, 0.2) } ?? 1
+    }
+    private func secs(_ v: Double) -> String {
+        v >= 60 ? String(format: "%d:%04.1f", Int(v) / 60, v.truncatingRemainder(dividingBy: 60)) : String(format: "%.1fs", v)
+    }
+
+    var body: some View {
+        PanelContainer(title: "Trim Audio", onDone: { model.panel = nil }) {
+            if let clip {
+                VStack(spacing: 8) {
+                    Text("Plays \(secs(clip.sourceRange.start.seconds)) – \(secs(clip.sourceRange.end.seconds)) of the song · \(secs(clip.sourceRange.duration.seconds))")
+                        .font(.footnote.monospacedDigit()).foregroundStyle(Theme.secondaryText)
+                        .accessibilityIdentifier("audioTrim.summary")
+                    LabeledSlider(title: "Start", value: Binding(get: { clip.sourceRange.start.seconds }, set: { v in
+                        model.editCoalescing("Trim audio", key: "atrim-s-\(audioID)") { p in
+                            try? p.setAudioSourceRange(audioID, MediaTimeRange(start: MediaTime(seconds: v), end: clip.sourceRange.end))
+                        }
+                    }), range: 0...songLength, format: secs)
+                    LabeledSlider(title: "End", value: Binding(get: { clip.sourceRange.end.seconds }, set: { v in
+                        model.editCoalescing("Trim audio", key: "atrim-e-\(audioID)") { p in
+                            try? p.setAudioSourceRange(audioID, MediaTimeRange(start: clip.sourceRange.start, end: MediaTime(seconds: v)))
+                        }
+                    }), range: 0...songLength, format: secs)
+                    LabeledSlider(title: "Section", value: Binding(get: { clip.sourceRange.start.seconds }, set: { v in
+                        model.editCoalescing("Move song section", key: "atrim-m-\(audioID)") { p in
+                            try? p.slideAudioContent(audioID, toSourceStart: MediaTime(seconds: v))
+                        }
+                    }), range: 0...max(0.01, songLength - clip.sourceRange.duration.seconds), format: secs)
+                    LabeledSlider(title: "Starts at", value: Binding(get: { clip.start.seconds }, set: { v in
+                        model.editCoalescing("Move audio", key: "atrim-t-\(audioID)") { p in
+                            try? p.moveAudio(audioID, toTimelineStart: MediaTime(seconds: v))
+                        }
+                    }), range: 0...max(0.01, model.project.layout.duration.seconds), format: secs)
+                    Text("Section picks which part of the song plays (same length). Starts at moves it on the timeline.")
+                        .font(.caption2).foregroundStyle(Theme.secondaryText)
+                }
+            }
+        }
+    }
+}

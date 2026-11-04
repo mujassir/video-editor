@@ -4,7 +4,7 @@ import CoreImage
 import EditorKit
 
 enum EditorPanel: Equatable {
-    case canvas, trim, duration, motion, filters, adjust, speed, volume, transition(UUID), text(UUID?), music, captions, crop, background, export
+    case canvas, trim, audioTrim, duration, motion, filters, adjust, speed, volume, transition(UUID), text(UUID?), music, captions, crop, background, export
 }
 
 /// Drives one editing session: project state, preview player, analysis jobs.
@@ -316,6 +316,29 @@ final class EditorModel {
         guard let id = selectedClipID else { return }
         edit("Extract audio") { try $0.extractAudio(from: id) }
         loadWaveforms()
+    }
+
+    var selectedAudioID: UUID? {
+        if case .audio(let id) = session.selection { return id }
+        return nil
+    }
+
+    func splitSelectedAudio() {
+        guard let id = selectedAudioID else { return }
+        var newID: UUID?
+        edit("Split audio") { newID = try $0.splitAudio(id, at: currentTime) }
+        if let newID { session.selection = .audio(newID) }
+        loadWaveforms()
+    }
+
+    func duplicateSelectedAudio() {
+        guard let id = selectedAudioID else { return }
+        var newID: UUID?
+        edit("Duplicate audio") { newID = try $0.duplicateAudio(id) }
+        if let newID {
+            session.selection = .audio(newID)
+            showToast("Audio duplicated", systemImage: "plus.square.on.square")
+        }
     }
 
     func addText() {
