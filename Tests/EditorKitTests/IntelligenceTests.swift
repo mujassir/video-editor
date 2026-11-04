@@ -132,6 +132,7 @@ struct ReframeTests {
         print("REFRAME error: \(VisionSupport.lastError ?? "-") path: \(keys.map { String(format: "%.2f", $0.centerX) }.joined(separator: " "))")
         #expect(last > first + 0.3, "reframe should pan with the face: \(first) → \(last)")
     }
+}
 
 @Suite("Captions")
 struct CaptionTests {
