@@ -866,3 +866,17 @@ struct PhotoDurationPanel: View {
         }
     }
 }
+
+struct MusicSourceLabel: View {
+    let title: String
+    let icon: String
+    var body: some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon).font(.system(size: 17, weight: .semibold))
+            Text(title).font(.caption.weight(.medium))
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 10)
+        .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
+        .foregroundStyle(.white)
+    }
+}
