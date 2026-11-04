@@ -9,8 +9,8 @@
     },
     {
       "title": "Projects & Import",
-      "subtitle": "Autosaved, unlimited undo",
-      "text": "Start a new project and bring in your clips. Media is copied into the project, so every change is saved automatically, with unlimited undo."
+      "subtitle": "Autosaved \u00b7 200-step undo",
+      "text": "Start a new project and bring in your clips. Media is copied into the project, so every change is saved automatically, with deep undo and redo."
     },
     {
       "title": "Timeline & Preview",
@@ -51,11 +51,6 @@
       "title": "Music & Beat Sync",
       "subtitle": "On-device AI",
       "text": "Pick a royalty-free track. Cutline detects the beats on device, and Beat Sync lines your cuts up with the music automatically."
-    },
-    {
-      "title": "Auto Captions",
-      "subtitle": "On-device speech recognition",
-      "text": "Auto Captions transcribe speech with Apple's on-device recognition. Every word is timed, with animated styles like karaoke and bold."
     },
     {
       "title": "Remove Silence",

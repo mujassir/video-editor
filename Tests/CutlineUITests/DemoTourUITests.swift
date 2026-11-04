@@ -65,7 +65,8 @@ final class DemoTourUITests: CutlineUITestCase {
 
         // 3 – Split, trim, duplicate, undo.
         chapter(3) {
-            element("timeline").swipeLeft(velocity: .slow)
+            let tl = element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.2))
+            tl.press(forDuration: 0.05, thenDragTo: tl.withOffset(CGVector(dx: -110, dy: 0)))
             pause(0.6)
             selectClipAtPlayhead()
             tap("tool.Split")
@@ -179,31 +180,16 @@ final class DemoTourUITests: CutlineUITestCase {
             play(3)
         }
 
-        // 10 – Auto captions (vlog clip has speech).
+        // 10 – Remove silence.
         chapter(10) {
-            selectNone()
-            tap("tool.Captions")
-            tap("captions.generate")
-            allowSystemAlerts(timeout: 30)
-            waitUntilIdle(timeout: 240)
-            pause(0.8)
-            tap("chip.Bold")
-            pause(0.6)
-            tap("panel.done")
-            seekToVlog()
-            play(4)
-        }
-
-        // 11 – Remove silence.
-        chapter(11) {
             selectNone()
             tap("tool.Silence")
             waitUntilIdle()
             pause(1.5)
         }
 
-        // 12 – Auto reframe on the vlog close-up.
-        chapter(12) {
+        // 11 – Auto reframe on the vlog close-up.
+        chapter(11) {
             seekToVlog()
             selectClipAtPlayhead()
             tap("tool.Reframe")
@@ -212,8 +198,8 @@ final class DemoTourUITests: CutlineUITestCase {
             play(3)
         }
 
-        // 13 – Canvas formats.
-        chapter(13) {
+        // 12 – Canvas formats.
+        chapter(12) {
             selectNone()
             tap("editor.aspect")
             for r in ["chip.1:1", "chip.16:9", "chip.4:5", "chip.9:16"] {
@@ -223,19 +209,19 @@ final class DemoTourUITests: CutlineUITestCase {
             tap("panel.done")
         }
 
-        // 14 – Export.
-        chapter(14) {
+        // 13 – Export.
+        chapter(13) {
             tap("editor.export")
             pause(0.8)
-            tap("chip.1080p")
+            tap("chip.720p")
             pause(0.5)
             tap("export.start")
             XCTAssertTrue(element("export.done").waitForExistence(timeout: 600))
             pause(2.5)
         }
 
-        // 15 – Outro.
-        chapter(15) {
+        // 14 – Outro.
+        chapter(14) {
             tap("export.close")
             pause(1)
             tap("editor.close")

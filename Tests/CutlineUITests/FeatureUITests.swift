@@ -226,7 +226,15 @@ final class CaptionUITests: CutlineUITestCase {
         waitUntilIdle(timeout: 240)
         let toast = toastText ?? ""
         print("CAPTIONS toast: \(toast)")
+        #if targetEnvironment(simulator)
+        if toast.contains("kLSRErrorDomain") || toast.contains("isn't available") {
+            // The simulator ships without Apple's on-device speech model and the app never
+            // uses server recognition, so transcription must be verified on an iPhone.
+            XCTExpectFailure("On-device speech model not available in the iOS simulator: \(toast)")
+        }
+        #endif
         XCTAssertTrue(toast.hasPrefix("Captioned"), "captions failed: \(toast)")
+        guard toast.hasPrefix("Captioned") else { return }
         XCTAssertGreaterThan(count(prefix: "caption."), 0)
         tap("chip.Bold")
         snapshot("14-captions")
