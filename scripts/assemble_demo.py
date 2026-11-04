@@ -153,6 +153,12 @@ def main():
     pw = int(round(PHONE_H * rw / rh / 2)) * 2
     phone_box = (W - 160 - pw, (H - PHONE_H) // 2, pw, PHONE_H)
     os.makedirs(a.work, exist_ok=True)
+    # Simulator recordings only contain frames when the screen changes; convert once to a
+    # constant 30 fps at phone size so every span has frames and seeking is cheap.
+    cfr = os.path.join(a.work, "recording-cfr.mp4")
+    run(["ffmpeg", "-loglevel", "error", "-y", "-i", a.recording, "-vf", f"fps=30,scale={pw}:{PHONE_H},setsar=1",
+         "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", "-g", "30", cfr])
+    a.recording = cfr
     mask = os.path.join(a.work, "mask.png")
     phone_mask(mask, pw, PHONE_H, 54)
 

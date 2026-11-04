@@ -1,9 +1,17 @@
 name: Demo video
 on:
   workflow_dispatch:
+    inputs:
+      reuse_run:
+        description: Reuse the recording from this earlier run id (skips recording)
+        required: false
+        default: ''
   push:
     branches: [claude/ecstatic-tesla-bodmbq-ci]
     paths: ['.github/workflows/demo.yml']
+permissions:
+  contents: read
+  actions: read
 jobs:
   demo:
     runs-on: macos-26
@@ -16,6 +24,7 @@ jobs:
           python3 -m pip install --quiet --break-system-packages pillow || python3 -m pip install --quiet --user pillow
           python3 -c "import PIL; print('Pillow', PIL.__version__)"
       - name: Demo footage
+        if: ${{ !inputs.reuse_run }}
         run: scripts/prepare_demo_media.sh "$RUNNER_TEMP/demo-media" "$RUNNER_TEMP/prep"
       - name: Narration (male voice)
         run: |
@@ -35,6 +44,7 @@ jobs:
           print("narration seconds:", durations, "total", round(sum(durations), 1))
           PY
       - name: Build
+        if: ${{ !inputs.reuse_run }}
         run: |
           xcodegen generate
           UDID=$(xcrun simctl list devices available -j | python3 -c '
@@ -48,7 +58,16 @@ jobs:
           set -o pipefail
           xcodebuild build-for-testing -project Cutline.xcodeproj -scheme Cutline -destination "id=$UDID" \
             -derivedDataPath build/dd CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E "error:|\*\* " | head -50
+      - name: Reuse earlier recording
+        if: ${{ inputs.reuse_run }}
+        uses: actions/download-artifact@v4
+        with:
+          name: Cutline-v1-demo
+          run-id: ${{ inputs.reuse_run }}
+          github-token: ${{ github.token }}
+          path: build
       - name: Record tour
+        if: ${{ !inputs.reuse_run }}
         timeout-minutes: 75
         run: |
           xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 \
@@ -101,4 +120,5 @@ jobs:
             build/Cutline-v1-demo.mp4
             build/recording.mp4
             build/tour.log
+            build/record_start.txt
           retention-days: 30
