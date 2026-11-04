@@ -114,13 +114,16 @@ class CutlineUITestCase: XCTestCase {
         let e = element(id)
         XCTAssertTrue(e.waitForExistence(timeout: 10), "\(id) not found")
         let timeline = element("timeline")
-        for _ in 0..<8 {
+        for _ in 0..<20 {
             let dx = e.frame.midX - timeline.frame.midX
             if abs(dx) < timeline.frame.width * 0.3 { break }
-            let step = max(-300, min(300, dx))
-            let from = timeline.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15))
-            from.press(forDuration: 0.05, thenDragTo: from.withOffset(CGVector(dx: -step, dy: 0)))
-            RunLoop.current.run(until: Date().addingTimeInterval(0.8))
+            // Small, slow drags that start and end on screen (no fling).
+            let step = max(-140, min(140, dx))
+            let startX: CGFloat = step > 0 ? 0.75 : 0.25
+            let from = timeline.coordinate(withNormalizedOffset: CGVector(dx: startX, dy: 0.15))
+            from.press(forDuration: 0.3, thenDragTo: from.withOffset(CGVector(dx: -step, dy: 0)),
+                       withVelocity: .slow, thenHoldForDuration: 0.2)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         }
         e.tap()
     }
