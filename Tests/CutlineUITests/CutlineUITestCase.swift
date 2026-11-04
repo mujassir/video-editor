@@ -20,7 +20,7 @@ class CutlineUITestCase: XCTestCase {
     var useDemoMedia: Bool { false }
 
     func element(_ id: String) -> XCUIElement {
-        app.descendants(matching: .any)[id]
+        app.descendants(matching: .any).matching(identifier: id).firstMatch
     }
 
     func tap(_ id: String, timeout: TimeInterval = 10, file: StaticString = #filePath, line: UInt = #line) {
@@ -72,6 +72,14 @@ class CutlineUITestCase: XCTestCase {
         sample.tap()
         waitFor("sample clips on the timeline", timeout: 60) { count(prefix: "clip.") >= expectedClips }
         waitUntilIdle()
+    }
+
+    /// Taps the main track right under the playhead.
+    func selectClipAtPlayhead() {
+        let timeline = element("timeline")
+        let point = timeline.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: timeline.frame.width / 2 + 4, dy: 50))
+        point.tap()
+        XCTAssertTrue(element("tool.Split").waitForExistence(timeout: 5), "clip tools should appear")
     }
 
     func selectClip(_ index: Int) {

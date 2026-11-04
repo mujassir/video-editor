@@ -36,11 +36,10 @@ final class FeatureUITests: CutlineUITestCase {
         // Move into the first clip and split.
         element("timeline").swipeLeft(velocity: .slow)
         RunLoop.current.run(until: Date().addingTimeInterval(1))
-        selectClip(0)
+        selectClipAtPlayhead()
         tap("tool.Split")
         waitFor("split clip") { count(prefix: "clip.") == 4 }
         snapshot("03-split")
-        selectClip(0)
         tap("tool.Delete")
         waitFor("deleted clip") { count(prefix: "clip.") == 3 }
         XCTAssertLessThan(totalSeconds, 12)

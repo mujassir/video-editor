@@ -2,37 +2,85 @@
   "voice": "Daniel",
   "rate": 178,
   "chapters": [
-    {"title": "Cutline", "subtitle": "A native video editor for iPhone",
-     "text": "Meet Cutline, a video editor for iPhone that's fast, private, and runs entirely on your device. No account, no uploads, and no watermark. Let's take a quick tour."},
-    {"title": "Projects & Import", "subtitle": "Autosaved, unlimited undo",
-     "text": "Start a new project and bring in your clips. Media is copied into the project, so every change is saved automatically, with unlimited undo."},
-    {"title": "Timeline & Preview", "subtitle": "UIKit timeline · Metal rendering",
-     "text": "The timeline is built for smooth scrolling. Scrub to any frame, pinch to zoom, and the preview renders every effect live on the GPU."},
-    {"title": "Split · Trim · Arrange", "subtitle": "Frame-accurate editing",
-     "text": "Editing is quick. Split at the playhead, drag the handles to trim, duplicate clips, and undo anything with a single tap."},
-    {"title": "Speed · Reverse · Freeze", "subtitle": "0.1× to 10×",
-     "text": "Change the speed anywhere from a tenth to ten times, play a clip in reverse, or add a freeze frame to hold a moment."},
-    {"title": "Filters & Adjustments", "subtitle": "20 looks baked into 3D LUTs",
-     "text": "Twenty built-in looks are baked into 3D lookup tables, so any filter costs a single texture read per pixel. Then fine-tune contrast, exposure, vignette and more."},
-    {"title": "Auto Enhance", "subtitle": "On-device AI",
-     "text": "Or just tap Auto Enhance. Cutline measures the footage and corrects exposure, contrast and colour in one step."},
-    {"title": "Animated Text", "subtitle": "Fonts · outlines · motion",
-     "text": "Add titles with custom fonts, outlines and animations like pop, rise and typewriter, and drag them anywhere on the canvas."},
-    {"title": "Transitions", "subtitle": "8 GPU transitions",
-     "text": "Between clips, choose from eight transitions, including dissolve, zoom, slide, wipe and glitch."},
-    {"title": "Music & Beat Sync", "subtitle": "On-device AI",
-     "text": "Pick a royalty-free track. Cutline detects the beats on device, and Beat Sync lines your cuts up with the music automatically."},
-    {"title": "Auto Captions", "subtitle": "On-device speech recognition",
-     "text": "Auto Captions transcribe speech with Apple's on-device recognition. Every word is timed, with animated styles like karaoke and bold."},
-    {"title": "Remove Silence", "subtitle": "On-device AI",
-     "text": "Remove Silence finds the pauses in your speech and cuts them out in one tap, closing the gaps for you."},
-    {"title": "Cutout & Auto Reframe", "subtitle": "Vision person segmentation",
-     "text": "Background removal isolates people without a green screen. And Auto Reframe follows the subject, so a wide shot fits a vertical video."},
-    {"title": "Any Format", "subtitle": "9:16 · 1:1 · 4:5 · 16:9",
-     "text": "Switch between vertical, square, portrait and widescreen at any time, with a blurred or solid background filling the frame."},
-    {"title": "Export", "subtitle": "Up to 4K60 · HEVC · hardware encoder",
-     "text": "Finally, export up to 4K at sixty frames per second in HEVC or H.264, using the hardware encoder. Then save to Photos, or share."},
-    {"title": "Cutline v1", "subtitle": "Swift · Metal · on-device AI",
-     "text": "That's Cutline version one, built natively in Swift, with Metal and Apple's on-device frameworks. Thanks for watching."}
+    {
+      "title": "Cutline",
+      "subtitle": "A native video editor for iPhone",
+      "text": "Meet Cutline, a video editor for iPhone that's fast, private, and runs entirely on your device. No account, no uploads, and no watermark. Let's take a quick tour."
+    },
+    {
+      "title": "Projects & Import",
+      "subtitle": "Autosaved, unlimited undo",
+      "text": "Start a new project and bring in your clips. Media is copied into the project, so every change is saved automatically, with unlimited undo."
+    },
+    {
+      "title": "Timeline & Preview",
+      "subtitle": "UIKit timeline \u00b7 Metal rendering",
+      "text": "The timeline is built for smooth scrolling. Scrub to any frame, pinch to zoom, and the preview renders every effect live on the GPU."
+    },
+    {
+      "title": "Split \u00b7 Trim \u00b7 Arrange",
+      "subtitle": "Frame-accurate editing",
+      "text": "Editing is quick. Split at the playhead, drag the handles to trim, duplicate clips, and undo anything with a single tap."
+    },
+    {
+      "title": "Speed \u00b7 Reverse \u00b7 Freeze",
+      "subtitle": "0.1\u00d7 to 10\u00d7",
+      "text": "Change the speed anywhere from a tenth to ten times, play a clip in reverse, or add a freeze frame to hold a moment."
+    },
+    {
+      "title": "Filters & Adjustments",
+      "subtitle": "20 looks baked into 3D LUTs",
+      "text": "Twenty built-in looks are baked into 3D lookup tables, so any filter costs a single texture read per pixel. Then fine-tune contrast, exposure, vignette and more."
+    },
+    {
+      "title": "Auto Enhance",
+      "subtitle": "On-device AI",
+      "text": "Or just tap Auto Enhance. Cutline measures the footage and corrects exposure, contrast and colour in one step."
+    },
+    {
+      "title": "Animated Text",
+      "subtitle": "Fonts \u00b7 outlines \u00b7 motion",
+      "text": "Add titles with custom fonts, outlines and animations like pop, rise and typewriter, and drag them anywhere on the canvas."
+    },
+    {
+      "title": "Transitions",
+      "subtitle": "8 GPU transitions",
+      "text": "Between clips, choose from eight transitions, including dissolve, zoom, slide, wipe and glitch."
+    },
+    {
+      "title": "Music & Beat Sync",
+      "subtitle": "On-device AI",
+      "text": "Pick a royalty-free track. Cutline detects the beats on device, and Beat Sync lines your cuts up with the music automatically."
+    },
+    {
+      "title": "Auto Captions",
+      "subtitle": "On-device speech recognition",
+      "text": "Auto Captions transcribe speech with Apple's on-device recognition. Every word is timed, with animated styles like karaoke and bold."
+    },
+    {
+      "title": "Remove Silence",
+      "subtitle": "On-device AI",
+      "text": "Remove Silence finds the pauses in your speech and cuts them out in one tap, closing the gaps for you."
+    },
+    {
+      "title": "Auto Reframe",
+      "subtitle": "Vision face & subject tracking",
+      "text": "Auto Reframe tracks faces and subjects through the shot, so a wide clip fills a vertical video and keeps the person in frame."
+    },
+    {
+      "title": "Any Format",
+      "subtitle": "9:16 \u00b7 1:1 \u00b7 4:5 \u00b7 16:9",
+      "text": "Switch between vertical, square, portrait and widescreen at any time, with a blurred or solid background filling the frame."
+    },
+    {
+      "title": "Export",
+      "subtitle": "Up to 4K60 \u00b7 HEVC \u00b7 hardware encoder",
+      "text": "Finally, export up to 4K at sixty frames per second in HEVC or H.264, using the hardware encoder. Then save to Photos, or share."
+    },
+    {
+      "title": "Cutline v1",
+      "subtitle": "Swift \u00b7 Metal \u00b7 on-device AI",
+      "text": "That's Cutline version one, built natively in Swift, with Metal and Apple's on-device frameworks. Thanks for watching."
+    }
   ]
 }

@@ -126,6 +126,7 @@ struct ToastView: View {
             .padding(.horizontal, 16).padding(.vertical, 10)
             .background(.ultraThinMaterial, in: Capsule())
             .overlay(Capsule().stroke(Theme.stroke))
+            .accessibilityElement(children: .combine)
             .accessibilityIdentifier("toast")
     }
 }
@@ -146,6 +147,7 @@ struct BusyOverlay: View {
         }
         .padding(24)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
+        .accessibilityElement(children: .combine)
         .accessibilityIdentifier("busy")
     }
 }

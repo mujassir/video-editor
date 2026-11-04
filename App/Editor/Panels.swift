@@ -16,6 +16,7 @@ struct PanelContainer<Content: View>: View {
         }
         .frame(maxWidth: .infinity)
         .background(Theme.surface)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("panel.\(title)")
     }
 }

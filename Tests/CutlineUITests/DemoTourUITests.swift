@@ -67,7 +67,7 @@ final class DemoTourUITests: CutlineUITestCase {
         chapter(3) {
             element("timeline").swipeLeft(velocity: .slow)
             pause(0.6)
-            selectClip(0)
+            selectClipAtPlayhead()
             tap("tool.Split")
             pause(1)
             let handle = element("trim.trailing")
@@ -198,20 +198,14 @@ final class DemoTourUITests: CutlineUITestCase {
             pause(1.5)
         }
 
-        // 12 – Cutout + reframe on the vlog clip.
+        // 12 – Auto reframe on the vlog close-up.
         chapter(12) {
             seekToVlog()
             selectClipAtPlayhead()
-            tap("tool.Cutout")
-            pause(0.5)
-            tap("chip.Blur")
-            pause(1.6)
-            tap("swatch.4")
-            pause(1.6)
-            tap("panel.done")
             tap("tool.Reframe")
             waitUntilIdle()
-            pause(1)
+            pause(0.5)
+            play(3)
         }
 
         // 13 – Canvas formats.
@@ -273,11 +267,4 @@ final class DemoTourUITests: CutlineUITestCase {
         }
     }
 
-    private func selectClipAtPlayhead() {
-        let timeline = element("timeline")
-        // Main track sits at y ≈ 24…82 pt in the timeline.
-        let point = timeline.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: timeline.frame.width / 2 + 4, dy: 50))
-        point.tap()
-        pause(0.5)
-    }
 }

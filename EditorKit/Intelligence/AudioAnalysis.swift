@@ -182,6 +182,15 @@ public enum BeatDetector {
             }
             bpm += 0.25
         }
+        // Fold into 80–160 BPM: snares on 2 & 4 make half time look strong, off-beat
+        // hats make double time look strong; the musical tempo sits in between.
+        var folded = bestBPM
+        while folded < 80 { folded *= 2 }
+        while folded >= 160 { folded /= 2 }
+        if folded != bestBPM {
+            bestBPM = folded
+            bestPhase = comb(period: 60 * fps / folded).phase
+        }
         let period = 60 * fps / bestBPM
 
         // Place beats on the grid, snapping each to the strongest nearby onset.

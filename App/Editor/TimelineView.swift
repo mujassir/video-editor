@@ -24,7 +24,7 @@ final class TimelineUIView: UIView, UIScrollViewDelegate, UIGestureRecognizerDel
     var onTransitionTap: ((UUID) -> Void)?
     var onAddMedia: (() -> Void)?
 
-    private let scrollView = UIScrollView()
+    private let scrollView = TimelineScrollView()
     private let content = UIView()
     private let ruler = RulerView()
     private let playhead = UIView()
@@ -593,5 +593,16 @@ struct TimelineRepresentable: UIViewRepresentable {
         view.update(project: model.session.project, revision: model.session.revision, selection: model.session.selection,
                     time: model.currentTime, waveforms: model.waveforms, waveformVersion: model.timelineVersion,
                     thumbnails: model.thumbnails, resolver: model.resolver, followPlayhead: !model.isScrubbing)
+    }
+}
+
+/// Doesn't start scrolling when a drag begins on a trim handle, so the handle's own pan wins.
+final class TimelineScrollView: UIScrollView {
+    override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+        if g === panGestureRecognizer {
+            let p = g.location(in: self)
+            if let hit = hitTest(p, with: nil), hit is TrimHandle || hit.superview is TrimHandle { return false }
+        }
+        return super.gestureRecognizerShouldBegin(g)
     }
 }
