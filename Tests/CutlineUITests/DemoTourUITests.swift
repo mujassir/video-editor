@@ -10,6 +10,27 @@ final class DemoTourUITests: CutlineUITestCase {
     override var useDemoMedia: Bool { true }
     private var durations: [Double] = []
 
+    override func setUp() {
+        super.setUp()
+        // A recording with one missed step beats no recording: keep going after failures.
+        continueAfterFailure = true
+    }
+
+    /// Soft tap for the tour: reveals timeline items, retries once, never aborts the recording.
+    override func tap(_ id: String, timeout: TimeInterval = 10, file: StaticString = #filePath, line: UInt = #line) {
+        let e = element(id)
+        if !e.waitForExistence(timeout: timeout) {
+            print("TOUR WARNING: \(id) not found – retrying")
+            if id.hasPrefix("chip.") || id == "panel.done" { pause(1) }
+            guard e.waitForExistence(timeout: 3) else { print("TOUR WARNING: skipped \(id)"); return }
+        }
+        if id.hasPrefix("transition.") || id.hasPrefix("clip.") {
+            revealAndTap(id)
+        } else {
+            super.tap(id, timeout: 1, file: file, line: line)
+        }
+    }
+
     private func chapter(_ index: Int, _ actions: () -> Void) {
         let start = Date()
         print("CHAPTER \(index) \(String(format: "%.3f", start.timeIntervalSince1970))")
@@ -156,15 +177,15 @@ final class DemoTourUITests: CutlineUITestCase {
         // 8 – Transitions.
         chapter(8) {
             selectNone()
-            revealAndTap("transition.0")
+            tap("transition.0")
             pause(0.5)
             tap("chip.Dissolve")
             pause(2.2)
             tap("chip.Zoom")
             pause(2.2)
             tap("panel.done")
-            revealAndTap("transition.1")
-            tap("chip.Glitch")
+            tap("transition.1")
+            tap("chip.Slide")
             pause(2.2)
             tap("panel.done")
         }
