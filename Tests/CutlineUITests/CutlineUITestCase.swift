@@ -26,12 +26,17 @@ class CutlineUITestCase: XCTestCase {
     func tap(_ id: String, timeout: TimeInterval = 10, file: StaticString = #filePath, line: UInt = #line) {
         let e = element(id)
         XCTAssertTrue(e.waitForExistence(timeout: timeout), "\(id) not found", file: file, line: line)
-        if !e.isHittable, id.hasPrefix("tool.") {
-            // Off-screen tool: scroll the toolbar towards it.
+        if id.hasPrefix("tool.") {
+            // Off-screen tool: scroll the toolbar towards it (frame-based – isHittable throws off screen).
             let bar = element("toolbar")
-            for _ in 0..<4 where !e.isHittable {
-                if e.frame.minX > bar.frame.midX { bar.swipeLeft() } else { bar.swipeRight() }
-                RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+            let screen = app.windows.firstMatch.frame
+            var attempts = 0
+            while attempts < 5, e.frame.maxX > screen.maxX - 4 || e.frame.minX < screen.minX + 4 {
+                let from = bar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+                let dx: CGFloat = e.frame.maxX > screen.maxX ? -min(250, e.frame.maxX - screen.maxX + 40) : 250
+                from.press(forDuration: 0.05, thenDragTo: from.withOffset(CGVector(dx: dx, dy: 0)))
+                RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+                attempts += 1
             }
         }
         e.tap()

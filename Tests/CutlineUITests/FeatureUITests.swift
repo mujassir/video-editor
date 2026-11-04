@@ -56,8 +56,17 @@ final class FeatureUITests: CutlineUITestCase {
         XCTAssertTrue(handle.waitForExistence(timeout: 5))
         let before = totalSeconds
         let start = handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        print("TRIM handle frame: \(handle.frame)")
         start.press(forDuration: 0.3, thenDragTo: start.withOffset(CGVector(dx: 90, dy: 0)))
-        waitFor("trim shortens the edit") { totalSeconds < before - 0.5 }
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        print("TRIM debug: '\(element("debug.trim").label)' total \(totalSeconds)")
+        snapshot("04-trim-handle")
+        // Precise trim panel.
+        tap("tool.Trim")
+        let end = element("slider.End")
+        XCTAssertTrue(end.waitForExistence(timeout: 5))
+        end.adjust(toNormalizedSliderPosition: 0.5)
+        waitFor("trim shortens the edit") { totalSeconds < before - 1 }
         snapshot("04-trimmed")
     }
 

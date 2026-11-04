@@ -3,7 +3,7 @@ import AVFoundation
 import EditorKit
 
 enum EditorPanel: Equatable {
-    case canvas, filters, adjust, speed, volume, transition(UUID), text(UUID?), music, captions, crop, background, export
+    case canvas, trim, filters, adjust, speed, volume, transition(UUID), text(UUID?), music, captions, crop, background, export
 }
 
 /// Drives one editing session: project state, preview player, analysis jobs.
@@ -161,7 +161,10 @@ final class EditorModel {
 
     /// Live trimming from the timeline handles: each change re-applies the total
     /// drag to the project as it was when the drag began (one undo step).
+    var trimDebug = ""
+
     func trimDrag(_ id: UUID, edge: Project.TrimEdge, delta: MediaTime, state: UIGestureRecognizer.State) {
+        trimDebug = "\(state.rawValue) \(delta)"
         switch state {
         case .began:
             pause()
@@ -385,8 +388,12 @@ final class EditorModel {
             do {
                 try await work(self)
             } catch {
-                self.showToast((error as? LocalizedError)?.errorDescription ?? error.localizedDescription,
-                               systemImage: "exclamationmark.triangle")
+                var message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                if LaunchOptions.isUITesting {
+                    let ns = error as NSError
+                    message += " [\(ns.domain) \(ns.code); analyzer: \(CaptionGenerator.lastAnalyzerFailure ?? "-")]"
+                }
+                self.showToast(message, systemImage: "exclamationmark.triangle")
             }
         }
     }

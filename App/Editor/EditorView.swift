@@ -115,6 +115,9 @@ struct EditorView: View {
             Text(model.currentTime.timecode).monospacedDigit().accessibilityIdentifier("time.current")
             Text("/ \(model.duration.timecode)").monospacedDigit().foregroundStyle(Theme.secondaryText)
                 .accessibilityIdentifier("time.total")
+            if LaunchOptions.isUITesting {
+                Text(model.trimDebug).font(.system(size: 1)).opacity(0.01).accessibilityIdentifier("debug.trim")
+            }
             Spacer()
             Button { model.togglePlay() } label: {
                 Image(systemName: model.isPlaying ? "pause.fill" : "play.fill")
@@ -157,9 +160,10 @@ struct EditorView: View {
         case .text(let id):
             if let id { TextPanel(model: model, textID: id) } else { toolbar }
         case .transition(let id): TransitionPanel(model: model, clipID: id)
-        case .filters, .adjust, .speed, .volume, .crop, .background:
+        case .trim, .filters, .adjust, .speed, .volume, .crop, .background:
             if let id = model.selectedClipID {
                 switch panel {
+                case .trim: TrimPanel(model: model, clipID: id)
                 case .filters: FiltersPanel(model: model, clipID: id)
                 case .adjust: AdjustPanel(model: model, clipID: id)
                 case .speed: SpeedPanel(model: model, clipID: id)
@@ -204,6 +208,7 @@ struct EditorView: View {
 
     @ViewBuilder private var clipTools: some View {
         ToolButton(title: "Split", systemImage: "scissors") { model.split() }
+        ToolButton(title: "Trim", systemImage: "timeline.selection") { model.panel = .trim }
         ToolButton(title: "Speed", systemImage: "speedometer") { model.panel = .speed }
         ToolButton(title: "Volume", systemImage: "speaker.wave.2") { model.panel = .volume }
         ToolButton(title: "Filters", systemImage: "camera.filters") { model.panel = .filters }

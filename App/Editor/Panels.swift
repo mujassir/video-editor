@@ -580,3 +580,38 @@ struct CaptionsPanel: View {
         }
     }
 }
+
+// MARK: - Precise trim
+
+struct TrimPanel: View {
+    @Bindable var model: EditorModel
+    let clipID: UUID
+    private var clip: VideoClip? { model.project.clipIndex(clipID).map { model.project.clips[$0] } }
+    private var mediaDuration: Double {
+        clip.flatMap { model.project.mediaItem($0.mediaID) }.map { max($0.duration.seconds, 0.2) } ?? 1
+    }
+
+    var body: some View {
+        PanelContainer(title: "Trim", onDone: { model.panel = nil }) {
+            if let clip, !clip.isStill {
+                VStack(spacing: 10) {
+                    LabeledSlider(title: "Start", value: Binding(get: { clip.sourceRange.start.seconds }, set: { v in
+                        model.editCoalescing("Trim", key: "trim-start-\(clipID)") { p in
+                            let end = clip.sourceRange.end.seconds
+                            try? p.setSourceRange(clipID: clipID, MediaTimeRange(start: MediaTime(seconds: min(v, end - 0.1)), end: clip.sourceRange.end))
+                        }
+                    }), range: 0...mediaDuration, format: { String(format: "%.1fs", $0) })
+                    LabeledSlider(title: "End", value: Binding(get: { clip.sourceRange.end.seconds }, set: { v in
+                        model.editCoalescing("Trim", key: "trim-end-\(clipID)") { p in
+                            let start = clip.sourceRange.start.seconds
+                            try? p.setSourceRange(clipID: clipID, MediaTimeRange(start: clip.sourceRange.start, end: MediaTime(seconds: max(v, start + 0.1))))
+                        }
+                    }), range: 0...mediaDuration, format: { String(format: "%.1fs", $0) })
+                    Text("Or drag the white handles on the timeline").font(.caption).foregroundStyle(Theme.secondaryText)
+                }
+            } else {
+                Text("Photos and freeze frames: drag the handle to change length.").font(.footnote)
+            }
+        }
+    }
+}
