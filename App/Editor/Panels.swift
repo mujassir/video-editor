@@ -63,6 +63,9 @@ struct SwatchRow: View {
 
 struct CanvasPanel: View {
     @Bindable var model: EditorModel
+    /// Canvas fit as set by the user, else what the first clip uses.
+    private var currentFit: ContentFit { model.project.defaultFit ?? model.project.clips.first?.transform.fit ?? .fit }
+    private var currentAnchor: ContentAnchor { model.project.defaultAnchor ?? model.project.clips.first?.transform.anchor ?? .center }
     var body: some View {
         PanelContainer(title: "Canvas", onDone: { model.panel = nil }) {
             VStack(alignment: .leading, spacing: 14) {
@@ -71,6 +74,25 @@ struct CanvasPanel: View {
                         ForEach(AspectRatio.allCases) { r in
                             ChipButton(title: r.rawValue, isSelected: model.project.aspectRatio == r) {
                                 model.edit("Aspect ratio") { $0.aspectRatio = r }
+                            }
+                        }
+                    }
+                }
+                Text("Media that doesn't fit").font(.subheadline).foregroundStyle(Theme.secondaryText)
+                HStack(spacing: 8) {
+                    ForEach([ContentFit.fit, .fill, .stretch], id: \.self) { fit in
+                        ChipButton(title: fit.displayName, isSelected: currentFit == fit) {
+                            model.edit("Canvas fit") { $0.setContentFit(fit, anchor: currentAnchor) }
+                        }
+                    }
+                }
+                if currentFit != .stretch {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(ContentAnchor.allCases) { anchor in
+                                ChipButton(title: anchor.displayName, isSelected: currentAnchor == anchor) {
+                                    model.edit("Canvas position") { $0.setContentFit(currentFit, anchor: anchor) }
+                                }
                             }
                         }
                     }
@@ -336,8 +358,15 @@ struct CropPanel: View {
                     ToolButton(title: "Rotate", systemImage: "rotate.right") { update("Rotate") { $0.quarterTurns = ($0.quarterTurns + 1) % 4 } }
                     ToolButton(title: "Flip H", systemImage: "arrow.left.and.right.righttriangle.left.righttriangle.right") { update("Flip") { $0.flipHorizontal.toggle() } }
                     ToolButton(title: "Flip V", systemImage: "arrow.up.and.down.righttriangle.up.righttriangle.down") { update("Flip") { $0.flipVertical.toggle() } }
-                    ToolButton(title: clip?.transform.fit == .fill ? "Fit" : "Fill", systemImage: "arrow.up.left.and.arrow.down.right") {
-                        update("Fit") { $0.fit = $0.fit == .fill ? .fit : .fill }
+                    // Per-clip override of the canvas fit: Fit → Fill → Stretch.
+                    ToolButton(title: (clip?.transform.fit ?? .fit).displayName, systemImage: "arrow.up.left.and.arrow.down.right") {
+                        update("Fit") { t in
+                            switch t.fit {
+                            case .fit: t.fit = .fill
+                            case .fill: t.fit = .stretch
+                            case .stretch: t.fit = .fit
+                            }
+                        }
                     }
                 }
                 LabeledSlider(title: "Zoom", value: Binding(get: { clip?.transform.scale ?? 1 }, set: { v in

@@ -73,13 +73,28 @@ public enum LayerGeometry {
         let content = displaySize(media: media, transform: transform)
         guard content.width > 0, content.height > 0, canvas.width > 0, canvas.height > 0 else { return [] }
         let fill = forceFill || transform.fit == .fill || reframe != nil
+        let stretch = transform.fit == .stretch && !forceFill && reframe == nil
         let sx = canvas.width / content.width
         let sy = canvas.height / content.height
         let base = fill ? max(sx, sy) : min(sx, sy)
-        let scale = base * transform.scale * animation.scale
-        let size = CGSize(width: content.width * scale, height: content.height * scale)
+        let zoom = transform.scale * animation.scale
+        let size = stretch
+            ? CGSize(width: canvas.width * zoom, height: canvas.height * zoom)
+            : CGSize(width: content.width * base * zoom, height: content.height * base * zoom)
 
         var center = SIMD2<Double>(0.5, 0.5)
+        if !stretch, reframe == nil, let anchor = transform.anchor, anchor != .center {
+            // Align the chosen edge of the media with the same canvas edge.
+            let dx = (size.width - canvas.width) / canvas.width / 2
+            let dy = (size.height - canvas.height) / canvas.height / 2
+            switch anchor {
+            case .left: center.x += dx
+            case .right: center.x -= dx
+            case .top: center.y += dy
+            case .bottom: center.y -= dy
+            case .center: break
+            }
+        }
         center += SIMD2(transform.offsetX, transform.offsetY) * 0.5
         center += animation.offset
         if let reframe {

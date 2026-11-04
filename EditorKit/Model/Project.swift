@@ -90,6 +90,24 @@ public enum ContentFit: String, Codable, Sendable {
     case fit
     /// Frame covers the canvas, edges cropped.
     case fill
+    /// Frame is scaled to exactly the canvas size (aspect ratio not kept).
+    case stretch
+
+    public var displayName: String {
+        switch self {
+        case .fit: return "Fit"
+        case .fill: return "Fill"
+        case .stretch: return "Stretch"
+        }
+    }
+}
+
+/// Where media sits on the canvas when it doesn't match the canvas shape:
+/// with `.fill` it chooses which part is kept, with `.fit` which edge it hugs.
+public enum ContentAnchor: String, Codable, CaseIterable, Sendable, Identifiable {
+    case center, top, bottom, left, right
+    public var id: String { rawValue }
+    public var displayName: String { rawValue.capitalized }
 }
 
 // MARK: - Clip settings
@@ -116,6 +134,8 @@ public struct ClipTransform: Codable, Hashable, Sendable {
     public var offsetX: Double = 0
     public var offsetY: Double = 0
     public var fit: ContentFit = .fit
+    /// Optional so projects saved before anchors existed still load (nil = centre).
+    public var anchor: ContentAnchor? = nil
 
     public init() {}
     public static let identity = ClipTransform()
@@ -422,6 +442,9 @@ public struct Project: Codable, Hashable, Identifiable, Sendable {
     public var audioClips: [AudioClip] = []
     public var textOverlays: [TextOverlay] = []
     public var captions = CaptionTrack()
+    /// Fit applied to newly added media (set from the Canvas panel). Optional for old projects.
+    public var defaultFit: ContentFit?
+    public var defaultAnchor: ContentAnchor?
 
     public init(id: UUID = UUID(), name: String, createdAt: Date = Date()) {
         self.id = id

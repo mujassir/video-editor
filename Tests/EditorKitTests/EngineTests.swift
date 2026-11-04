@@ -446,3 +446,50 @@ struct PhotoMotionTests {
         #expect(start < 0.2 && end > 0.8, "zoom-in should grow the square: \(start) → \(end)")
     }
 }
+
+@Suite("Canvas fit")
+struct CanvasFitTests {
+    let landscape = MediaItem(kind: .photo, fileName: "x", naturalSize: CGSize(width: 1600, height: 900),
+                              duration: .zero, hasAudio: false)
+    let canvas = CGSize(width: 1080, height: 1920)
+
+    private func quad(_ fit: ContentFit, _ anchor: ContentAnchor? = nil) -> [QuadVertex] {
+        var t = ClipTransform()
+        t.fit = fit
+        t.anchor = anchor
+        return LayerGeometry.quad(media: landscape, transform: t, sourceTurns: 0, canvas: canvas)
+    }
+
+    @Test func stretchCoversCanvasExactly() {
+        let q = quad(.stretch)
+        #expect(abs(q[0].position.x + 1) < 1e-5 && abs(q[0].position.y - 1) < 1e-5)
+        #expect(abs(q[3].position.x - 1) < 1e-5 && abs(q[3].position.y + 1) < 1e-5)
+        #expect(q[0].uv == SIMD2(0, 0) && q[3].uv == SIMD2(1, 1), "stretch shows the whole image")
+    }
+
+    @Test func fillAnchorsChooseTheKeptSide() {
+        // Landscape in a portrait canvas overflows horizontally.
+        let left = quad(.fill, .left), right = quad(.fill, .right), centre = quad(.fill)
+        #expect(abs(left[0].position.x + 1) < 1e-5, "left edge of the photo on the canvas' left edge")
+        #expect(abs(right[1].position.x - 1) < 1e-5, "right edge of the photo on the canvas' right edge")
+        #expect(abs((centre[0].position.x + centre[1].position.x)) < 1e-5, "centred by default")
+    }
+
+    @Test func fitAnchorsHugAnEdge() {
+        // Landscape fitted in a portrait canvas leaves space above and below.
+        let top = quad(.fit, .top), bottom = quad(.fit, .bottom)
+        #expect(abs(top[0].position.y - 1) < 1e-5, "photo touches the top")
+        #expect(abs(bottom[2].position.y + 1) < 1e-5, "photo touches the bottom")
+    }
+
+    @Test func canvasFitAppliesToAllAndNewClips() {
+        var p = Project(name: "P")
+        p.appendClip(for: landscape)
+        p.setContentFit(.fill, anchor: .top)
+        #expect(p.clips[0].transform.fit == .fill && p.clips[0].transform.anchor == .top)
+        var other = landscape
+        other.id = UUID()
+        p.appendClip(for: other)
+        #expect(p.clips[1].transform.fit == .fill && p.clips[1].transform.anchor == .top)
+    }
+}

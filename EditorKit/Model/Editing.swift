@@ -19,6 +19,13 @@ public extension Project {
     /// Appends media to the main track (photos default to 3 s).
     mutating func appendClip(for item: MediaItem, photoDuration: MediaTime = MediaTime(seconds: 3)) {
         if !media.contains(where: { $0.id == item.id }) { media.append(item) }
+        defer {
+            // New visual clips follow the project's canvas fit setting.
+            if item.kind != .audio, let last = clips.indices.last {
+                if let fit = defaultFit { clips[last].transform.fit = fit }
+                if let anchor = defaultAnchor { clips[last].transform.anchor = anchor }
+            }
+        }
         switch item.kind {
         case .video:
             clips.append(VideoClip(mediaID: item.id, kind: .video,
@@ -208,6 +215,16 @@ public extension Project {
     mutating func updateClip(_ clipID: UUID, _ change: (inout VideoClip) -> Void) throws {
         guard let index = clipIndex(clipID) else { throw EditError.clipNotFound }
         change(&clips[index])
+    }
+
+    /// Canvas-wide fit: applies to every clip and to clips added later.
+    mutating func setContentFit(_ fit: ContentFit, anchor: ContentAnchor) {
+        defaultFit = fit
+        defaultAnchor = anchor
+        for i in clips.indices {
+            clips[i].transform.fit = fit
+            clips[i].transform.anchor = anchor
+        }
     }
 
     /// Sets the motion on one still clip, or on every photo when `allPhotos` is true.
