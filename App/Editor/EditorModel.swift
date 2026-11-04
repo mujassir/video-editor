@@ -297,22 +297,48 @@ final class EditorModel {
             }
             var item = try await MediaImporter.probeAudio(url, fileName: file, displayName: track.name)
             item.id = UUID()
-            let beats = try await BeatDetector.detect(url: url)?.beats ?? []
-            model.edit("Add music") { p in
-                p.media.append(item)
-                var clip = AudioClip(mediaID: item.id, role: .music,
-                                     sourceRange: MediaTimeRange(start: .zero, duration: min(item.duration, p.layout.duration)),
-                                     start: .zero)
-                clip.name = track.name
-                clip.volume = 0.7
-                clip.fadeOut = MediaTime(seconds: 1.5)
-                clip.autoDuck = true
-                clip.beats = beats.map { MediaTime(seconds: $0) }
-                p.addAudio(clip)
-            }
-            model.loadWaveforms()
-            model.showToast("Added \(track.name) · \(beats.count) beats", systemImage: "music.note")
+            try await model.placeMusic(item, name: track.name)
         }
+    }
+
+    /// Adds the user's own audio as background music: an audio file (Files app), a song
+    /// exported from the Music library, or the soundtrack of a video.
+    /// The file is copied into the project so the edit keeps working if the original moves.
+    func addMusicFile(_ url: URL, name: String) {
+        runBusy("Adding \(name)…") { model in
+            let fileName = try model.store.importFile(at: url, projectID: model.project.id)
+            let stored = model.resolver.mediaDirectory.appendingPathComponent(fileName)
+            let item: MediaItem
+            do {
+                item = try await MediaImporter.probeAudio(stored, fileName: fileName, displayName: name)
+            } catch {
+                try? FileManager.default.removeItem(at: stored)
+                throw MusicImportError.noAudio
+            }
+            try await model.placeMusic(item, name: name)
+        }
+    }
+
+    /// Puts music on its own lane at the start, analyses beats for Beat Sync,
+    /// and sets sensible defaults (70% volume, fade-out, ducking under speech).
+    private func placeMusic(_ item: MediaItem, name: String) async throws {
+        let url = resolver.url(for: item)
+        let beats = (try? await BeatDetector.detect(url: url))?.beats ?? []
+        edit("Add music") { p in
+            p.media.append(item)
+            let length = p.layout.duration > .zero ? min(item.duration, p.layout.duration) : item.duration
+            var clip = AudioClip(mediaID: item.id, role: .music,
+                                 sourceRange: MediaTimeRange(start: .zero, duration: length),
+                                 start: .zero)
+            clip.name = name
+            clip.volume = 0.7
+            clip.fadeOut = MediaTime(seconds: min(1.5, length.seconds / 4))
+            clip.autoDuck = true
+            clip.beats = beats.map { MediaTime(seconds: $0) }
+            p.addAudio(clip)
+        }
+        loadWaveforms()
+        showToast("Added \(name) · \(beats.count) beats", systemImage: "music.note")
     }
 
     // MARK: AI features
@@ -458,5 +484,19 @@ final class EditorModel {
         guard let image else { return }
         let data = UIImage(cgImage: image).jpegData(compressionQuality: 0.8)
         try? data?.write(to: store.thumbnailURL(for: project.id))
+    }
+}
+
+enum MusicImportError: LocalizedError {
+    case noAudio
+    case protectedSong
+    case exportFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .noAudio: return "That file has no audio track."
+        case .protectedSong: return "This song is protected (Apple Music streaming / DRM) and can't be used. Pick a song you own or a file."
+        case .exportFailed: return "Couldn't read that song."
+        }
     }
 }
