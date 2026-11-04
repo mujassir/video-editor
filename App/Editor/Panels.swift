@@ -530,7 +530,7 @@ struct MusicPanel: View {
                     HStack(spacing: 8) {
                         sourceButton("Files", "folder") { showFiles = true }
                         PhotosPicker(selection: $videoItem, matching: .videos) {
-                            sourceLabel("From Video", "film")
+                            MusicSourceLabel(title: "From Video", icon: "film")
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("music.source.video")
@@ -577,18 +577,8 @@ struct MusicPanel: View {
         }
     }
 
-    private func sourceLabel(_ title: String, _ icon: String) -> some View {
-        VStack(spacing: 4) {
-            Image(systemName: icon).font(.system(size: 17, weight: .semibold))
-            Text(title).font(.caption.weight(.medium))
-        }
-        .frame(maxWidth: .infinity).padding(.vertical, 10)
-        .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
-        .foregroundStyle(.white)
-    }
-
     private func sourceButton(_ title: String, _ icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) { sourceLabel(title, icon) }
+        Button(action: action) { MusicSourceLabel(title: title, icon: icon) }
             .buttonStyle(.plain)
             .accessibilityIdentifier("music.source.\(title.lowercased())")
     }
@@ -745,5 +735,19 @@ struct PhotoMotionPanel: View {
             model.player.play()
         }
         if allPhotos { model.showToast("Applied to all photos", systemImage: "square.stack.3d.down.right") }
+    }
+}
+
+struct MusicSourceLabel: View {
+    let title: String
+    let icon: String
+    var body: some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon).font(.system(size: 17, weight: .semibold))
+            Text(title).font(.caption.weight(.medium))
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 10)
+        .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
+        .foregroundStyle(.white)
     }
 }
