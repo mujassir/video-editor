@@ -64,7 +64,7 @@ jobs:
           TEST_RUNNER_DEMO_SCRIPT="$RUNNER_TEMP/narration/script.json" TEST_RUNNER_DEMO_MEDIA="$RUNNER_TEMP/demo-media" \
           xcodebuild test-without-building -project Cutline.xcodeproj -scheme Cutline -destination "id=$UDID" \
             -derivedDataPath build/dd -only-testing:CutlineUITests/DemoTourUITests CODE_SIGNING_ALLOWED=NO \
-            -test-timeouts-enabled YES -maximum-test-execution-time-allowance 3000 \
+            -test-timeouts-enabled YES -default-test-execution-time-allowance 3000 -maximum-test-execution-time-allowance 3600 \
             2>&1 | tee build/tour.log | grep --line-buffered -E "CHAPTER|error:|Tap |Waiting|Find:|Timed out|TOAST|ALERT" | grep --line-buffered -vE "^\s+t = .*(Snapshot|Checking|Wait for)" 
           STATUS=${PIPESTATUS[0]}
           sleep 1

@@ -37,6 +37,7 @@ final class DemoTourUITests: CutlineUITestCase {
             throw XCTSkip("DEMO_SCRIPT not provided")
         }
         durations = list
+        executionTimeAllowance = 3600
         XCTAssertTrue(element("projects.new").waitForExistence(timeout: 15))
 
         // 0 – Intro (title card is added in post; show the library).

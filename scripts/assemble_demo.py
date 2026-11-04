@@ -179,21 +179,30 @@ def main():
         background(bg, ch["title"], ch.get("subtitle", ""), idx, len(chapters), phone_box,
                    full_title=(idx == 0 or idx == len(chapters) - 1))
         seg = os.path.join(a.work, f"seg-{idx:02d}.mp4")
-        # Build trimmed phone video from spans.
-        filters, labels = [], []
+        # Cut each span with fast input seeking into a small constant-frame-rate clip,
+        # then join them – avoids decoding the long variable-frame-rate recording repeatedly.
+        span_files = []
         for i, (s, e) in enumerate(spans):
-            filters.append(f"[0:v]trim=start={s:.3f}:end={e:.3f},setpts=PTS-STARTPTS,fps=30,scale={pw}:{PHONE_H}[p{i}]")
-            labels.append(f"[p{i}]")
-        if len(labels) > 1:
-            filters.append("".join(labels) + f"concat=n={len(labels)}:v=1:a=0[phone]")
+            sf = os.path.join(a.work, f"span-{idx:02d}-{i}.mp4")
+            run(["ffmpeg", "-loglevel", "error", "-y", "-ss", f"{s:.3f}", "-i", a.recording, "-t", f"{e - s:.3f}",
+                 "-an", "-vf", f"fps=30,scale={pw}:{PHONE_H},setsar=1", "-c:v", "libx264", "-preset", "veryfast",
+                 "-crf", "16", "-pix_fmt", "yuv420p", sf])
+            span_files.append(sf)
+        phone_clip = os.path.join(a.work, f"phone-{idx:02d}.mp4")
+        if len(span_files) == 1:
+            phone_clip = span_files[0]
         else:
-            filters.append(f"{labels[0]}null[phone]")
-        filters.append("[phone][2:v]alphamerge[rounded]")
+            lst = os.path.join(a.work, f"spans-{idx:02d}.txt")
+            with open(lst, "w") as f:
+                for sf in span_files:
+                    f.write(f"file '{os.path.abspath(sf)}'\n")
+            run(["ffmpeg", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", lst, "-c", "copy", phone_clip])
+        filters = ["[0:v]setpts=PTS-STARTPTS[phone]", "[phone][2:v]alphamerge[rounded]"]
         filters.append(f"[1:v][rounded]overlay={phone_box[0]}:{phone_box[1]}:shortest=1,format=yuv420p[v]")
         seg_len = sum(e - s for s, e in spans)
         filters.append(f"[3:a]aresample=48000,apad,atrim=0:{seg_len:.3f},aformat=channel_layouts=stereo[a]")
         run(["ffmpeg", "-loglevel", "error", "-y",
-             "-i", a.recording, "-loop", "1", "-i", bg, "-loop", "1", "-i", mask, "-i", narr,
+             "-i", phone_clip, "-loop", "1", "-i", bg, "-loop", "1", "-i", mask, "-i", narr,
              "-filter_complex", ";".join(filters), "-map", "[v]", "-map", "[a]",
              "-t", f"{seg_len:.3f}", "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-r", "30",
              "-c:a", "aac", "-b:a", "160k", seg])
