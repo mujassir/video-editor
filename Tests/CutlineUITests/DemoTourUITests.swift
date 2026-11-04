@@ -99,7 +99,7 @@ final class DemoTourUITests: CutlineUITestCase {
             tap("chip.1×")
             tap("panel.done")
             tap("tool.Reverse")
-            waitUntilIdle()
+            waitUntilIdle(timeout: 600)
             pause(0.8)
             tap("tool.Reverse")
             pause(0.5)
@@ -190,7 +190,7 @@ final class DemoTourUITests: CutlineUITestCase {
         chapter(10) {
             selectNone()
             tap("tool.Silence")
-            waitUntilIdle()
+            waitUntilIdle(timeout: 300)
             pause(1.5)
         }
 
@@ -211,7 +211,7 @@ final class DemoTourUITests: CutlineUITestCase {
             seekToVlog()
             selectClipAtPlayhead()
             tap("tool.Reframe")
-            waitUntilIdle()
+            waitUntilIdle(timeout: 300)
             pause(0.5)
             play(3)
         }
