@@ -96,6 +96,8 @@ jobs:
         if: always()
         timeout-minutes: 30
         run: |
+          echo "recording: $(ffprobe -v error -show_entries format=duration -of csv=p=0 build/recording.mp4)s; start $(cat build/record_start.txt)"
+          grep -oE "CHAPTER [0-9]+ [0-9.]+" build/tour.log | tail -2
           python3 scripts/assemble_demo.py --recording build/recording.mp4 --record-start $(cat build/record_start.txt) \
             --log build/tour.log --script scripts/narration.json --narration "$RUNNER_TEMP/narration" \
             --work build/demo-work --out build/Cutline-v1-demo.mp4
@@ -105,8 +107,8 @@ jobs:
           python3 - "$D" <<'PY'
           import subprocess, sys, base64
           d = float(sys.argv[1])
-          for i in range(12):
-              t = d * (i + 0.5) / 12
+          times = [d * (i + 0.5) / 12 for i in range(12)] + [d - 40 + 2 * k for k in range(20)]
+          for i, t in enumerate(times):
               subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-ss", f"{t:.2f}", "-i", "build/Cutline-v1-demo.mp4",
                               "-frames:v", "1", "-vf", "scale=640:-2", "-q:v", "7", f"build/f{i:02d}.jpg"], check=True)
               print(f"FRAME {i:02d} {t:.1f} " + base64.b64encode(open(f"build/f{i:02d}.jpg", "rb").read()).decode())
