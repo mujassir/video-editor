@@ -283,14 +283,14 @@ final class FeatureUITests: CutlineUITestCase {
         tap("panel.done")
         let before = totalSeconds
         tap("tool.Intro")
-        tap("titleCard.apply")
+        tap("panel.done")   // ✓ adds the slide
         waitFor("opening slide added") { count(prefix: "clip.") == 4 && totalSeconds > before + 2.5 }
-        tap("panel.done")
         tap("tool.Outro")
         tap("titleStyle.ocean")
-        tap("titleCard.apply")
+        tap("panel.done")
         waitFor("closing slide added") { count(prefix: "clip.") == 5 }
         snapshot("20-outro")
+        tap("tool.Outro")
         tap("titleCard.remove")
         waitFor("closing slide removed") { count(prefix: "clip.") == 4 }
     }

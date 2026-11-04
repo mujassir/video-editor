@@ -1173,10 +1173,19 @@ struct TitleCardPanel: View {
     @State private var seconds: Double = 3
 
     private var existing: VideoClip? { model.project.titleCardClip(placement) }
+
+    /// The ✓ button adds the slide or saves changes, then closes the panel.
+    private func save() {
+        if let d = draft {
+            let unchanged = existing?.titleCard == d && abs((existing?.sourceRange.duration.seconds ?? -1) - seconds) < 0.05
+            if !unchanged { model.applyTitleCard(d, duration: MediaTime(seconds: seconds)) }
+        }
+        model.panel = nil
+    }
     private var name: String { placement == .opening ? "Opening Slide" : "Closing Slide" }
 
     var body: some View {
-        PanelContainer(title: name, onDone: { model.panel = nil }) {
+        PanelContainer(title: name, onDone: save) {
             if let card = draft {
                 VStack(spacing: 10) {
                     TextField("Title", text: Binding(get: { card.title }, set: { draft?.title = $0 }))
@@ -1201,19 +1210,17 @@ struct TitleCardPanel: View {
                     }
                     LabeledSlider(title: "Duration", value: $seconds, range: 1...10, format: { String(format: "%.1fs", $0) })
                     HStack(spacing: 10) {
-                        Button {
-                            if let d = draft { model.applyTitleCard(d, duration: MediaTime(seconds: seconds)) }
-                        } label: {
-                            Text(existing == nil ? "Add \(name)" : "Update").font(.headline)
-                                .frame(maxWidth: .infinity).padding(.vertical, 11)
-                                .background(Theme.accent, in: RoundedRectangle(cornerRadius: 12))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("titleCard.apply")
+                        Text(existing == nil ? "Tap ✓ to add the slide" : "Tap ✓ to save changes")
+                            .font(.caption).foregroundStyle(Theme.secondaryText)
+                        Spacer()
                         if existing != nil {
-                            Button(role: .destructive) { model.removeTitleCard(placement) } label: {
-                                Image(systemName: "trash").frame(width: 44, height: 44)
-                                    .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 12))
+                            Button(role: .destructive) {
+                                model.removeTitleCard(placement)
+                                model.panel = nil
+                            } label: {
+                                Label("Remove", systemImage: "trash").font(.subheadline.weight(.semibold))
+                                    .padding(.horizontal, 12).padding(.vertical, 8)
+                                    .background(Theme.surfaceRaised, in: Capsule())
                             }
                             .buttonStyle(.plain)
                             .accessibilityIdentifier("titleCard.remove")
