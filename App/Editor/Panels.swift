@@ -413,9 +413,10 @@ struct TextPanel: View {
             if let overlay {
                 ScrollView {
                 VStack(spacing: 12) {
-                    TextField("Enter text", text: Binding(get: { overlay.text }, set: { v in update("Edit text", coalesce: true) { $0.text = v } }),
-                              axis: .vertical)
+                    TextField("Enter text", text: Binding(get: { overlay.text }, set: { v in update("Edit text", coalesce: true) { $0.text = v } }))
                         .focused($focused)
+                        .submitLabel(.done)
+                        .onSubmit { focused = false }
                         .padding(10)
                         .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
                         .accessibilityIdentifier("text.field")

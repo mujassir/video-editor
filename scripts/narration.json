@@ -58,14 +58,14 @@
       "text": "Remove Silence finds the pauses in your speech and cuts them out in one tap, closing the gaps for you."
     },
     {
+      "title": "Any Format",
+      "subtitle": "9:16 \u00b7 1:1 \u00b7 4:5 \u00b7 16:9",
+      "text": "Switch between square, portrait, widescreen and vertical at any time, with a blurred or solid background filling the frame."
+    },
+    {
       "title": "Auto Reframe",
       "subtitle": "Vision face & subject tracking",
       "text": "Auto Reframe tracks faces and subjects through the shot, so a wide clip fills a vertical video and keeps the person in frame."
-    },
-    {
-      "title": "Any Format",
-      "subtitle": "9:16 \u00b7 1:1 \u00b7 4:5 \u00b7 16:9",
-      "text": "Switch between vertical, square, portrait and widescreen at any time, with a blurred or solid background filling the frame."
     },
     {
       "title": "Export",

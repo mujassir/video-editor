@@ -51,6 +51,10 @@ final class DemoTourUITests: CutlineUITestCase {
             app.buttons["Sample Clips"].tap()
             waitFor("demo clips", timeout: 120) { count(prefix: "clip.") >= 4 }
             waitUntilIdle()
+            tap("editor.aspect")
+            tap("chip.16:9")
+            pause(0.5)
+            tap("panel.done")
         }
 
         // 2 – Playback, scrub, zoom.
@@ -136,8 +140,9 @@ final class DemoTourUITests: CutlineUITestCase {
             if field.waitForExistence(timeout: 5) {
                 field.tap()
                 field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 9))
-                field.typeText("ROAD TRIP")
+                field.typeText("ROAD TRIP\n")
             }
+            pause(0.6)
             tap("font.Condensed")
             pause(0.5)
             tap("chip.Outline")
@@ -188,25 +193,26 @@ final class DemoTourUITests: CutlineUITestCase {
             pause(1.5)
         }
 
-        // 11 – Auto reframe on the vlog close-up.
+
+        // 11 – Canvas formats.
         chapter(11) {
+            selectNone()
+            tap("editor.aspect")
+            for r in ["chip.1:1", "chip.4:5", "chip.16:9", "chip.9:16"] {
+                tap(r)
+                pause(1.1)
+            }
+            tap("panel.done")
+        }
+
+        // 12 – Auto reframe on the vlog close-up (9:16 canvas).
+        chapter(12) {
             seekToVlog()
             selectClipAtPlayhead()
             tap("tool.Reframe")
             waitUntilIdle()
             pause(0.5)
             play(3)
-        }
-
-        // 12 – Canvas formats.
-        chapter(12) {
-            selectNone()
-            tap("editor.aspect")
-            for r in ["chip.1:1", "chip.16:9", "chip.4:5", "chip.9:16"] {
-                tap(r)
-                pause(1.1)
-            }
-            tap("panel.done")
         }
 
         // 13 – Export.
