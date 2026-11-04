@@ -390,6 +390,49 @@ final class EditorModel {
         edit("Remove slide") { $0.removeTitleCard(placement) }
     }
 
+    // MARK: Dragging text on the preview
+
+    @ObservationIgnored private var textSizeCache: [String: CGSize] = [:]
+
+    /// Moves text live while the finger is down (no composition rebuild, just a redraw).
+    func liveMoveText(_ id: UUID, to center: SIMD2<Double>) {
+        renderToggles.setTextCenter(center, for: id)
+        player.seek(to: currentTime.cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
+    /// Stores the final position as a custom (free) placement.
+    func commitTextMove(_ id: UUID, to center: SIMD2<Double>) {
+        edit("Move text") { p in
+            p.updateText(id) { $0.anchor = nil; $0.centerX = center.x; $0.centerY = center.y }
+        }
+        // The rebuilt composition carries the new position; drop the live override after it lands.
+        Task {
+            try? await Task.sleep(for: .milliseconds(400))
+            self.renderToggles.setTextCenter(nil, for: id)
+        }
+    }
+
+    /// Size (in preview-render pixels) and centre (canvas-normalized) of a text overlay,
+    /// matching what the compositor draws.
+    func textFrame(_ overlay: TextOverlay) -> (size: CGSize, center: SIMD2<Double>, canvas: CGSize)? {
+        let canvas = project.aspectRatio.renderSize(shortEdge: 720)
+        let key = "\(overlay.text.hashValue)-\(overlay.style.hashValue)-\(overlay.scale)-\(Int(canvas.width))x\(Int(canvas.height))"
+        let pixelSize: CGSize
+        if let cached = textSizeCache[key] {
+            pixelSize = cached
+        } else {
+            guard let image = TextRasterizer.render(overlay, canvas: canvas) else { return nil }
+            pixelSize = CGSize(width: image.width, height: image.height)
+            if textSizeCache.count > 100 { textSizeCache.removeAll() }
+            textSizeCache[key] = pixelSize
+        }
+        let size = CGSize(width: pixelSize.width * overlay.scale, height: pixelSize.height * overlay.scale)
+        let center = renderToggles.textCenter(overlay.id)
+            ?? overlay.anchor?.center(for: size, canvas: canvas)
+            ?? SIMD2(overlay.centerX, overlay.centerY)
+        return (size, center, canvas)
+    }
+
     func addText() {
         var newID: UUID?
         edit("Add text") { p in newID = p.addText("Your text", at: currentTime) }

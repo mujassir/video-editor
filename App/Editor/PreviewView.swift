@@ -38,6 +38,7 @@ struct PlayerSurface: UIViewRepresentable {
 /// Canvas-shaped preview with direct manipulation of the selected text.
 struct PreviewView: View {
     @Bindable var model: EditorModel
+    @State private var dragStart: SIMD2<Double>?
 
     var body: some View {
         GeometryReader { geo in
@@ -58,7 +59,7 @@ struct PreviewView: View {
                             }
                         }
                         .clipShape(RoundedRectangle(cornerRadius: 4))
-                        .overlay(textHandles(canvas: fitted))
+                        .overlay(textHandles(canvas: fitted).coordinateSpace(.named("canvas")))
                         .contentShape(Rectangle())
                         .onTapGesture { model.togglePlay() }
                 }
@@ -82,32 +83,44 @@ struct PreviewView: View {
         return CGSize(width: size.width, height: size.width / ratio)
     }
 
-    /// Drag the selected text overlay around the canvas.
+    /// Drag the selected text overlay around the canvas. The hit area matches the
+    /// rendered text exactly and is invisible – only the text itself shows.
     @ViewBuilder
     private func textHandles(canvas: CGSize) -> some View {
         if case .text(let id) = model.session.selection,
            let overlay = model.project.textOverlays.first(where: { $0.id == id }),
-           overlay.range.contains(model.currentTime) {
-            let box = CGSize(width: canvas.width * 0.7, height: canvas.height * overlay.style.size * 1.8 * overlay.scale)
-            RoundedRectangle(cornerRadius: 4)
-                .stroke(Color.white, style: StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
+           overlay.range.contains(model.currentTime),
+           let frame = model.textFrame(overlay) {
+            let k = canvas.width / max(frame.canvas.width, 1)            // render px → screen points
+            let box = CGSize(width: max(44, frame.size.width * k), height: max(44, frame.size.height * k))
+            Rectangle()
+                .fill(Color.white.opacity(0.001))
                 .frame(width: box.width, height: box.height)
-                .position(x: handleCenter(overlay).x * canvas.width, y: handleCenter(overlay).y * canvas.height)
-                .gesture(DragGesture().onChanged { v in
-                    let x = min(max(v.location.x / canvas.width, 0.05), 0.95)
-                    let y = min(max(v.location.y / canvas.height, 0.05), 0.95)
-                    model.editCoalescing("Move text", key: "move-\(id)") { p in
-                        p.updateText(id) { $0.anchor = nil; $0.centerX = x; $0.centerY = y }
-                    }
-                })
+                .contentShape(Rectangle())
+                .position(x: frame.center.x * canvas.width, y: frame.center.y * canvas.height)
+                .gesture(
+                    DragGesture(minimumDistance: 2, coordinateSpace: .named("canvas"))
+                        .onChanged { v in
+                            if dragStart == nil { dragStart = frame.center; model.pause() }
+                            guard let start = dragStart else { return }
+                            let c = clampCenter(start + SIMD2(v.translation.width / canvas.width,
+                                                              v.translation.height / canvas.height))
+                            model.liveMoveText(id, to: c)
+                        }
+                        .onEnded { v in
+                            guard let start = dragStart else { return }
+                            let c = clampCenter(start + SIMD2(v.translation.width / canvas.width,
+                                                              v.translation.height / canvas.height))
+                            dragStart = nil
+                            model.commitTextMove(id, to: c)
+                        }
+                )
                 .accessibilityIdentifier("textHandle")
         }
     }
 
-    /// Approximate on-screen centre of a text overlay (anchored text hugs an edge).
-    private func handleCenter(_ overlay: TextOverlay) -> CGPoint {
-        guard let anchor = overlay.anchor else { return CGPoint(x: overlay.centerX, y: overlay.centerY) }
-        let a = anchor.axes
-        return CGPoint(x: 0.5 + a.x * 0.32, y: 0.5 + a.y * 0.4)
+    private func clampCenter(_ c: SIMD2<Double>) -> SIMD2<Double> {
+        SIMD2(min(max(c.x, 0.03), 0.97), min(max(c.y, 0.03), 0.97))
     }
+
 }
