@@ -178,7 +178,7 @@ def main():
         length = end - start
         if k + 1 == len(order):
             # Outro: the app quits when the test ends – keep only the narrated part.
-            end = min(end, start + narr_len + 1.5)
+            end = max(start + narr_len + 0.2, min(end - 1.3, start + narr_len + 0.6))
             length = end - start
         # Spans of the recording to keep for this chapter.
         if length > keep_head + a.max_tail + 1.0:
