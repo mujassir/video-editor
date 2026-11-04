@@ -54,5 +54,6 @@ enum LaunchOptions {
         guard let i = arguments.firstIndex(of: "-demoMedia"), i + 1 < arguments.count else { return nil }
         return URL(fileURLWithPath: arguments[i + 1])
     }
+    static var isUITesting: Bool { arguments.contains("-sampleMedia") }
     static var disableAnimations: Bool { arguments.contains("-noAnimations") }
 }

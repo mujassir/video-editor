@@ -51,12 +51,12 @@ final class FeatureUITests: CutlineUITestCase {
 
     func test04_TrimWithHandles() {
         openProjectWithSamples()
-        selectClip(1)
-        let handle = element("trim.trailing")
+        selectClip(0)
+        let handle = element("trim.leading")
         XCTAssertTrue(handle.waitForExistence(timeout: 5))
         let before = totalSeconds
         let start = handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: -90, dy: 0)))
+        start.press(forDuration: 0.3, thenDragTo: start.withOffset(CGVector(dx: 90, dy: 0)))
         waitFor("trim shortens the edit") { totalSeconds < before - 0.5 }
         snapshot("04-trimmed")
     }

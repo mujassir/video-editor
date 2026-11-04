@@ -114,10 +114,13 @@ public enum BeatDetector {
             for k in 0..<(n / 2) {
                 mags[k] = log1p(10 * sqrt(re[k] * re[k] + im[k] * im[k]))
             }
+            // Kick and bass (< ~200 Hz) define the beat in most music; weight them
+            // well above broadband hats so the grid locks onto downbeats, not off-beats.
             var flux: Float = 0
+            let lowBand = max(2, Int(200 / (sampleRate / Double(n))))
             for k in 1..<(n / 2) {
                 let d = mags[k] - previous[k]
-                if d > 0 { flux += d }
+                if d > 0 { flux += k <= lowBand ? d * 12 : d }
             }
             envelope[f] = flux
             swap(&previous, &mags)

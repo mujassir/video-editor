@@ -395,7 +395,7 @@ final class EditorModel {
         toastTask?.cancel()
         withAnimation(.spring(duration: 0.3)) { toast = Toast(message: message, systemImage: systemImage) }
         toastTask = Task {
-            try? await Task.sleep(for: .seconds(2.2))
+            try? await Task.sleep(for: .seconds(LaunchOptions.isUITesting ? 6 : 2.2))
             guard !Task.isCancelled else { return }
             withAnimation(.easeOut(duration: 0.3)) { self.toast = nil }
         }

@@ -411,6 +411,7 @@ struct TextPanel: View {
     var body: some View {
         PanelContainer(title: "Text", onDone: { focused = false; model.panel = nil }) {
             if let overlay {
+                ScrollView {
                 VStack(spacing: 12) {
                     TextField("Enter text", text: Binding(get: { overlay.text }, set: { v in update("Edit text", coalesce: true) { $0.text = v } }),
                               axis: .vertical)
@@ -459,6 +460,8 @@ struct TextPanel: View {
                         update("Text duration", coalesce: true) { $0.range.duration = MediaTime(seconds: v) }
                     }), range: 0.5...15, format: { String(format: "%.1fs", $0) })
                 }
+                }
+                .frame(maxHeight: 300)
             }
         }
     }

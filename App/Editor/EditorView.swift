@@ -17,11 +17,12 @@ struct EditorView: View {
             topBar
             PreviewView(model: model)
                 .padding(.horizontal, 8)
-                .frame(maxHeight: .infinity)
+                .frame(minHeight: 150, maxHeight: .infinity)
             transport
             TimelineRepresentable(model: model, onAddMedia: { showAddMenu = true })
                 .frame(height: timelineHeight)
             bottomArea
+                .layoutPriority(1)
         }
         .background(Theme.background.ignoresSafeArea())
         .overlay(alignment: .top) {
@@ -188,6 +189,7 @@ struct EditorView: View {
         }
         .frame(height: 74)
         .background(Theme.surface)
+        .accessibilityIdentifier("toolbar")
     }
 
     @ViewBuilder private var mainTools: some View {

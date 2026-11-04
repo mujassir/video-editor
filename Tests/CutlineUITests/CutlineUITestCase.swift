@@ -26,6 +26,14 @@ class CutlineUITestCase: XCTestCase {
     func tap(_ id: String, timeout: TimeInterval = 10, file: StaticString = #filePath, line: UInt = #line) {
         let e = element(id)
         XCTAssertTrue(e.waitForExistence(timeout: timeout), "\(id) not found", file: file, line: line)
+        if !e.isHittable, id.hasPrefix("tool.") {
+            // Off-screen tool: scroll the toolbar towards it.
+            let bar = element("toolbar")
+            for _ in 0..<4 where !e.isHittable {
+                if e.frame.minX > bar.frame.midX { bar.swipeLeft() } else { bar.swipeRight() }
+                RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+            }
+        }
         e.tap()
     }
 
@@ -60,7 +68,10 @@ class CutlineUITestCase: XCTestCase {
 
     var toastText: String? {
         let t = element("toast")
-        return t.waitForExistence(timeout: 8) ? t.label : nil
+        guard t.waitForExistence(timeout: 8) else { return nil }
+        let label = t.label
+        print("TOAST: \(label)")
+        return label
     }
 
     /// New project with the three sample clips on the timeline.
