@@ -145,6 +145,11 @@ final class FeatureUITests: CutlineUITestCase {
     func test09_MusicAndBeatSync() {
         openProjectWithSamples()
         tap("tool.Music")
+        // User-music sources are offered next to the built-in tracks.
+        for source in ["music.source.files", "music.source.video"] {
+            XCTAssertTrue(element(source).waitForExistence(timeout: 5), "\(source) missing")
+        }
+        snapshot("09-music-sources")
         tap("music.use.sunrise")
         waitUntilIdle()
         waitFor("music lane") { count(prefix: "audio.") == 1 }
@@ -171,9 +176,17 @@ final class FeatureUITests: CutlineUITestCase {
     func test11_CanvasAndBackground() {
         openProjectWithSamples()
         tap("editor.aspect")
+        tap("chip.3:4")
+        XCTAssertEqual(element("editor.aspect").label, "3:4")
+        snapshot("11-canvas-3x4")
         tap("chip.1:1")
         tap("swatch.4")
         snapshot("11-canvas-square")
+        tap("chip.Fill")
+        tap("chip.Top")
+        snapshot("11-canvas-fill-top")
+        tap("chip.Stretch")
+        tap("chip.Fit")
         tap("chip.16:9")
         tap("chip.Blur")
         tap("panel.done")
@@ -204,6 +217,27 @@ final class FeatureUITests: CutlineUITestCase {
         XCTAssertTrue(element("export.done").waitForExistence(timeout: 300), "export did not finish")
         snapshot("13-exported")
         tap("export.close")
+    }
+
+    func test15_PhotoToolbarAndDuration() {
+        openProjectWithSamples()
+        // A freeze frame is a still image, so it gets the photo toolbar.
+        selectClip(0)
+        tap("tool.Freeze")
+        waitFor("freeze frame") { count(prefix: "clip.") == 4 }
+        let before = totalSeconds
+        selectClip(0)
+        XCTAssertTrue(element("tool.Duration").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("tool.Animate").exists)
+        for videoOnly in ["tool.Speed", "tool.Volume", "tool.Reverse", "tool.Freeze", "tool.Split", "tool.Trim"] {
+            XCTAssertFalse(element(videoOnly).exists, "\(videoOnly) should be hidden for stills")
+        }
+        snapshot("15-photo-tools")
+        tap("tool.Duration")
+        tap("chip.5s")
+        waitFor("photo lasts 5 s") { abs(totalSeconds - (before + 3.5)) < 0.2 }
+        snapshot("15-duration")
+        tap("panel.done")
     }
 }
 

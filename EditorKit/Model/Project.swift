@@ -41,6 +41,7 @@ public struct MediaItem: Codable, Hashable, Identifiable, Sendable {
 
 public enum AspectRatio: String, Codable, CaseIterable, Sendable, Identifiable {
     case portrait9x16 = "9:16"
+    case portrait3x4 = "3:4"
     case square1x1 = "1:1"
     case portrait4x5 = "4:5"
     case landscape16x9 = "16:9"
@@ -52,6 +53,7 @@ public enum AspectRatio: String, Codable, CaseIterable, Sendable, Identifiable {
         switch self {
         case .portrait9x16: return 9.0 / 16.0
         case .square1x1: return 1
+        case .portrait3x4: return 3.0 / 4.0
         case .portrait4x5: return 4.0 / 5.0
         case .landscape16x9: return 16.0 / 9.0
         }
@@ -88,6 +90,24 @@ public enum ContentFit: String, Codable, Sendable {
     case fit
     /// Frame covers the canvas, edges cropped.
     case fill
+    /// Frame is scaled to exactly the canvas size (aspect ratio not kept).
+    case stretch
+
+    public var displayName: String {
+        switch self {
+        case .fit: return "Fit"
+        case .fill: return "Fill"
+        case .stretch: return "Stretch"
+        }
+    }
+}
+
+/// Where media sits on the canvas when it doesn't match the canvas shape:
+/// with `.fill` it chooses which part is kept, with `.fit` which edge it hugs.
+public enum ContentAnchor: String, Codable, CaseIterable, Sendable, Identifiable {
+    case center, top, bottom, left, right
+    public var id: String { rawValue }
+    public var displayName: String { rawValue.capitalized }
 }
 
 // MARK: - Clip settings
@@ -114,6 +134,8 @@ public struct ClipTransform: Codable, Hashable, Sendable {
     public var offsetX: Double = 0
     public var offsetY: Double = 0
     public var fit: ContentFit = .fit
+    /// Optional so projects saved before anchors existed still load (nil = centre).
+    public var anchor: ContentAnchor? = nil
 
     public init() {}
     public static let identity = ClipTransform()
@@ -170,6 +192,36 @@ public struct Transition: Codable, Hashable, Sendable {
     }
 }
 
+/// Animated camera move over a still image.
+public enum PhotoMotion: String, Codable, CaseIterable, Sendable, Identifiable {
+    case none, zoomIn, zoomOut, panLeft, panRight, panUp, panDown, kenBurns
+    public var id: String { rawValue }
+    public var displayName: String {
+        switch self {
+        case .none: return "None"
+        case .zoomIn: return "Zoom In"
+        case .zoomOut: return "Zoom Out"
+        case .panLeft: return "Pan Left"
+        case .panRight: return "Pan Right"
+        case .panUp: return "Pan Up"
+        case .panDown: return "Pan Down"
+        case .kenBurns: return "Ken Burns"
+        }
+    }
+    public var systemImage: String {
+        switch self {
+        case .none: return "nosign"
+        case .zoomIn: return "plus.magnifyingglass"
+        case .zoomOut: return "minus.magnifyingglass"
+        case .panLeft: return "arrow.left"
+        case .panRight: return "arrow.right"
+        case .panUp: return "arrow.up"
+        case .panDown: return "arrow.down"
+        case .kenBurns: return "sparkles"
+        }
+    }
+}
+
 public enum BackgroundReplacement: Codable, Hashable, Sendable {
     /// Keep the person, blur everything else.
     case blur
@@ -214,6 +266,9 @@ public struct VideoClip: Codable, Hashable, Identifiable, Sendable {
     public var reframe: [ReframeKeyframe] = []
     /// Transition from this clip into the next one.
     public var transitionOut: Transition?
+    /// Motion applied to photos and freeze frames (Ken Burns style). Optional so
+    /// projects saved before this existed still load.
+    public var photoMotion: PhotoMotion?
 
     public init(id: UUID = UUID(), mediaID: UUID, kind: MediaKind, sourceRange: MediaTimeRange) {
         self.id = id
@@ -387,6 +442,9 @@ public struct Project: Codable, Hashable, Identifiable, Sendable {
     public var audioClips: [AudioClip] = []
     public var textOverlays: [TextOverlay] = []
     public var captions = CaptionTrack()
+    /// Fit applied to newly added media (set from the Canvas panel). Optional for old projects.
+    public var defaultFit: ContentFit?
+    public var defaultAnchor: ContentAnchor?
 
     public init(id: UUID = UUID(), name: String, createdAt: Date = Date()) {
         self.id = id
