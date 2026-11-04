@@ -217,6 +217,19 @@ public extension Project {
         change(&clips[index])
     }
 
+    static let stillDurationRange = MediaTime(seconds: 0.5)...MediaTime(seconds: 30)
+
+    /// Sets how long a photo / freeze frame shows (0.5–30 s); optionally for every photo.
+    mutating func setStillDuration(_ duration: MediaTime, clipID: UUID, allPhotos: Bool = false) throws {
+        guard let index = clipIndex(clipID) else { throw EditError.clipNotFound }
+        guard clips[index].isStill else { return }
+        let d = duration.clamped(to: Self.stillDurationRange)
+        if allPhotos {
+            for i in clips.indices where clips[i].kind == .photo { clips[i].sourceRange.duration = d }
+        }
+        clips[index].sourceRange.duration = d
+    }
+
     /// Canvas-wide fit: applies to every clip and to clips added later.
     mutating func setContentFit(_ fit: ContentFit, anchor: ContentAnchor) {
         defaultFit = fit

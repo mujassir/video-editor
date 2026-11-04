@@ -160,11 +160,12 @@ struct EditorView: View {
         case .text(let id):
             if let id { TextPanel(model: model, textID: id) } else { toolbar }
         case .transition(let id): TransitionPanel(model: model, clipID: id)
-        case .trim, .motion, .filters, .adjust, .speed, .volume, .crop, .background:
+        case .trim, .duration, .motion, .filters, .adjust, .speed, .volume, .crop, .background:
             if let id = model.selectedClipID {
                 switch panel {
                 case .trim: TrimPanel(model: model, clipID: id)
                 case .motion: PhotoMotionPanel(model: model, clipID: id)
+                case .duration: PhotoDurationPanel(model: model, clipID: id)
                 case .filters: FiltersPanel(model: model, clipID: id)
                 case .adjust: AdjustPanel(model: model, clipID: id)
                 case .speed: SpeedPanel(model: model, clipID: id)
@@ -208,9 +209,27 @@ struct EditorView: View {
 
     @ViewBuilder private var clipTools: some View {
         if model.selectedClip?.isStill == true {
-            ToolButton(title: "Animate", systemImage: "camera.metering.center.weighted",
-                       isActive: (model.selectedClip?.photoMotion ?? .none) != .none) { model.panel = .motion }
+            photoTools
+        } else {
+            videoTools
         }
+    }
+
+    /// Photos and freeze frames: only tools that make sense for a still image.
+    @ViewBuilder private var photoTools: some View {
+        ToolButton(title: "Duration", systemImage: "timer") { model.panel = .duration }
+        ToolButton(title: "Animate", systemImage: "camera.metering.center.weighted",
+                   isActive: (model.selectedClip?.photoMotion ?? .none) != .none) { model.panel = .motion }
+        ToolButton(title: "Filters", systemImage: "camera.filters") { model.panel = .filters }
+        ToolButton(title: "Adjust", systemImage: "slider.horizontal.3") { model.panel = .adjust }
+        ToolButton(title: "Enhance", systemImage: "wand.and.stars", badge: "AI") { model.autoEnhance() }
+        ToolButton(title: "Cutout", systemImage: "person.crop.rectangle", badge: "AI") { model.panel = .background }
+        ToolButton(title: "Crop", systemImage: "crop.rotate") { model.panel = .crop }
+        ToolButton(title: "Duplicate", systemImage: "plus.square.on.square") { model.duplicateSelected() }
+        ToolButton(title: "Delete", systemImage: "trash") { model.deleteSelection() }
+    }
+
+    @ViewBuilder private var videoTools: some View {
         ToolButton(title: "Split", systemImage: "scissors") { model.split() }
         ToolButton(title: "Trim", systemImage: "timeline.selection") { model.panel = .trim }
         ToolButton(title: "Speed", systemImage: "speedometer") { model.panel = .speed }

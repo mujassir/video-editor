@@ -751,3 +751,49 @@ struct MusicSourceLabel: View {
         .foregroundStyle(.white)
     }
 }
+
+// MARK: - Photo duration
+
+struct PhotoDurationPanel: View {
+    @Bindable var model: EditorModel
+    let clipID: UUID
+    private var seconds: Double {
+        model.project.clipIndex(clipID).map { model.project.clips[$0].sourceRange.duration.seconds } ?? 3
+    }
+    private var photoCount: Int { model.project.clips.filter { $0.kind == .photo }.count }
+
+    var body: some View {
+        PanelContainer(title: "Duration", onDone: { model.panel = nil }) {
+            VStack(spacing: 12) {
+                Text(String(format: "%.1f s", seconds)).font(.title2.monospacedDigit().weight(.semibold))
+                    .accessibilityIdentifier("duration.value")
+                Slider(value: Binding(get: { seconds }, set: { v in
+                    let rounded = (v * 10).rounded() / 10
+                    model.editCoalescing("Photo duration", key: "dur-\(clipID)") { p in
+                        try? p.setStillDuration(MediaTime(seconds: rounded), clipID: clipID)
+                    }
+                }), in: 0.5...30).tint(Theme.accent).accessibilityIdentifier("slider.Duration")
+                HStack(spacing: 8) {
+                    ForEach([2.0, 3, 5, 10], id: \.self) { v in
+                        ChipButton(title: String(format: "%gs", v), isSelected: abs(seconds - v) < 0.05) {
+                            model.edit("Photo duration") { try $0.setStillDuration(MediaTime(seconds: v), clipID: clipID) }
+                        }
+                    }
+                }
+                if photoCount > 1 {
+                    Button {
+                        let d = MediaTime(seconds: seconds)
+                        model.edit("Photo duration") { try $0.setStillDuration(d, clipID: clipID, allPhotos: true) }
+                        model.showToast("All photos set to \(String(format: "%.1f", seconds)) s", systemImage: "timer")
+                    } label: {
+                        Label("Apply to all \(photoCount) photos", systemImage: "square.stack.3d.down.right")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.accent)
+                    .accessibilityIdentifier("duration.applyAll")
+                }
+            }
+        }
+    }
+}

@@ -333,3 +333,23 @@ struct CanvasTests {
         #expect(AspectRatio.allCases.map(\.rawValue) == ["9:16", "3:4", "1:1", "4:5", "16:9"])
     }
 }
+
+@Suite("Photo duration")
+struct PhotoDurationTests {
+    @Test func clampsAndAppliesToAllPhotos() throws {
+        var p = Project(name: "P")
+        let size = CGSize(width: 10, height: 10)
+        p.appendClip(for: MediaItem(kind: .photo, fileName: "a.jpg", naturalSize: size, duration: .zero, hasAudio: false))
+        p.appendClip(for: MediaItem(kind: .video, fileName: "v.mov", naturalSize: size, duration: s(4), hasAudio: false))
+        p.appendClip(for: MediaItem(kind: .photo, fileName: "b.jpg", naturalSize: size, duration: .zero, hasAudio: false))
+        try p.setStillDuration(s(100), clipID: p.clips[0].id)
+        #expect(p.clips[0].timelineDuration == s(30))
+        try p.setStillDuration(s(0.1), clipID: p.clips[0].id)
+        #expect(p.clips[0].timelineDuration == s(0.5))
+        try p.setStillDuration(s(5), clipID: p.clips[1].id)
+        #expect(p.clips[1].timelineDuration == s(4), "videos are untouched")
+        try p.setStillDuration(s(2), clipID: p.clips[2].id, allPhotos: true)
+        #expect(p.clips[0].timelineDuration == s(2) && p.clips[2].timelineDuration == s(2))
+        #expect(p.layout.duration == s(8))
+    }
+}

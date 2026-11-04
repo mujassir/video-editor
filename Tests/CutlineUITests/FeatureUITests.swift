@@ -218,6 +218,27 @@ final class FeatureUITests: CutlineUITestCase {
         snapshot("13-exported")
         tap("export.close")
     }
+
+    func test15_PhotoToolbarAndDuration() {
+        openProjectWithSamples()
+        // A freeze frame is a still image, so it gets the photo toolbar.
+        selectClip(0)
+        tap("tool.Freeze")
+        waitFor("freeze frame") { count(prefix: "clip.") == 4 }
+        let before = totalSeconds
+        selectClip(0)
+        XCTAssertTrue(element("tool.Duration").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("tool.Animate").exists)
+        for videoOnly in ["tool.Speed", "tool.Volume", "tool.Reverse", "tool.Freeze", "tool.Split", "tool.Trim"] {
+            XCTAssertFalse(element(videoOnly).exists, "\(videoOnly) should be hidden for stills")
+        }
+        snapshot("15-photo-tools")
+        tap("tool.Duration")
+        tap("chip.5s")
+        waitFor("photo lasts 5 s") { abs(totalSeconds - (before + 3.5)) < 0.2 }
+        snapshot("15-duration")
+        tap("panel.done")
+    }
 }
 
 /// Captions need real speech, so they run against the demo footage when CI provides it.
