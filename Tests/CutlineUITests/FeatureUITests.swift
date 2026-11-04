@@ -145,6 +145,11 @@ final class FeatureUITests: CutlineUITestCase {
     func test09_MusicAndBeatSync() {
         openProjectWithSamples()
         tap("tool.Music")
+        // User-music sources are offered next to the built-in tracks.
+        for source in ["music.source.files", "music.source.video"] {
+            XCTAssertTrue(element(source).waitForExistence(timeout: 5), "\(source) missing")
+        }
+        snapshot("09-music-sources")
         tap("music.use.sunrise")
         waitUntilIdle()
         waitFor("music lane") { count(prefix: "audio.") == 1 }

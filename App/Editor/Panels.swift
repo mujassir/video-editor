@@ -1,4 +1,7 @@
 import SwiftUI
+import PhotosUI
+import UniformTypeIdentifiers
+import AVFoundation
 import EditorKit
 
 /// Bottom panel container – slides up over the toolbar.
@@ -471,6 +474,8 @@ struct TextPanel: View {
 
 struct MusicPanel: View {
     @Bindable var model: EditorModel
+    @State private var showFiles = false
+    @State private var videoItem: PhotosPickerItem?
     var selectedAudio: AudioClip? {
         if case .audio(let id) = model.session.selection { return model.project.audioClips.first { $0.id == id } }
         return nil
@@ -490,6 +495,16 @@ struct MusicPanel: View {
                         model.edit("Auto duck") { $0.updateAudio(audio.id) { $0.autoDuck = v } }
                     })).tint(Theme.accent).font(.subheadline)
                 } else {
+                    HStack(spacing: 8) {
+                        sourceButton("Files", "folder") { showFiles = true }
+                        PhotosPicker(selection: $videoItem, matching: .videos) {
+                            sourceLabel("From Video", "film")
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("music.source.video")
+                    }
+                    Text("Built-in tracks").font(.caption).foregroundStyle(Theme.secondaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     ForEach(SampleMedia.library) { track in
                         HStack {
                             Image(systemName: "music.note").frame(width: 36, height: 36)
@@ -511,6 +526,39 @@ struct MusicPanel: View {
                 }
             }
         }
+        .fileImporter(isPresented: $showFiles, allowedContentTypes: [.audio], allowsMultipleSelection: false) { result in
+            guard case .success(let urls) = result, let url = urls.first else { return }
+            model.addMusicFile(url, name: url.deletingPathExtension().lastPathComponent)
+            model.panel = nil
+        }
+        .onChange(of: videoItem) { _, item in
+            guard let item else { return }
+            videoItem = nil
+            Task {
+                guard let movie = try? await item.loadTransferable(type: MovieTransfer.self) else {
+                    model.showToast("Couldn't load that video", systemImage: "exclamationmark.triangle")
+                    return
+                }
+                model.addMusicFile(movie.url, name: "Video sound")
+                model.panel = nil
+            }
+        }
+    }
+
+    private func sourceLabel(_ title: String, _ icon: String) -> some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon).font(.system(size: 17, weight: .semibold))
+            Text(title).font(.caption.weight(.medium))
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 10)
+        .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
+        .foregroundStyle(.white)
+    }
+
+    private func sourceButton(_ title: String, _ icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { sourceLabel(title, icon) }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("music.source.\(title.lowercased())")
     }
 }
 
