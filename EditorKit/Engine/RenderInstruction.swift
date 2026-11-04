@@ -34,9 +34,13 @@ public final class RenderScene: @unchecked Sendable {
     public let captions: CaptionTrack
     /// Upright still images (photos and freeze frames) keyed by clip id.
     public let stills: [UUID: CGImage]
+    /// Live switches the compositor reads every frame (shared with the editor).
+    public let toggles: RenderToggles
 
     public init(renderSize: CGSize, background: CanvasBackground, quality: RenderQuality,
-                clips: [ClipRenderInfo], texts: [TextOverlay], captions: CaptionTrack, stills: [UUID: CGImage]) {
+                clips: [ClipRenderInfo], texts: [TextOverlay], captions: CaptionTrack, stills: [UUID: CGImage],
+                toggles: RenderToggles = RenderToggles()) {
+        self.toggles = toggles
         self.renderSize = renderSize
         self.background = background
         self.quality = quality
@@ -66,5 +70,20 @@ public final class RenderInstruction: NSObject, AVVideoCompositionInstructionPro
         let ids = clipIndices.compactMap { scene.clips[$0].trackID }
         self.requiredSourceTrackIDs = ids.isEmpty ? nil : ids.map { NSNumber(value: $0) }
         super.init()
+    }
+}
+
+/// Preview switches that can change without rebuilding the composition.
+public final class RenderToggles: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _animations = true
+
+    public init(animations: Bool = true) { _animations = animations }
+
+    /// When false, clip In/Out/Combo animations, photo motion and text
+    /// entrances/exits are not drawn (the editor's paused preview).
+    public var animationsEnabled: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return _animations }
+        set { lock.lock(); _animations = newValue; lock.unlock() }
     }
 }

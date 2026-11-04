@@ -324,7 +324,7 @@ struct TransitionPanel: View {
                             }
                             if let entry = model.project.layout.entry(for: clipID) {
                                 model.seek(to: max(.zero, entry.range.end - entry.overlapOut - MediaTime(seconds: 0.4)))
-                                model.player.play()
+                                model.play()
                             }
                         }
                     }
@@ -485,7 +485,7 @@ struct TextPanel: View {
                                 ChipButton(title: a.displayName, isSelected: overlay.animationIn == a) {
                                     update("Animation") { $0.animationIn = a }
                                     model.seek(to: overlay.range.start)
-                                    model.player.play()
+                                    model.play()
                                 }
                             }
                         }
@@ -818,7 +818,7 @@ struct PhotoMotionPanel: View {
         guard let entry = model.project.layout.entry(for: clipID) else { return }
         let lead = MediaTime(seconds: min(1.5, entry.range.duration.seconds))
         model.seek(to: atEnd ? max(entry.range.start, entry.range.end - lead) : entry.range.start)
-        model.player.play()
+        model.play()
     }
 }
 

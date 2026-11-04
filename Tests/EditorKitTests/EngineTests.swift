@@ -570,4 +570,27 @@ struct ClipAnimationTests {
         #expect(early.z > 0.8, "clip still off to the right, canvas shows: \(early)")
         #expect(settled.x > 0.8 && settled.z < 0.2, "clip slid in: \(settled)")
     }
+
+    @Test func pausedPreviewShowsClipsAtRest() async throws {
+        var fx = try Fixture()
+        defer { fx.cleanup() }
+        try await fx.addVideo("red", duration: 2, draw: SampleMedia.solid(RGBAColor(r: 1, g: 0, b: 0)))
+        fx.project.background = .color(RGBAColor(r: 0, g: 0, b: 1))
+        try fx.project.updateClip(fx.project.clips[0].id) { c in
+            var a = ClipAnimation()
+            a.entrance = .slideLeft
+            a.inDuration = 1
+            c.animation = a
+            c.transform.fit = .fill
+        }
+        let toggles = RenderToggles(animations: false)
+        let built = try await CompositionBuilder().build(project: fx.project, resolver: fx.resolver,
+                                                         renderSize: CGSize(width: 160, height: 120), toggles: toggles)
+        let region = CGRect(x: 0.05, y: 0.4, width: 0.1, height: 0.2)
+        let paused = averageColor(try await renderFrame(built, at: 0.02), in: region)
+        #expect(paused.x > 0.8 && paused.z < 0.2, "paused: clip shown at rest, got \(paused)")
+        toggles.animationsEnabled = true
+        let playing = averageColor(try await renderFrame(built, at: 0.03), in: region)
+        #expect(playing.z > 0.8, "playing: slide-in animation drawn, got \(playing)")
+    }
 }

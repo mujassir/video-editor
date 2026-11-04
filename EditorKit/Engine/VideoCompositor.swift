@@ -105,12 +105,13 @@ public final class VideoCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                 let start = info.timelineRange.duration - info.overlapOut
                 animation = LayerGeometry.transitionAnimation(t.kind, progress: (local - start).seconds / info.overlapOut.seconds, incoming: false)
             }
-            if let clipAnim = info.clip.animation, !clipAnim.isEmpty {
+            let animate = scene.toggles.animationsEnabled
+            if animate, let clipAnim = info.clip.animation, !clipAnim.isEmpty {
                 let anim = LayerGeometry.clipAnimation(clipAnim, local: local.seconds,
                                                        duration: info.timelineRange.duration.seconds)
                 animation = LayerGeometry.combine(anim, animation)
             }
-            if info.clip.isStill, let motion = info.clip.photoMotion, motion != .none {
+            if animate, info.clip.isStill, let motion = info.clip.photoMotion, motion != .none {
                 let progress = local.seconds / max(info.timelineRange.duration.seconds, 0.001)
                 animation = LayerGeometry.combine(LayerGeometry.photoMotion(motion, progress: progress), animation)
             }
@@ -237,7 +238,9 @@ public final class VideoCompositor: NSObject, AVVideoCompositing, @unchecked Sen
     private func drawOverlays(scene: RenderScene, time: MediaTime, canvas: CGSize,
                               renderer: MetalRenderer, encoder: MTLRenderCommandEncoder) {
         for overlay in scene.texts {
-            guard let state = OverlayAnimator.state(for: overlay, at: time), state.opacity > 0.001 else { continue }
+            guard var state = OverlayAnimator.state(for: overlay, at: time) else { continue }
+            if !scene.toggles.animationsEnabled { state = OverlayAnimationState() }   // paused: text at rest
+            guard state.opacity > 0.001 else { continue }
             let key = "t-\(overlay.id)-\(overlay.text.hashValue)-\(overlay.style.hashValue)-\(state.visibleCharacters ?? -1)-\(Int(canvas.height))"
             let image: CGImage?
             if let cached = overlayCache[key] {

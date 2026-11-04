@@ -18,7 +18,21 @@ final class EditorModel {
     private let autosaver: Autosaver
 
     var currentTime: MediaTime = .zero
-    var isPlaying = false
+    /// Animations (clip In/Out/Combo, photo motion, text entrances) are drawn only
+    /// while playing; paused or scrubbing, the preview shows clips at rest for editing.
+    var isPlaying = false {
+        didSet {
+            guard isPlaying != oldValue else { return }
+            renderToggles.animationsEnabled = isPlaying
+            if !isPlaying {
+                // Redraw the paused frame without animation.
+                let t = currentTime
+                player.seek(to: t.cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
+            }
+        }
+    }
+    /// Shared with every preview composition; the compositor reads it per frame.
+    let renderToggles = RenderToggles(animations: false)
     var isScrubbing = false
     var panel: EditorPanel? {
         didSet {
@@ -129,7 +143,8 @@ final class EditorModel {
         }
         let size = project.aspectRatio.renderSize(shortEdge: 720)
         do {
-            let built = try await CompositionBuilder().build(project: project, resolver: resolver, renderSize: size)
+            let built = try await CompositionBuilder().build(project: project, resolver: resolver, renderSize: size,
+                                                             toggles: renderToggles)
             guard !Task.isCancelled else { return }
             // Grab what's on screen now so the swap is seamless.
             if let output = frameOutput, let pb = output.copyPixelBuffer(forItemTime: player.currentTime(), itemTimeForDisplay: nil) {
@@ -163,9 +178,15 @@ final class EditorModel {
             isPlaying = false
         } else {
             if currentTime >= duration - MediaTime(seconds: 0.05) { seek(to: .zero) }
+            isPlaying = true          // enable animations before the first frame plays
             player.play()
-            isPlaying = true
         }
+    }
+
+    /// Starts playback with animations on (used by panels to preview an effect).
+    func play() {
+        isPlaying = true
+        player.play()
     }
 
     func pause() {
