@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import CoreImage
 import EditorKit
 
 enum EditorPanel: Equatable {
@@ -25,6 +26,10 @@ final class EditorModel {
     var busyProgress: Double?
     var lastError: String?
     var previewReady = false
+    /// Last displayed frame, shown over the preview while a rebuilt player item warms up
+    /// (avoids a black flash after every edit).
+    var holdFrame: UIImage?
+    private var frameOutput: AVPlayerItemVideoOutput?
     /// Incremented when the timeline must redraw (thumbnails, waveforms loaded).
     var timelineVersion = 0
     var waveforms: [UUID: [Float]] = [:]
@@ -85,7 +90,15 @@ final class EditorModel {
         do {
             let built = try await CompositionBuilder().build(project: project, resolver: resolver, renderSize: size)
             guard !Task.isCancelled else { return }
+            // Grab what's on screen now so the swap is seamless.
+            if let output = frameOutput, let pb = output.copyPixelBuffer(forItemTime: player.currentTime(), itemTimeForDisplay: nil) {
+                let ci = CIImage(cvPixelBuffer: pb)
+                if let cg = CIContext().createCGImage(ci, from: ci.extent) { holdFrame = UIImage(cgImage: cg) }
+            }
             let item = AVPlayerItem(asset: built.composition)
+            let output = AVPlayerItemVideoOutput(pixelBufferAttributes: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+            item.add(output)
+            frameOutput = output
             item.videoComposition = built.videoComposition
             item.audioMix = built.audioMix
             item.audioTimePitchAlgorithm = .spectral
@@ -94,6 +107,8 @@ final class EditorModel {
             player.replaceCurrentItem(with: item)
             await player.seek(to: resume.cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
             if wasPlaying { player.play() }
+            // Safety net: never leave a stale frame up if the layer never reports readiness.
+            Task { try? await Task.sleep(for: .seconds(1.5)); self.holdFrame = nil }
             builtRevision = revision
             previewReady = true
         } catch {
