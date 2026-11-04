@@ -136,7 +136,8 @@ def main():
     ap.add_argument("--narration", required=True)
     ap.add_argument("--work", default="demo-work")
     ap.add_argument("--out", required=True)
-    ap.add_argument("--max-tail", type=float, default=2.5, help="seconds kept from the end of an over-long chapter")
+    ap.add_argument("--max-tail", type=float, default=3.5, help="seconds kept from the end of an over-long chapter")
+    ap.add_argument("--head-pad", type=float, default=2.8, help="seconds kept after the narration ends")
     a = ap.parse_args()
 
     script = json.load(open(a.script))
@@ -173,8 +174,12 @@ def main():
             continue
         narr = os.path.join(a.narration, f"chapter-{idx:02d}.aiff")
         narr_len = probe_duration(narr) if os.path.exists(narr) else 3.0
-        keep_head = narr_len + 0.8
+        keep_head = narr_len + a.head_pad
         length = end - start
+        if k + 1 == len(order):
+            # Outro: the app quits when the test ends – keep only the narrated part.
+            end = min(end, start + narr_len + 1.5)
+            length = end - start
         # Spans of the recording to keep for this chapter.
         if length > keep_head + a.max_tail + 1.0:
             spans = [(start, start + keep_head), (end - a.max_tail, end)]
