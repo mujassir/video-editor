@@ -29,6 +29,26 @@ public struct ExportSettings: Sendable, Hashable {
         self.codec = codec
     }
 
+    /// Approximate video bitrate (bits/s) of Apple's "highest quality" hardware
+    /// presets at this resolution, frame rate and codec.
+    public var estimatedVideoBitrate: Double {
+        let base: Double
+        switch resolution {
+        case .p720: base = 8_000_000
+        case .p1080: base = 16_000_000
+        case .p2160: base = 45_000_000
+        }
+        let fps: Double = frameRate >= 60 ? 1.5 : (frameRate <= 24 ? 0.85 : 1)
+        let codec: Double = self.codec == .hevc ? 0.55 : 1
+        return base * fps * codec
+    }
+
+    /// Estimated file size in bytes for an edit of `duration` (video + 256 kbps AAC).
+    public func estimatedBytes(duration: MediaTime) -> Int64 {
+        let seconds = max(duration.seconds, 0)
+        return Int64((estimatedVideoBitrate + 256_000) * seconds / 8)
+    }
+
     var presetName: String {
         codec == .hevc ? AVAssetExportPresetHEVCHighestQuality : AVAssetExportPresetHighestQuality
     }

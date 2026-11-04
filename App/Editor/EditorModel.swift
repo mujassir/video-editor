@@ -5,6 +5,7 @@ import EditorKit
 
 enum EditorPanel: Equatable {
     case canvas, trim, audioTrim, duration, motion, filters, adjust, speed, volume, transition(UUID), text(UUID?), music, captions, crop, background, export
+    case textDuration(UUID), textAnimate(UUID), textPosition(UUID), watermark, titleCard(TitleCard.Placement)
 }
 
 /// Drives one editing session: project state, preview player, analysis jobs.
@@ -339,6 +340,54 @@ final class EditorModel {
             session.selection = .audio(newID)
             showToast("Audio duplicated", systemImage: "plus.square.on.square")
         }
+    }
+
+    // MARK: Watermark & title cards
+
+    func setWatermark(_ change: (inout Watermark) -> Void) {
+        edit("Watermark") { p in
+            var w = p.watermark ?? Watermark()
+            change(&w)
+            p.watermark = w
+        }
+    }
+
+    func removeWatermark() { edit("Remove watermark") { $0.watermark = nil } }
+
+    /// Stores a picked image in the project and uses it as the watermark.
+    func setWatermarkImage(_ data: Data) {
+        let name = "watermark-\(UUID().uuidString.prefix(8)).png"
+        let url = resolver.mediaDirectory.appendingPathComponent(name)
+        do {
+            try FileManager.default.createDirectory(at: resolver.mediaDirectory, withIntermediateDirectories: true)
+            try data.write(to: url)
+        } catch {
+            showToast("Couldn't use that image", systemImage: "exclamationmark.triangle")
+            return
+        }
+        setWatermark { $0.kind = .image; $0.imageFileName = name }
+    }
+
+    /// Renders and inserts / updates the opening or closing slide.
+    func applyTitleCard(_ card: TitleCard, duration: MediaTime) {
+        let dir = resolver.mediaDirectory
+        Task {
+            do {
+                let item = try await Task.detached { try TitleCardRenderer.write(card, to: dir) }.value
+                self.edit(card.placement == .opening ? "Opening slide" : "Closing slide") {
+                    $0.upsertTitleCard(card, image: item, duration: duration)
+                }
+                if let entry = self.project.titleCardClip(card.placement).flatMap({ self.project.layout.entry(for: $0.id) }) {
+                    self.seek(to: entry.range.start + MediaTime(seconds: min(0.8, entry.range.duration.seconds / 2)))
+                }
+            } catch {
+                self.showToast("Couldn't create the slide", systemImage: "exclamationmark.triangle")
+            }
+        }
+    }
+
+    func removeTitleCard(_ placement: TitleCard.Placement) {
+        edit("Remove slide") { $0.removeTitleCard(placement) }
     }
 
     func addText() {

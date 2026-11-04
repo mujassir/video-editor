@@ -185,7 +185,11 @@ public final class CompositionBuilder: @unchecked Sendable {
         }
         let scene = RenderScene(renderSize: renderSize, background: project.background, quality: quality,
                                 clips: infos, texts: project.textOverlays, captions: project.captions, stills: stills,
-                                toggles: toggles)
+                                toggles: toggles, watermark: project.watermark,
+                                watermarkImage: project.watermark.flatMap { w in
+                                    guard w.kind == .image, let name = w.imageFileName else { return nil }
+                                    return MediaImporter.loadImage(resolver.mediaDirectory.appendingPathComponent(name), maxPixelSize: 1024)
+                                })
         let sorted = boundaries.sorted()
         var instructions: [RenderInstruction] = []
         for (a, b) in zip(sorted, sorted.dropFirst()) where b > a {

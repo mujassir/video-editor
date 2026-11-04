@@ -118,7 +118,6 @@ final class FeatureUITests: CutlineUITestCase {
         if app.menuItems["Select All"].waitForExistence(timeout: 2) { app.menuItems["Select All"].tap() }
         field.typeText("Summer Trip")
         tap("font.Condensed")
-        tap("chip.Rise")
         tap("chip.Outline")
         snapshot("07-text")
         tap("panel.done")
@@ -220,10 +219,61 @@ final class FeatureUITests: CutlineUITestCase {
         openProjectWithSamples()
         tap("editor.export")
         tap("chip.720p")
+        let estimate = element("export.estimate")
+        XCTAssertTrue(estimate.waitForExistence(timeout: 5))
+        XCTAssertTrue(estimate.label.contains("Estimated size"), estimate.label)
         tap("export.start")
         XCTAssertTrue(element("export.done").waitForExistence(timeout: 300), "export did not finish")
         snapshot("13-exported")
         tap("export.close")
+    }
+
+    func test19_TextDurationAnimatePosition() {
+        openProjectWithSamples()
+        tap("tool.Text")
+        XCTAssertTrue(element("text.field").waitForExistence(timeout: 5))
+        tap("panel.done")
+        // Text stays selected: its toolbar has the photo-like tools.
+        for tool in ["tool.Duration", "tool.Animate", "tool.Position", "tool.Duplicate"] {
+            XCTAssertTrue(element(tool).waitForExistence(timeout: 5), "\(tool) missing for text")
+        }
+        tap("tool.Duration")
+        tap("chip.5s")
+        XCTAssertTrue(element("textDuration.value").label.hasPrefix("5.0 s"))
+        tap("panel.done")
+        tap("tool.Animate")
+        element("textAnimate.tabs").buttons["In"].tap()
+        tap("tanim.In.slideUp")
+        element("textAnimate.tabs").buttons["Combo"].tap()
+        tap("tanim.combo.pulse")
+        tap("panel.done")
+        tap("tool.Position")
+        tap("tpos.bottom")
+        snapshot("19-text-bottom")
+        tap("panel.done")
+        tap("tool.Duplicate")
+        waitFor("text duplicated") { count(prefix: "text.") == 2 }
+    }
+
+    func test20_WatermarkAndTitleCards() {
+        openProjectWithSamples()
+        tap("tool.Watermark")
+        tap("chip.Text")
+        XCTAssertTrue(element("watermark.text").waitForExistence(timeout: 5))
+        tap("wmpos.topLeft")
+        snapshot("20-watermark")
+        tap("panel.done")
+        let before = totalSeconds
+        tap("tool.Intro")
+        tap("titleCard.apply")
+        waitFor("opening slide added") { count(prefix: "clip.") == 4 && totalSeconds > before + 2.5 }
+        tap("panel.done")
+        tap("tool.Outro")
+        tap("titleCard.apply")
+        waitFor("closing slide added") { count(prefix: "clip.") == 5 }
+        snapshot("20-outro")
+        tap("titleCard.remove")
+        waitFor("closing slide removed") { count(prefix: "clip.") == 4 }
     }
 
     func test18_AudioTrimSplitDuplicate() {

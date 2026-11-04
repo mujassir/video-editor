@@ -234,7 +234,8 @@ public extension Project {
     mutating func setContentFit(_ fit: ContentFit, anchor: ContentAnchor) {
         defaultFit = fit
         defaultAnchor = anchor
-        for i in clips.indices {
+        // Title cards always fill (their content is kept in a safe centre area).
+        for i in clips.indices where clips[i].titleCard == nil {
             clips[i].transform.fit = fit
             clips[i].transform.anchor = anchor
         }
@@ -372,7 +373,16 @@ public extension Project {
 
     @discardableResult
     mutating func addText(_ text: String, at time: MediaTime, duration: MediaTime = MediaTime(seconds: 3)) -> UUID {
-        let overlay = TextOverlay(text: text, range: MediaTimeRange(start: time, duration: duration))
+        var overlay = TextOverlay(text: text, range: MediaTimeRange(start: time, duration: duration))
+        // New text uses the shared animation set: pop in, fade out.
+        var anim = ClipAnimation()
+        anim.entrance = .pop
+        anim.exit = .fade
+        anim.inDuration = 0.4
+        anim.outDuration = 0.4
+        overlay.animation = anim
+        overlay.animationIn = .none
+        overlay.animationOut = .none
         textOverlays.append(overlay)
         return overlay.id
     }
@@ -380,6 +390,60 @@ public extension Project {
     mutating func updateText(_ id: UUID, _ change: (inout TextOverlay) -> Void) {
         guard let i = textOverlays.firstIndex(where: { $0.id == id }) else { return }
         change(&textOverlays[i])
+    }
+
+    static let textDurationRange = MediaTime(seconds: 0.5)...MediaTime(seconds: 30)
+
+    mutating func setTextDuration(_ id: UUID, _ duration: MediaTime) {
+        updateText(id) { $0.range.duration = duration.clamped(to: Self.textDurationRange) }
+    }
+
+    mutating func moveText(_ id: UUID, toStart start: MediaTime) {
+        updateText(id) { $0.range.start = max(.zero, start) }
+    }
+
+    /// Fixed position; nil returns the text to free (dragged) placement.
+    mutating func setTextAnchor(_ id: UUID, _ anchor: OverlayAnchor?) {
+        updateText(id) { t in
+            t.anchor = anchor
+            if anchor == nil { t.centerX = 0.5; t.centerY = 0.5 }
+        }
+    }
+
+    @discardableResult
+    mutating func duplicateText(_ id: UUID) -> UUID? {
+        guard let t = textOverlays.first(where: { $0.id == id }) else { return nil }
+        var copy = t
+        copy.id = UUID()
+        copy.range.start = t.range.end
+        textOverlays.append(copy)
+        return copy.id
+    }
+
+    /// Opening / closing slide clip, if present.
+    func titleCardClip(_ placement: TitleCard.Placement) -> VideoClip? {
+        clips.first { $0.titleCard?.placement == placement }
+    }
+
+    /// Adds or replaces the opening (first) / closing (last) slide with a rendered image.
+    mutating func upsertTitleCard(_ card: TitleCard, image: MediaItem, duration: MediaTime) {
+        if !media.contains(where: { $0.id == image.id }) { media.append(image) }
+        if let i = clips.firstIndex(where: { $0.titleCard?.placement == card.placement }) {
+            clips[i].mediaID = image.id
+            clips[i].titleCard = card
+            clips[i].sourceRange.duration = duration.clamped(to: Self.stillDurationRange)
+            return
+        }
+        var clip = VideoClip(mediaID: image.id, kind: .photo,
+                             sourceRange: MediaTimeRange(start: .zero, duration: duration.clamped(to: Self.stillDurationRange)))
+        clip.titleCard = card
+        clip.transform.fit = .fill      // square card, safe centre: fills any canvas ratio
+        if card.placement == .opening { clips.insert(clip, at: 0) } else { clips.append(clip) }
+    }
+
+    mutating func removeTitleCard(_ placement: TitleCard.Placement) {
+        clips.removeAll { $0.titleCard?.placement == placement }
+        if let last = clips.indices.last { clips[last].transitionOut = nil }
     }
 
     mutating func deleteText(_ id: UUID) {

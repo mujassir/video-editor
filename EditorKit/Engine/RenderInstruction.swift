@@ -36,11 +36,16 @@ public final class RenderScene: @unchecked Sendable {
     public let stills: [UUID: CGImage]
     /// Live switches the compositor reads every frame (shared with the editor).
     public let toggles: RenderToggles
+    public let watermark: Watermark?
+    public let watermarkImage: CGImage?
 
     public init(renderSize: CGSize, background: CanvasBackground, quality: RenderQuality,
                 clips: [ClipRenderInfo], texts: [TextOverlay], captions: CaptionTrack, stills: [UUID: CGImage],
-                toggles: RenderToggles = RenderToggles()) {
+                toggles: RenderToggles = RenderToggles(),
+                watermark: Watermark? = nil, watermarkImage: CGImage? = nil) {
         self.toggles = toggles
+        self.watermark = watermark
+        self.watermarkImage = watermarkImage
         self.renderSize = renderSize
         self.background = background
         self.quality = quality

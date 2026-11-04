@@ -594,3 +594,88 @@ struct ClipAnimationTests {
         #expect(playing.z > 0.8, "playing: slide-in animation drawn, got \(playing)")
     }
 }
+
+@Suite("Text, watermark, title cards")
+struct OverlayFeatureTests {
+    private func s(_ v: Double) -> MediaTime { MediaTime(seconds: v) }
+
+    @Test func anchorsHugEdges() {
+        let canvas = CGSize(width: 1000, height: 1000)
+        let size = CGSize(width: 200, height: 100)
+        let tl = OverlayAnchor.topLeft.center(for: size, canvas: canvas, margin: 0.05)
+        #expect(abs(tl.x - 0.15) < 1e-9 && abs(tl.y - 0.1) < 1e-9)
+        let br = OverlayAnchor.bottomRight.center(for: size, canvas: canvas, margin: 0.05)
+        #expect(abs(br.x - 0.85) < 1e-9 && abs(br.y - 0.9) < 1e-9)
+        #expect(OverlayAnchor.center.center(for: size, canvas: canvas) == SIMD2(0.5, 0.5))
+    }
+
+    @Test func textEditingHelpers() {
+        var p = Project(name: "P")
+        let id = p.addText("Hi", at: s(1))
+        #expect(p.textOverlays[0].animation?.entrance == .pop, "new text uses the shared animation set")
+        p.setTextDuration(id, s(100))
+        #expect(p.textOverlays[0].range.duration == s(30))
+        p.setTextAnchor(id, .bottom)
+        #expect(p.textOverlays[0].anchor == .bottom)
+        let copy = p.duplicateText(id)
+        #expect(p.textOverlays.count == 2 && p.textOverlays[1].id == copy && p.textOverlays[1].range.start == s(31))
+    }
+
+    @Test func titleCardsGoFirstAndLast() throws {
+        var p = Project(name: "P")
+        p.appendClip(for: MediaItem(kind: .video, fileName: "v.mov", naturalSize: CGSize(width: 10, height: 10), duration: s(4), hasAudio: false))
+        let img = MediaItem(kind: .photo, fileName: "t.png", naturalSize: CGSize(width: 2160, height: 2160), duration: .zero, hasAudio: false)
+        p.upsertTitleCard(TitleCard(placement: .opening, title: "Hello"), image: img, duration: s(3))
+        p.upsertTitleCard(TitleCard(placement: .closing, title: "Bye"), image: img, duration: s(2))
+        #expect(p.clips.first?.titleCard?.placement == .opening && p.clips.last?.titleCard?.placement == .closing)
+        #expect(p.layout.duration == s(9))
+        // Updating replaces, never duplicates.
+        p.upsertTitleCard(TitleCard(placement: .opening, title: "Hello again"), image: img, duration: s(4))
+        #expect(p.clips.count == 3 && p.clips[0].titleCard?.title == "Hello again" && p.layout.duration == s(10))
+        p.setContentFit(.stretch, anchor: .center)
+        #expect(p.clips[0].transform.fit == .fill, "slides always fill")
+        p.removeTitleCard(.closing)
+        #expect(p.clips.count == 2)
+    }
+
+    @Test func titleCardRendersSquarePNG() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("tc-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        var card = TitleCard(placement: .opening, title: "Road Trip")
+        card.subtitle = "Summer 2026"
+        let item = try TitleCardRenderer.write(card, to: dir)
+        #expect(item.kind == .photo && item.naturalSize == CGSize(width: 2160, height: 2160))
+        #expect(FileManager.default.fileExists(atPath: dir.appendingPathComponent(item.fileName).path))
+    }
+
+    @Test func watermarkIsDrawnOverTheVideo() async throws {
+        var fx = try Fixture()
+        defer { fx.cleanup() }
+        try await fx.addVideo("black", duration: 1, draw: SampleMedia.solid(.black))
+        fx.project.background = .color(.black)
+        var mark = Watermark()
+        mark.text = "WATERMARK"
+        mark.anchor = .center
+        mark.size = 0.5
+        mark.opacity = 1
+        fx.project.watermark = mark
+        let built = try await CompositionBuilder().build(project: fx.project, resolver: fx.resolver,
+                                                         renderSize: CGSize(width: 320, height: 320))
+        let c = averageColor(try await renderFrame(built, at: 0.5), in: CGRect(x: 0.2, y: 0.45, width: 0.6, height: 0.1))
+        #expect(c.x > 0.1, "white watermark text should brighten the centre, got \(c)")
+    }
+}
+
+@Suite("Export estimate")
+struct ExportEstimateTests {
+    @Test func sizeGrowsWithQualityAndLength() {
+        let minute = MediaTime(seconds: 60)
+        let hd = ExportSettings(resolution: .p1080, frameRate: 30, codec: .h264).estimatedBytes(duration: minute)
+        // 16 Mbps video + 256 kbps audio for 60 s ≈ 122 MB.
+        #expect(abs(Double(hd) - 121_920_000) < 1_000_000)
+        #expect(ExportSettings(resolution: .p1080, frameRate: 30, codec: .hevc).estimatedBytes(duration: minute) < hd)
+        #expect(ExportSettings(resolution: .p2160, frameRate: 30, codec: .h264).estimatedBytes(duration: minute) > hd)
+        #expect(ExportSettings(resolution: .p1080, frameRate: 60, codec: .h264).estimatedBytes(duration: minute) > hd)
+        #expect(ExportSettings().estimatedBytes(duration: .zero) == 0)
+    }
+}
