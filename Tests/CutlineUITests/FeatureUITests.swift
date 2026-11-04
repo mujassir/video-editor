@@ -276,6 +276,7 @@ final class FeatureUITests: CutlineUITestCase {
         waitFor("opening slide added") { count(prefix: "clip.") == 4 && totalSeconds > before + 2.5 }
         tap("panel.done")
         tap("tool.Outro")
+        tap("titleStyle.ocean")
         tap("titleCard.apply")
         waitFor("closing slide added") { count(prefix: "clip.") == 5 }
         snapshot("20-outro")
