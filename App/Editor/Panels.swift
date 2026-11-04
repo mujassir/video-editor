@@ -506,7 +506,6 @@ struct TextPanel: View {
 
 struct MusicPanel: View {
     @Bindable var model: EditorModel
-    @State private var showFiles = false
     @State private var videoItem: PhotosPickerItem?
     var selectedAudio: AudioClip? {
         if case .audio(let id) = model.session.selection { return model.project.audioClips.first { $0.id == id } }
@@ -528,7 +527,7 @@ struct MusicPanel: View {
                     })).tint(Theme.accent).font(.subheadline)
                 } else {
                     HStack(spacing: 8) {
-                        sourceButton("Files", "folder") { showFiles = true }
+                        sourceButton("Files", "folder") { model.openFiles(for: .music) }
                         PhotosPicker(selection: $videoItem, matching: .videos) {
                             MusicSourceLabel(title: "From Video", icon: "film")
                         }
@@ -557,11 +556,6 @@ struct MusicPanel: View {
                     Text("Royalty-free · generated on device").font(.caption2).foregroundStyle(Theme.secondaryText)
                 }
             }
-        }
-        .fileImporter(isPresented: $showFiles, allowedContentTypes: [.audio], allowsMultipleSelection: false) { result in
-            guard case .success(let urls) = result, let url = urls.first else { return }
-            model.addMusicFile(url, name: url.deletingPathExtension().lastPathComponent)
-            model.panel = nil
         }
         .onChange(of: videoItem) { _, item in
             guard let item else { return }
@@ -686,69 +680,144 @@ struct TrimPanel: View {
     }
 }
 
-// MARK: - Photo animation
+// MARK: - Animate (In / Out / Combo / Motion)
 
 struct PhotoMotionPanel: View {
     @Bindable var model: EditorModel
     let clipID: UUID
-    private var current: PhotoMotion {
-        model.project.clipIndex(clipID).flatMap { model.project.clips[$0].photoMotion } ?? .none
+    @State private var tab: Tab = .entrance
+
+    enum Tab: String, CaseIterable, Identifiable {
+        case entrance = "In", exit = "Out", combo = "Combo", motion = "Motion"
+        var id: String { rawValue }
     }
-    private var photoCount: Int { model.project.clips.filter { $0.kind == .photo }.count }
+
+    private var clip: VideoClip? { model.project.clipIndex(clipID).map { model.project.clips[$0] } }
+    private var anim: ClipAnimation { clip?.animation ?? ClipAnimation() }
+    private var tabs: [Tab] { clip?.isStill == true ? Tab.allCases : [.entrance, .exit, .combo] }
+    private var motion: PhotoMotion { clip?.photoMotion ?? .none }
 
     var body: some View {
         PanelContainer(title: "Animate", onDone: { model.panel = nil }) {
-            VStack(spacing: 12) {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
-                    ForEach(PhotoMotion.allCases) { motion in
-                        Button { apply(motion, allPhotos: false) } label: {
-                            VStack(spacing: 4) {
-                                Image(systemName: motion.systemImage).font(.system(size: 17, weight: .semibold))
-                                Text(motion.displayName).font(.caption2.weight(.medium)).lineLimit(1).minimumScaleFactor(0.8)
+            VStack(spacing: 10) {
+                Picker("", selection: $tab) {
+                    ForEach(tabs) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("animate.tabs")
+                ScrollView {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+                        switch tab {
+                        case .entrance, .exit:
+                            tile("None", "nosign", selected: (tab == .entrance ? anim.entrance : anim.exit) == nil,
+                                 id: "anim.\(tab.rawValue).none") { setEntrance(nil) }
+                            ForEach(ClipEntrance.allCases) { k in
+                                tile(k.displayName, k.systemImage,
+                                     selected: (tab == .entrance ? anim.entrance : anim.exit) == k,
+                                     id: "anim.\(tab.rawValue).\(k.rawValue)") { setEntrance(k) }
                             }
-                            .frame(maxWidth: .infinity).padding(.vertical, 9)
-                            .background(current == motion ? Theme.accent : Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
-                            .foregroundStyle(.white)
+                        case .combo:
+                            tile("None", "nosign", selected: anim.combo == nil, id: "anim.combo.none") { setCombo(nil) }
+                            ForEach(ClipCombo.allCases) { k in
+                                tile(k.displayName, k.systemImage, selected: anim.combo == k,
+                                     id: "anim.combo.\(k.rawValue)") { setCombo(k) }
+                            }
+                        case .motion:
+                            ForEach(PhotoMotion.allCases) { m in
+                                tile(m.displayName, m.systemImage, selected: motion == m, id: "motion.\(m.rawValue)") { setMotion(m) }
+                            }
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("motion.\(motion.rawValue)")
                     }
                 }
-                if photoCount > 1 {
-                    Button { apply(current, allPhotos: true) } label: {
-                        Label("Apply to all \(photoCount) photos", systemImage: "square.stack.3d.down.right")
+                .frame(maxHeight: 190)
+                if tab == .entrance || tab == .exit {
+                    LabeledSlider(title: "Length", value: Binding(
+                        get: { tab == .entrance ? anim.inDuration : anim.outDuration },
+                        set: { v in
+                            let out = tab == .exit
+                            model.editCoalescing("Animation length", key: "alen-\(tab.rawValue)-\(clipID)") { p in
+                                try? p.updateClip(clipID) { c in
+                                    var a = c.animation ?? ClipAnimation()
+                                    if out { a.outDuration = v } else { a.inDuration = v }
+                                    c.animation = a
+                                }
+                            }
+                        }), range: 0.2...2, format: { String(format: "%.1fs", $0) })
+                }
+                if model.project.clips.count > 1 {
+                    Button { applyToAll() } label: {
+                        Label(tab == .motion ? "Apply to all photos" : "Apply to all clips", systemImage: "square.stack.3d.down.right")
                             .font(.subheadline.weight(.semibold))
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(Theme.accent)
-                    .accessibilityIdentifier("motion.applyAll")
+                    .accessibilityIdentifier("animate.applyAll")
                 }
             }
         }
     }
 
-    private func apply(_ motion: PhotoMotion, allPhotos: Bool) {
-        model.edit("Animate photo") { try $0.setPhotoMotion(motion, clipID: clipID, allPhotos: allPhotos) }
-        // Preview the move from the start of the clip.
-        if let entry = model.project.layout.entry(for: clipID) {
-            model.seek(to: entry.range.start)
-            model.player.play()
+    private func tile(_ title: String, _ icon: String, selected: Bool, id: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: icon).font(.system(size: 17, weight: .semibold))
+                Text(title).font(.caption2.weight(.medium)).lineLimit(1).minimumScaleFactor(0.75)
+            }
+            .frame(maxWidth: .infinity).padding(.vertical, 9)
+            .background(selected ? Theme.accent : Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
+            .foregroundStyle(.white)
         }
-        if allPhotos { model.showToast("Applied to all photos", systemImage: "square.stack.3d.down.right") }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(id)
     }
-}
 
-struct MusicSourceLabel: View {
-    let title: String
-    let icon: String
-    var body: some View {
-        VStack(spacing: 4) {
-            Image(systemName: icon).font(.system(size: 17, weight: .semibold))
-            Text(title).font(.caption.weight(.medium))
+    private func setEntrance(_ kind: ClipEntrance?) {
+        let out = tab == .exit
+        model.edit(out ? "Out animation" : "In animation") { p in
+            try p.updateClip(clipID) { c in
+                var a = c.animation ?? ClipAnimation()
+                if out { a.exit = kind } else { a.entrance = kind }
+                c.animation = a.isEmpty ? nil : a
+            }
         }
-        .frame(maxWidth: .infinity).padding(.vertical, 10)
-        .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
-        .foregroundStyle(.white)
+        preview(atEnd: out)
+    }
+
+    private func setCombo(_ kind: ClipCombo?) {
+        model.edit("Combo animation") { p in
+            try p.updateClip(clipID) { c in
+                var a = c.animation ?? ClipAnimation()
+                a.combo = kind
+                c.animation = a.isEmpty ? nil : a
+            }
+        }
+        preview(atEnd: false)
+    }
+
+    private func setMotion(_ m: PhotoMotion) {
+        model.edit("Animate photo") { try $0.setPhotoMotion(m, clipID: clipID) }
+        preview(atEnd: false)
+    }
+
+    private func applyToAll() {
+        if tab == .motion {
+            model.edit("Animate photos") { try $0.setPhotoMotion(motion, clipID: clipID, allPhotos: true) }
+            model.showToast("Applied to all photos", systemImage: "square.stack.3d.down.right")
+        } else {
+            let a = anim
+            model.edit("Animate all clips") { p in
+                for i in p.clips.indices { p.clips[i].animation = a.isEmpty ? nil : a }
+            }
+            model.showToast("Applied to all clips", systemImage: "square.stack.3d.down.right")
+        }
+    }
+
+    /// Plays the part of the clip where the chosen animation happens.
+    private func preview(atEnd: Bool) {
+        guard let entry = model.project.layout.entry(for: clipID) else { return }
+        let lead = MediaTime(seconds: min(1.5, entry.range.duration.seconds))
+        model.seek(to: atEnd ? max(entry.range.start, entry.range.end - lead) : entry.range.start)
+        model.player.play()
     }
 }
 

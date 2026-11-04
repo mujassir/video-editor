@@ -150,6 +150,13 @@ final class FeatureUITests: CutlineUITestCase {
             XCTAssertTrue(element(source).waitForExistence(timeout: 5), "\(source) missing")
         }
         snapshot("09-music-sources")
+        // Files must actually present the system picker (regression: it silently did nothing).
+        tap("music.source.files")
+        let cancel = app.buttons["Cancel"]
+        XCTAssertTrue(cancel.waitForExistence(timeout: 10), "Files picker did not open from the Music panel")
+        snapshot("09-music-files-picker")
+        cancel.tap()
+        XCTAssertTrue(element("music.use.sunrise").waitForExistence(timeout: 5))
         tap("music.use.sunrise")
         waitUntilIdle()
         waitFor("music lane") { count(prefix: "audio.") == 1 }
@@ -217,6 +224,22 @@ final class FeatureUITests: CutlineUITestCase {
         XCTAssertTrue(element("export.done").waitForExistence(timeout: 300), "export did not finish")
         snapshot("13-exported")
         tap("export.close")
+    }
+
+    func test16_ClipAnimations() {
+        openProjectWithSamples()
+        selectClip(0)
+        tap("tool.Animate")
+        tap("anim.In.zoomIn")
+        let tabs = element("animate.tabs")
+        tabs.buttons["Out"].tap()
+        tap("anim.Out.fade")
+        tabs.buttons["Combo"].tap()
+        tap("anim.combo.pulse")
+        snapshot("16-animations")
+        tap("animate.applyAll")
+        XCTAssertNotNil(toastText)
+        tap("panel.done")
     }
 
     func test15_PhotoToolbarAndDuration() {

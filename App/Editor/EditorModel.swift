@@ -26,6 +26,15 @@ final class EditorModel {
     var busyProgress: Double?
     var lastError: String?
     var previewReady = false
+    /// The single Files picker on the editor screen and what it was opened for.
+    /// SwiftUI presents only one `.fileImporter` per screen, so panels request it here.
+    var showFileImporter = false
+    private(set) var fileImportPurpose: FileImportPurpose = .media
+
+    func openFiles(for purpose: FileImportPurpose) {
+        fileImportPurpose = purpose
+        showFileImporter = true
+    }
     /// Last displayed frame, shown over the preview while a rebuilt player item warms up
     /// (avoids a black flash after every edit).
     var holdFrame: UIImage?
@@ -495,4 +504,8 @@ enum MusicImportError: LocalizedError {
         case .noAudio: return "That file has no audio track."
         }
     }
+}
+
+enum FileImportPurpose {
+    case media, music
 }

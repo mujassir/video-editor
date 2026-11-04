@@ -192,6 +192,77 @@ public struct Transition: Codable, Hashable, Sendable {
     }
 }
 
+/// Entrance / exit animation for a clip (exits play the entrance in reverse).
+public enum ClipEntrance: String, Codable, CaseIterable, Sendable, Identifiable {
+    case fade, zoomIn, zoomOut, slideLeft, slideRight, slideUp, slideDown, rotate, spin, pop, bounce, drop, blur, swing
+    public var id: String { rawValue }
+    public var displayName: String {
+        switch self {
+        case .fade: return "Fade"
+        case .zoomIn: return "Zoom In"
+        case .zoomOut: return "Zoom Out"
+        case .slideLeft: return "Slide ←"
+        case .slideRight: return "Slide →"
+        case .slideUp: return "Slide ↑"
+        case .slideDown: return "Slide ↓"
+        case .rotate: return "Rotate"
+        case .spin: return "Spin"
+        case .pop: return "Pop"
+        case .bounce: return "Bounce"
+        case .drop: return "Drop"
+        case .blur: return "Blur"
+        case .swing: return "Swing"
+        }
+    }
+    public var systemImage: String {
+        switch self {
+        case .fade: return "circle.lefthalf.filled"
+        case .zoomIn: return "plus.magnifyingglass"
+        case .zoomOut: return "minus.magnifyingglass"
+        case .slideLeft: return "arrow.left"
+        case .slideRight: return "arrow.right"
+        case .slideUp: return "arrow.up"
+        case .slideDown: return "arrow.down"
+        case .rotate: return "rotate.right"
+        case .spin: return "arrow.triangle.2.circlepath"
+        case .pop: return "sparkle"
+        case .bounce: return "arrow.up.and.down"
+        case .drop: return "arrow.down.to.line"
+        case .blur: return "drop"
+        case .swing: return "metronome"
+        }
+    }
+}
+
+/// Looping emphasis animation across the whole clip.
+public enum ClipCombo: String, Codable, CaseIterable, Sendable, Identifiable {
+    case pulse, heartbeat, shake, wobble, swing, float, rock, spin
+    public var id: String { rawValue }
+    public var displayName: String { rawValue == "float" ? "Float" : rawValue.capitalized }
+    public var systemImage: String {
+        switch self {
+        case .pulse: return "dot.radiowaves.left.and.right"
+        case .heartbeat: return "heart"
+        case .shake: return "waveform.path"
+        case .wobble: return "rotate.left"
+        case .swing: return "metronome"
+        case .float: return "cloud"
+        case .rock: return "arrow.left.and.right.circle"
+        case .spin: return "arrow.clockwise"
+        }
+    }
+}
+
+public struct ClipAnimation: Codable, Hashable, Sendable {
+    public var entrance: ClipEntrance?
+    public var exit: ClipEntrance?
+    public var combo: ClipCombo?
+    public var inDuration: Double = 0.6
+    public var outDuration: Double = 0.6
+    public init() {}
+    public var isEmpty: Bool { entrance == nil && exit == nil && combo == nil }
+}
+
 /// Animated camera move over a still image.
 public enum PhotoMotion: String, Codable, CaseIterable, Sendable, Identifiable {
     case none, zoomIn, zoomOut, panLeft, panRight, panUp, panDown, kenBurns
@@ -269,6 +340,8 @@ public struct VideoClip: Codable, Hashable, Identifiable, Sendable {
     /// Motion applied to photos and freeze frames (Ken Burns style). Optional so
     /// projects saved before this existed still load.
     public var photoMotion: PhotoMotion?
+    /// In / Out / Combo animations (photos and videos). Optional so old projects load.
+    public var animation: ClipAnimation?
 
     public init(id: UUID = UUID(), mediaID: UUID, kind: MediaKind, sourceRange: MediaTimeRange) {
         self.id = id
