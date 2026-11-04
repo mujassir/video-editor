@@ -20,7 +20,39 @@ final class EditorModel {
     var currentTime: MediaTime = .zero
     var isPlaying = false
     var isScrubbing = false
-    var panel: EditorPanel?
+    var panel: EditorPanel? {
+        didSet {
+            guard let panel, panel != oldValue else { return }
+            switch panel {
+            case .filters, .adjust, .crop, .background, .volume, .speed, .duration:
+                showCleanFrameOfSelection()
+            default:
+                break
+            }
+        }
+    }
+
+    /// Moves the playhead to a frame of the selected clip where no In/Out animation,
+    /// transition or fade is active, so filters and adjustments can be judged.
+    func showCleanFrameOfSelection() {
+        guard let id = selectedClipID, let index = project.clipIndex(id),
+              let entry = project.layout.entry(for: id) else { return }
+        let clip = project.clips[index]
+        let duration = entry.range.duration.seconds
+        var restStart = entry.overlapIn.seconds
+        var restEnd = duration - entry.overlapOut.seconds
+        if let anim = clip.animation {
+            if anim.entrance != nil { restStart = max(restStart, min(anim.inDuration, duration / 2)) }
+            if anim.exit != nil { restEnd = min(restEnd, duration - min(anim.outDuration, duration / 2)) }
+        }
+        let local = restEnd > restStart ? (restStart + restEnd) / 2 : duration / 2
+        let target = entry.range.start + MediaTime(seconds: local)
+        // Already looking at a clean frame of this clip? Leave the playhead alone.
+        if currentTime >= entry.range.start + MediaTime(seconds: restStart),
+           currentTime <= entry.range.start + MediaTime(seconds: max(restStart, restEnd)) { return }
+        pause()
+        seek(to: target)
+    }
     var toast: Toast?
     var busyMessage: String?
     var busyProgress: Double?

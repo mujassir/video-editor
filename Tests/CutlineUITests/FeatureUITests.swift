@@ -226,6 +226,25 @@ final class FeatureUITests: CutlineUITestCase {
         tap("export.close")
     }
 
+    func test17_FilterPreviewShowsCleanFrame() {
+        openProjectWithSamples()
+        // Clip 1 spans 4–8 s and fades out; the playhead starts at 0 (outside it).
+        selectClip(1)
+        tap("tool.Animate")
+        element("animate.tabs").buttons["Out"].tap()
+        tap("anim.Out.fade")
+        tap("panel.done")
+        tap("tool.Filters")
+        // Opening Filters jumps to the middle of the clip's un-animated part.
+        waitFor("playhead in the clean part of clip 1") {
+            let parts = element("time.current").label.split(separator: ":")
+            guard parts.count == 2, let s = Double(parts[1]) else { return false }
+            return s > 4.5 && s < 7.0
+        }
+        tap("filter.mono")
+        snapshot("17-filter-clean-frame")
+    }
+
     func test16_ClipAnimations() {
         openProjectWithSamples()
         selectClip(0)

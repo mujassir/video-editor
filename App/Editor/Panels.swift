@@ -145,6 +145,7 @@ struct FiltersPanel: View {
         let selected = clip?.filter?.filterID == id
         return Button {
             model.edit("Filter") { p in try p.updateClip(clipID) { $0.filter = id.map { FilterSetting(filterID: $0) } } }
+            model.showCleanFrameOfSelection()
         } label: {
             VStack(spacing: 4) {
                 Group {
