@@ -6,6 +6,12 @@ final class FeatureUITests: CutlineUITestCase {
     func test01_ProjectLibraryAndImport() {
         XCTAssertTrue(element("projects.new").waitForExistence(timeout: 10))
         snapshot("01-projects-empty")
+        // A new project closed without adding anything is not kept.
+        tap("projects.new")
+        tap("editor.close")
+        XCTAssertTrue(element("projects.new").waitForExistence(timeout: 10))
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        XCTAssertFalse(element("project.card").exists, "empty project should not appear in the library")
         openProjectWithSamples()
         XCTAssertEqual(count(prefix: "clip."), 3)
         XCTAssertEqual(totalSeconds, 12, accuracy: 0.2)

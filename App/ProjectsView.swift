@@ -9,8 +9,13 @@ struct RootView: View {
         ZStack {
             if let editor {
                 EditorView(model: editor) {
+                    let closed = editor.project
                     self.editor = nil
-                    app.reload()
+                    if closed.isEmptyEdit {
+                        app.delete(closed)      // nothing was added: don't keep a 0:00 project
+                    } else {
+                        app.reload()
+                    }
                 }
                 .transition(.move(edge: .trailing))
             } else {

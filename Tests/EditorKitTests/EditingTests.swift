@@ -401,3 +401,13 @@ struct AudioEditingTests {
         #expect(c.start == r.timelineRange.end && c.sourceRange == r.sourceRange && c.lane == r.lane)
     }
 }
+
+@Suite("Empty projects")
+struct EmptyProjectTests {
+    @Test func emptyUntilSomethingIsAdded() {
+        var p = Project(name: "P")
+        #expect(p.isEmptyEdit)
+        p.addText("Hi", at: .zero)
+        #expect(!p.isEmptyEdit)
+    }
+}

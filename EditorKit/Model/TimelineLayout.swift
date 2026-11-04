@@ -59,6 +59,11 @@ public struct TimelineLayout: Sendable {
 public extension Project {
     var layout: TimelineLayout { TimelineLayout(clips: clips) }
 
+    /// Nothing has been added yet (no clips, audio, text or captions).
+    var isEmptyEdit: Bool {
+        clips.isEmpty && audioClips.isEmpty && textOverlays.isEmpty && captions.segments.isEmpty
+    }
+
     /// Total length of the edit, including free audio and text that extend past the video.
     var duration: MediaTime {
         var d = layout.duration
