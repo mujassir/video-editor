@@ -49,7 +49,7 @@ jobs:
           xcodebuild build-for-testing -project Cutline.xcodeproj -scheme Cutline -destination "id=$UDID" \
             -derivedDataPath build/dd CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E "error:|\*\* " | head -50
       - name: Record tour
-        timeout-minutes: 60
+        timeout-minutes: 75
         run: |
           xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 \
             --cellularBars 4 --wifiBars 3 --dataNetwork wifi || true
@@ -64,8 +64,9 @@ jobs:
           TEST_RUNNER_DEMO_SCRIPT="$RUNNER_TEMP/narration/script.json" TEST_RUNNER_DEMO_MEDIA="$RUNNER_TEMP/demo-media" \
           xcodebuild test-without-building -project Cutline.xcodeproj -scheme Cutline -destination "id=$UDID" \
             -derivedDataPath build/dd -only-testing:CutlineUITests/DemoTourUITests CODE_SIGNING_ALLOWED=NO \
-            > build/tour.log 2>&1
-          STATUS=$?
+            -test-timeouts-enabled YES -maximum-test-execution-time-allowance 3000 \
+            2>&1 | tee build/tour.log | grep --line-buffered -E "CHAPTER|error:|Tap |Waiting|Find:|Timed out|TOAST|ALERT" | grep --line-buffered -vE "^\s+t = .*(Snapshot|Checking|Wait for)" 
+          STATUS=${PIPESTATUS[0]}
           sleep 1
           kill -INT $REC; wait $REC
           grep -E "CHAPTER|error:|failed|passed|XCTAssert|Timed out|TOAST" build/tour.log | head -80
