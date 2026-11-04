@@ -91,4 +91,20 @@ public final class RenderToggles: @unchecked Sendable {
         get { lock.lock(); defer { lock.unlock() }; return _animations }
         set { lock.lock(); _animations = newValue; lock.unlock() }
     }
+
+    private var _textCenters: [UUID: SIMD2<Double>] = [:]
+
+    /// Live position of a text overlay being dragged (canvas-normalized), drawn
+    /// immediately without rebuilding the composition.
+    public func textCenter(_ id: UUID) -> SIMD2<Double>? {
+        lock.lock(); defer { lock.unlock() }; return _textCenters[id]
+    }
+
+    public func setTextCenter(_ center: SIMD2<Double>?, for id: UUID) {
+        lock.lock(); _textCenters[id] = center; lock.unlock()
+    }
+
+    public func clearTextCenters() {
+        lock.lock(); _textCenters.removeAll(); lock.unlock()
+    }
 }

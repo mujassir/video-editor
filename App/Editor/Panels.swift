@@ -1090,12 +1090,12 @@ struct TextPositionPanel: View {
                     if let overlay, !overlay.range.contains(model.currentTime) { model.seek(to: overlay.range.start + MediaTime(seconds: 0.5)) }
                 }
                 HStack {
-                    ChipButton(title: "Free (drag)", isSelected: overlay?.anchor == nil) {
+                    ChipButton(title: "Custom", isSelected: overlay?.anchor == nil) {
                         model.edit("Text position") { $0.setTextAnchor(textID, nil) }
                     }
                     Spacer()
                 }
-                Text("Fixed spots hug the edge whatever the text length. Or drag the text on the preview.")
+                Text("Fixed spots keep the text inside the video at that edge. For any other spot, drag the text on the video – that sets Custom.")
                     .font(.caption2).foregroundStyle(Theme.secondaryText)
             }
         }

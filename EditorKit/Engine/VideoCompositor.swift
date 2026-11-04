@@ -252,7 +252,9 @@ public final class VideoCompositor: NSObject, AVVideoCompositing, @unchecked Sen
             }
             guard let image, let tex = renderer.texture(for: image) else { continue }
             let size = CGSize(width: Double(image.width) * overlay.scale, height: Double(image.height) * overlay.scale)
-            var center = overlay.anchor?.center(for: size, canvas: canvas) ?? SIMD2(overlay.centerX, overlay.centerY)
+            var center = scene.toggles.textCenter(overlay.id)
+                ?? overlay.anchor?.center(for: size, canvas: canvas)
+                ?? SIMD2(overlay.centerX, overlay.centerY)
             center.y += state.offsetY
             var scale = overlay.scale * state.scale
             var rotation = overlay.rotation
