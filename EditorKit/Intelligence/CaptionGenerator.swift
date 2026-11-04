@@ -34,11 +34,6 @@ public enum CaptionGenerator {
     /// Unstructured on purpose: a hung system callback can't block the caller.
     static func withTimeout<T: Sendable>(_ seconds: Double, stage: String,
                                          _ work: @escaping @Sendable () async throws -> T) async throws -> T {
-        final class Once: @unchecked Sendable {
-            private let lock = NSLock()
-            private var done = false
-            func claim() -> Bool { lock.lock(); defer { lock.unlock() }; if done { return false }; done = true; return true }
-        }
         let once = Once()
         return try await withCheckedThrowingContinuation { (c: CheckedContinuation<T, Error>) in
             let task = Task {
@@ -223,4 +218,11 @@ public enum CaptionGenerator {
         track.isVisible = true
         return (track, engine)
     }
+}
+
+/// Resolves a race exactly once (used by timeouts).
+final class Once: @unchecked Sendable {
+    private let lock = NSLock()
+    private var done = false
+    func claim() -> Bool { lock.lock(); defer { lock.unlock() }; if done { return false }; done = true; return true }
 }
