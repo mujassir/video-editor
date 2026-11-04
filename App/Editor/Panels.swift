@@ -900,7 +900,12 @@ struct AudioTrimPanel: View {
                             try? p.moveAudio(audioID, toTimelineStart: MediaTime(seconds: v))
                         }
                     }), range: 0...max(0.01, model.project.layout.duration.seconds), format: secs)
-                    Text("Section picks which part of the song plays (same length). Starts at moves it on the timeline.")
+                    Toggle("Match video length", isOn: Binding(get: { clip.followsVideo }, set: { v in
+                        model.edit("Match video length") { p in p.updateAudio(audioID) { $0.fitsVideo = v } }
+                    }))
+                    .tint(Theme.accent).font(.subheadline)
+                    .accessibilityIdentifier("audioTrim.matchVideo")
+                    Text("Section picks which part of the song plays. Starts at moves it on the timeline. With Match video length on, the music always ends with the video.")
                         .font(.caption2).foregroundStyle(Theme.secondaryText)
                 }
             }

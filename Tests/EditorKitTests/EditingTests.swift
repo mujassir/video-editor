@@ -411,3 +411,53 @@ struct EmptyProjectTests {
         #expect(!p.isEmptyEdit)
     }
 }
+
+@Suite("Music follows video length")
+struct MusicFollowsVideoTests {
+    private func project(video: Double, song: Double) -> Project {
+        var p = Project(name: "P")
+        p.appendClip(for: MediaItem(kind: .video, fileName: "v.mov", naturalSize: CGSize(width: 10, height: 10), duration: s(video), hasAudio: false))
+        let item = MediaItem(kind: .audio, fileName: "song.m4a", naturalSize: .zero, duration: s(song), hasAudio: true)
+        p.media.append(item)
+        var clip = AudioClip(mediaID: item.id, role: .music, sourceRange: MediaTimeRange(start: .zero, duration: s(video)), start: .zero)
+        clip.fitsVideo = true
+        p.addAudio(clip)
+        return p
+    }
+
+    @Test func growsAndShrinksWithTheVideo() {
+        var p = project(video: 90, song: 180)
+        p.appendClip(for: MediaItem(kind: .photo, fileName: "a.jpg", naturalSize: CGSize(width: 10, height: 10), duration: .zero, hasAudio: false), photoDuration: s(15))
+        p.refitMusic()
+        #expect(p.audioClips[0].sourceRange.duration == s(105), "music extends to the new 105 s end")
+        p.clips.removeLast()
+        p.refitMusic()
+        #expect(p.audioClips[0].sourceRange.duration == s(90))
+    }
+
+    @Test func stopsAtTheEndOfAShortSong() {
+        var p = project(video: 90, song: 100)
+        p.appendClip(for: MediaItem(kind: .photo, fileName: "a.jpg", naturalSize: CGSize(width: 10, height: 10), duration: .zero, hasAudio: false), photoDuration: s(30))
+        p.refitMusic()
+        #expect(p.audioClips[0].sourceRange.duration == s(100))
+    }
+
+    @Test func manualEndStopsFollowing() throws {
+        var p = project(video: 90, song: 180)
+        let id = p.audioClips[0].id
+        try p.setAudioSourceRange(id, MediaTimeRange(start: .zero, end: s(60)))
+        p.appendClip(for: MediaItem(kind: .photo, fileName: "a.jpg", naturalSize: CGSize(width: 10, height: 10), duration: .zero, hasAudio: false), photoDuration: s(15))
+        p.refitMusic()
+        #expect(p.audioClips[0].sourceRange.duration == s(60), "user-chosen end is kept")
+    }
+
+    @Test @MainActor func everyEditRefits() throws {
+        let session = EditSession(project: project(video: 90, song: 180))
+        try session.apply("Add photo") { p in
+            p.appendClip(for: MediaItem(kind: .photo, fileName: "a.jpg", naturalSize: CGSize(width: 10, height: 10), duration: .zero, hasAudio: false), photoDuration: s(10))
+        }
+        #expect(session.project.audioClips[0].sourceRange.duration == s(100))
+        session.undo()
+        #expect(session.project.audioClips[0].sourceRange.duration == s(90))
+    }
+}

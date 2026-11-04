@@ -43,6 +43,7 @@ public final class EditSession {
     public func apply<T>(_ label: String, _ edit: (inout Project) throws -> T) rethrows -> T {
         var next = project
         let result = try edit(&next)
+        next.refitMusic()
         commit(label, next)
         return result
     }
@@ -52,6 +53,7 @@ public final class EditSession {
     public func applyCoalescing(_ label: String, key: AnyHashable, _ edit: (inout Project) -> Void) {
         var next = project
         edit(&next)
+        next.refitMusic()
         if lastCoalescingKey == key, !undoStack.isEmpty {
             redoStack.removeAll()
             setProject(next)

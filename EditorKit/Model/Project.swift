@@ -392,6 +392,10 @@ public struct AudioClip: Codable, Hashable, Identifiable, Sendable {
     /// Beat times detected in the source (source time), if analysed.
     public var beats: [MediaTime] = []
     public var name: String = ""
+    /// Music keeps its end at the end of the video as the edit grows or shrinks.
+    /// nil (older projects) means "yes" for music, "no" for other roles.
+    public var fitsVideo: Bool?
+    public var followsVideo: Bool { fitsVideo ?? (role == .music) }
 
     public init(id: UUID = UUID(), mediaID: UUID, role: Role, sourceRange: MediaTimeRange, start: MediaTime) {
         self.id = id
