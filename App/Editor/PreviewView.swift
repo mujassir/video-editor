@@ -6,12 +6,24 @@ import EditorKit
 final class PlayerLayerView: UIView {
     override class var layerClass: AnyClass { AVPlayerLayer.self }
     var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+    var onReadyForDisplay: (() -> Void)?
+    private var observation: NSKeyValueObservation?
+
+    func observeReadiness() {
+        observation = playerLayer.observe(\.isReadyForDisplay, options: [.new]) { [weak self] layer, _ in
+            guard layer.isReadyForDisplay else { return }
+            DispatchQueue.main.async { self?.onReadyForDisplay?() }
+        }
+    }
 }
 
 struct PlayerSurface: UIViewRepresentable {
     let player: AVPlayer
+    var onReady: () -> Void = {}
     func makeUIView(context: Context) -> PlayerLayerView {
         let v = PlayerLayerView()
+        v.onReadyForDisplay = onReady
+        v.observeReadiness()
         v.playerLayer.player = player
         v.playerLayer.videoGravity = .resizeAspect
         v.backgroundColor = .black
@@ -35,8 +47,16 @@ struct PreviewView: View {
                 if model.project.clips.isEmpty {
                     emptyState
                 } else {
-                    PlayerSurface(player: model.player)
+                    PlayerSurface(player: model.player, onReady: {
+                        // New item's first frame is up: drop the held frame shortly after.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { model.holdFrame = nil }
+                    })
                         .frame(width: fitted.width, height: fitted.height)
+                        .overlay {
+                            if let frame = model.holdFrame {
+                                Image(uiImage: frame).resizable().allowsHitTesting(false)
+                            }
+                        }
                         .clipShape(RoundedRectangle(cornerRadius: 4))
                         .overlay(textHandles(canvas: fitted))
                         .contentShape(Rectangle())

@@ -109,6 +109,25 @@ class CutlineUITestCase: XCTestCase {
         waitUntilIdle()
     }
 
+    /// Drags the timeline until the element with `id` sits near the playhead, then taps it.
+    func revealAndTap(_ id: String) {
+        let e = element(id)
+        XCTAssertTrue(e.waitForExistence(timeout: 10), "\(id) not found")
+        let timeline = element("timeline")
+        for _ in 0..<20 {
+            let dx = e.frame.midX - timeline.frame.midX
+            if abs(dx) < timeline.frame.width * 0.3 { break }
+            // Small, slow drags that start and end on screen (no fling).
+            let step = max(-140, min(140, dx))
+            let startX: CGFloat = step > 0 ? 0.75 : 0.25
+            let from = timeline.coordinate(withNormalizedOffset: CGVector(dx: startX, dy: 0.15))
+            from.press(forDuration: 0.3, thenDragTo: from.withOffset(CGVector(dx: -step, dy: 0)),
+                       withVelocity: .slow, thenHoldForDuration: 0.2)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+        e.tap()
+    }
+
     /// Taps the main track right under the playhead.
     func selectClipAtPlayhead() {
         let timeline = element("timeline")
@@ -121,7 +140,9 @@ class CutlineUITestCase: XCTestCase {
         let clip = element("clip.\(index)")
         XCTAssertTrue(clip.waitForExistence(timeout: 5))
         clip.tap()
-        XCTAssertTrue(element("tool.Split").waitForExistence(timeout: 5), "clip tools should appear")
+        // Video clips show Split first; photos and freeze frames show Duration.
+        let shown = element("tool.Split").waitForExistence(timeout: 5) || element("tool.Duration").exists
+        XCTAssertTrue(shown, "clip tools should appear")
     }
 
     /// Saves a screenshot as an attachment and prints a small JPEG for CI log review.

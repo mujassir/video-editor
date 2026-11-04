@@ -10,6 +10,27 @@ final class DemoTourUITests: CutlineUITestCase {
     override var useDemoMedia: Bool { true }
     private var durations: [Double] = []
 
+    override func setUp() {
+        super.setUp()
+        // A recording with one missed step beats no recording: keep going after failures.
+        continueAfterFailure = true
+    }
+
+    /// Soft tap for the tour: reveals timeline items, retries once, never aborts the recording.
+    override func tap(_ id: String, timeout: TimeInterval = 10, file: StaticString = #filePath, line: UInt = #line) {
+        let e = element(id)
+        if !e.waitForExistence(timeout: timeout) {
+            print("TOUR WARNING: \(id) not found – retrying")
+            if id.hasPrefix("chip.") || id == "panel.done" { pause(1) }
+            guard e.waitForExistence(timeout: 3) else { print("TOUR WARNING: skipped \(id)"); return }
+        }
+        if id.hasPrefix("transition.") || id.hasPrefix("clip.") {
+            revealAndTap(id)
+        } else {
+            super.tap(id, timeout: 1, file: file, line: line)
+        }
+    }
+
     private func chapter(_ index: Int, _ actions: () -> Void) {
         let start = Date()
         print("CHAPTER \(index) \(String(format: "%.3f", start.timeIntervalSince1970))")
@@ -37,6 +58,7 @@ final class DemoTourUITests: CutlineUITestCase {
             throw XCTSkip("DEMO_SCRIPT not provided")
         }
         durations = list
+        executionTimeAllowance = 3600
         XCTAssertTrue(element("projects.new").waitForExistence(timeout: 15))
 
         // 0 – Intro (title card is added in post; show the library).
@@ -51,6 +73,10 @@ final class DemoTourUITests: CutlineUITestCase {
             app.buttons["Sample Clips"].tap()
             waitFor("demo clips", timeout: 120) { count(prefix: "clip.") >= 4 }
             waitUntilIdle()
+            tap("editor.aspect")
+            tap("chip.16:9")
+            pause(0.5)
+            tap("panel.done")
         }
 
         // 2 – Playback, scrub, zoom.
@@ -94,7 +120,7 @@ final class DemoTourUITests: CutlineUITestCase {
             tap("chip.1×")
             tap("panel.done")
             tap("tool.Reverse")
-            waitUntilIdle()
+            waitUntilIdle(timeout: 600)
             pause(0.8)
             tap("tool.Reverse")
             pause(0.5)
@@ -136,8 +162,9 @@ final class DemoTourUITests: CutlineUITestCase {
             if field.waitForExistence(timeout: 5) {
                 field.tap()
                 field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 9))
-                field.typeText("ROAD TRIP")
+                field.typeText("ROAD TRIP\n")
             }
+            pause(0.6)
             tap("font.Condensed")
             pause(0.5)
             tap("chip.Outline")
@@ -157,11 +184,8 @@ final class DemoTourUITests: CutlineUITestCase {
             tap("chip.Zoom")
             pause(2.2)
             tap("panel.done")
-            let tl = element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
-            tl.press(forDuration: 0.05, thenDragTo: tl.withOffset(CGVector(dx: -200, dy: 0)))
-            pause(0.6)
             tap("transition.1")
-            tap("chip.Glitch")
+            tap("chip.Slide")
             pause(2.2)
             tap("panel.done")
         }
@@ -184,29 +208,30 @@ final class DemoTourUITests: CutlineUITestCase {
         chapter(10) {
             selectNone()
             tap("tool.Silence")
-            waitUntilIdle()
+            waitUntilIdle(timeout: 300)
             pause(1.5)
         }
 
-        // 11 – Auto reframe on the vlog close-up.
-        chapter(11) {
-            seekToVlog()
-            selectClipAtPlayhead()
-            tap("tool.Reframe")
-            waitUntilIdle()
-            pause(0.5)
-            play(3)
-        }
 
-        // 12 – Canvas formats.
-        chapter(12) {
+        // 11 – Canvas formats.
+        chapter(11) {
             selectNone()
             tap("editor.aspect")
-            for r in ["chip.1:1", "chip.16:9", "chip.4:5", "chip.9:16"] {
+            for r in ["chip.1:1", "chip.4:5", "chip.16:9", "chip.9:16"] {
                 tap(r)
                 pause(1.1)
             }
             tap("panel.done")
+        }
+
+        // 12 – Auto reframe on the vlog close-up (9:16 canvas).
+        chapter(12) {
+            revealAndTap("clip.1")
+            XCTAssertTrue(element("tool.Reframe").waitForExistence(timeout: 5))
+            tap("tool.Reframe")
+            waitUntilIdle(timeout: 300)
+            pause(0.5)
+            play(3)
         }
 
         // 13 – Export.
@@ -233,8 +258,9 @@ final class DemoTourUITests: CutlineUITestCase {
 
     private func selectNone() {
         // Tapping empty timeline space clears the selection.
+        // The ruler (top 18 pt of the timeline) never holds a clip.
         let timeline = element("timeline")
-        timeline.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.95)).tap()
+        timeline.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: timeline.frame.width * 0.8, dy: 8)).tap()
         pause(0.3)
     }
 

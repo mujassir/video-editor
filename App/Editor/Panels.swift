@@ -63,13 +63,37 @@ struct SwatchRow: View {
 
 struct CanvasPanel: View {
     @Bindable var model: EditorModel
+    /// Canvas fit as set by the user, else what the first clip uses.
+    private var currentFit: ContentFit { model.project.defaultFit ?? model.project.clips.first?.transform.fit ?? .fit }
+    private var currentAnchor: ContentAnchor { model.project.defaultAnchor ?? model.project.clips.first?.transform.anchor ?? .center }
     var body: some View {
         PanelContainer(title: "Canvas", onDone: { model.panel = nil }) {
             VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 10) {
-                    ForEach(AspectRatio.allCases) { r in
-                        ChipButton(title: r.rawValue, isSelected: model.project.aspectRatio == r) {
-                            model.edit("Aspect ratio") { $0.aspectRatio = r }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(AspectRatio.allCases) { r in
+                            ChipButton(title: r.rawValue, isSelected: model.project.aspectRatio == r) {
+                                model.edit("Aspect ratio") { $0.aspectRatio = r }
+                            }
+                        }
+                    }
+                }
+                Text("Media that doesn't fit").font(.subheadline).foregroundStyle(Theme.secondaryText)
+                HStack(spacing: 8) {
+                    ForEach([ContentFit.fit, .fill, .stretch], id: \.self) { fit in
+                        ChipButton(title: fit.displayName, isSelected: currentFit == fit) {
+                            model.edit("Canvas fit") { $0.setContentFit(fit, anchor: currentAnchor) }
+                        }
+                    }
+                }
+                if currentFit != .stretch {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(ContentAnchor.allCases) { anchor in
+                                ChipButton(title: anchor.displayName, isSelected: currentAnchor == anchor) {
+                                    model.edit("Canvas position") { $0.setContentFit(currentFit, anchor: anchor) }
+                                }
+                            }
                         }
                     }
                 }
@@ -334,8 +358,15 @@ struct CropPanel: View {
                     ToolButton(title: "Rotate", systemImage: "rotate.right") { update("Rotate") { $0.quarterTurns = ($0.quarterTurns + 1) % 4 } }
                     ToolButton(title: "Flip H", systemImage: "arrow.left.and.right.righttriangle.left.righttriangle.right") { update("Flip") { $0.flipHorizontal.toggle() } }
                     ToolButton(title: "Flip V", systemImage: "arrow.up.and.down.righttriangle.up.righttriangle.down") { update("Flip") { $0.flipVertical.toggle() } }
-                    ToolButton(title: clip?.transform.fit == .fill ? "Fit" : "Fill", systemImage: "arrow.up.left.and.arrow.down.right") {
-                        update("Fit") { $0.fit = $0.fit == .fill ? .fit : .fill }
+                    // Per-clip override of the canvas fit: Fit → Fill → Stretch.
+                    ToolButton(title: (clip?.transform.fit ?? .fit).displayName, systemImage: "arrow.up.left.and.arrow.down.right") {
+                        update("Fit") { t in
+                            switch t.fit {
+                            case .fit: t.fit = .fill
+                            case .fill: t.fit = .stretch
+                            case .stretch: t.fit = .fit
+                            }
+                        }
                     }
                 }
                 LabeledSlider(title: "Zoom", value: Binding(get: { clip?.transform.scale ?? 1 }, set: { v in
@@ -416,9 +447,10 @@ struct TextPanel: View {
             if let overlay {
                 ScrollView {
                 VStack(spacing: 12) {
-                    TextField("Enter text", text: Binding(get: { overlay.text }, set: { v in update("Edit text", coalesce: true) { $0.text = v } }),
-                              axis: .vertical)
+                    TextField("Enter text", text: Binding(get: { overlay.text }, set: { v in update("Edit text", coalesce: true) { $0.text = v } }))
                         .focused($focused)
+                        .submitLabel(.done)
+                        .onSubmit { focused = false }
                         .padding(10)
                         .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
                         .accessibilityIdentifier("text.field")
@@ -498,7 +530,7 @@ struct MusicPanel: View {
                     HStack(spacing: 8) {
                         sourceButton("Files", "folder") { showFiles = true }
                         PhotosPicker(selection: $videoItem, matching: .videos) {
-                            sourceLabel("From Video", "film")
+                            MusicSourceLabel(title: "From Video", icon: "film")
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("music.source.video")
@@ -545,18 +577,8 @@ struct MusicPanel: View {
         }
     }
 
-    private func sourceLabel(_ title: String, _ icon: String) -> some View {
-        VStack(spacing: 4) {
-            Image(systemName: icon).font(.system(size: 17, weight: .semibold))
-            Text(title).font(.caption.weight(.medium))
-        }
-        .frame(maxWidth: .infinity).padding(.vertical, 10)
-        .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
-        .foregroundStyle(.white)
-    }
-
     private func sourceButton(_ title: String, _ icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) { sourceLabel(title, icon) }
+        Button(action: action) { MusicSourceLabel(title: title, icon: icon) }
             .buttonStyle(.plain)
             .accessibilityIdentifier("music.source.\(title.lowercased())")
     }
@@ -659,6 +681,118 @@ struct TrimPanel: View {
                 }
             } else {
                 Text("Photos and freeze frames: drag the handle to change length.").font(.footnote)
+            }
+        }
+    }
+}
+
+// MARK: - Photo animation
+
+struct PhotoMotionPanel: View {
+    @Bindable var model: EditorModel
+    let clipID: UUID
+    private var current: PhotoMotion {
+        model.project.clipIndex(clipID).flatMap { model.project.clips[$0].photoMotion } ?? .none
+    }
+    private var photoCount: Int { model.project.clips.filter { $0.kind == .photo }.count }
+
+    var body: some View {
+        PanelContainer(title: "Animate", onDone: { model.panel = nil }) {
+            VStack(spacing: 12) {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+                    ForEach(PhotoMotion.allCases) { motion in
+                        Button { apply(motion, allPhotos: false) } label: {
+                            VStack(spacing: 4) {
+                                Image(systemName: motion.systemImage).font(.system(size: 17, weight: .semibold))
+                                Text(motion.displayName).font(.caption2.weight(.medium)).lineLimit(1).minimumScaleFactor(0.8)
+                            }
+                            .frame(maxWidth: .infinity).padding(.vertical, 9)
+                            .background(current == motion ? Theme.accent : Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
+                            .foregroundStyle(.white)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("motion.\(motion.rawValue)")
+                    }
+                }
+                if photoCount > 1 {
+                    Button { apply(current, allPhotos: true) } label: {
+                        Label("Apply to all \(photoCount) photos", systemImage: "square.stack.3d.down.right")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.accent)
+                    .accessibilityIdentifier("motion.applyAll")
+                }
+            }
+        }
+    }
+
+    private func apply(_ motion: PhotoMotion, allPhotos: Bool) {
+        model.edit("Animate photo") { try $0.setPhotoMotion(motion, clipID: clipID, allPhotos: allPhotos) }
+        // Preview the move from the start of the clip.
+        if let entry = model.project.layout.entry(for: clipID) {
+            model.seek(to: entry.range.start)
+            model.player.play()
+        }
+        if allPhotos { model.showToast("Applied to all photos", systemImage: "square.stack.3d.down.right") }
+    }
+}
+
+struct MusicSourceLabel: View {
+    let title: String
+    let icon: String
+    var body: some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon).font(.system(size: 17, weight: .semibold))
+            Text(title).font(.caption.weight(.medium))
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 10)
+        .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
+        .foregroundStyle(.white)
+    }
+}
+
+// MARK: - Photo duration
+
+struct PhotoDurationPanel: View {
+    @Bindable var model: EditorModel
+    let clipID: UUID
+    private var seconds: Double {
+        model.project.clipIndex(clipID).map { model.project.clips[$0].sourceRange.duration.seconds } ?? 3
+    }
+    private var photoCount: Int { model.project.clips.filter { $0.kind == .photo }.count }
+
+    var body: some View {
+        PanelContainer(title: "Duration", onDone: { model.panel = nil }) {
+            VStack(spacing: 12) {
+                Text(String(format: "%.1f s", seconds)).font(.title2.monospacedDigit().weight(.semibold))
+                    .accessibilityIdentifier("duration.value")
+                Slider(value: Binding(get: { seconds }, set: { v in
+                    let rounded = (v * 10).rounded() / 10
+                    model.editCoalescing("Photo duration", key: "dur-\(clipID)") { p in
+                        try? p.setStillDuration(MediaTime(seconds: rounded), clipID: clipID)
+                    }
+                }), in: 0.5...30).tint(Theme.accent).accessibilityIdentifier("slider.Duration")
+                HStack(spacing: 8) {
+                    ForEach([2.0, 3, 5, 10], id: \.self) { v in
+                        ChipButton(title: String(format: "%gs", v), isSelected: abs(seconds - v) < 0.05) {
+                            model.edit("Photo duration") { try $0.setStillDuration(MediaTime(seconds: v), clipID: clipID) }
+                        }
+                    }
+                }
+                if photoCount > 1 {
+                    Button {
+                        let d = MediaTime(seconds: seconds)
+                        model.edit("Photo duration") { try $0.setStillDuration(d, clipID: clipID, allPhotos: true) }
+                        model.showToast("All photos set to \(String(format: "%.1f", seconds)) s", systemImage: "timer")
+                    } label: {
+                        Label("Apply to all \(photoCount) photos", systemImage: "square.stack.3d.down.right")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.accent)
+                    .accessibilityIdentifier("duration.applyAll")
+                }
             }
         }
     }
