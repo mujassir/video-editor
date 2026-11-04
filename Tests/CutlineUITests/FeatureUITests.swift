@@ -264,7 +264,7 @@ final class FeatureUITests: CutlineUITestCase {
         let before = handle.frame.midY
         let start = handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         start.press(forDuration: 0.2, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -120)))
-        waitFor("text moved up") { element("textHandle").frame.midY < before - 40 }
+        waitFor("text moved up") { element("textHandle").exists && element("textHandle").frame.midY < before - 40 }
         tap("tool.Position")
         XCTAssertTrue(element("chip.Custom").isSelected || element("chip.Custom").exists)
         snapshot("19-text-dragged")
@@ -293,6 +293,38 @@ final class FeatureUITests: CutlineUITestCase {
         tap("tool.Outro")
         tap("titleCard.remove")
         waitFor("closing slide removed") { count(prefix: "clip.") == 4 }
+    }
+
+    func test21_SecondMusicTrackStartsLaterAndMoves() {
+        openProjectWithSamples()
+        tap("tool.Music")
+        tap("music.use.sunrise")
+        waitUntilIdle()
+        waitFor("first track") { count(prefix: "audio.") == 1 }
+        // Shorten the first track so there is room for a second one.
+        element("audio.0").tap()
+        tap("tool.Trim")
+        let endHandle = element("audioTrim.endHandle")
+        XCTAssertTrue(endHandle.waitForExistence(timeout: 5))
+        let from = endHandle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        from.press(forDuration: 0.1, thenDragTo: from.withOffset(CGVector(dx: -120, dy: 0)))
+        tap("audioTrim.trim")
+        tap("panel.done")
+        // Second track starts where the first ends, not on top of it at 0:00.
+        element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.05)).tap()
+        tap("tool.Music")
+        tap("music.use.night")
+        waitUntilIdle()
+        waitFor("second track") { count(prefix: "audio.") == 2 }
+        let first = element("audio.0").frame, second = element("audio.1").frame
+        XCTAssertGreaterThan(second.minX, first.minX + 20, "second track should start later")
+        // Hold and drag the second track left on the timeline.
+        let bar = element("audio.1").coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5))
+        bar.press(forDuration: 0.6, thenDragTo: bar.withOffset(CGVector(dx: -40, dy: 0)))
+        waitFor("track moved") { element("audio.1").frame.minX < second.minX - 15 }
+        // And the toolbar can snap it to the playhead.
+        XCTAssertTrue(element("tool.To Playhead").waitForExistence(timeout: 5))
+        snapshot("21-two-tracks")
     }
 
     func test18_AudioTrimSplitDuplicate() {

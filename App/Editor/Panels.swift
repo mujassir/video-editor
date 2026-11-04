@@ -1267,16 +1267,26 @@ struct TextPositionPanel: View {
     let textID: UUID
     private var overlay: TextOverlay? { model.project.textOverlays.first { $0.id == textID } }
 
+    /// Pause on a frame where the text is visible, so it can be placed or dragged.
+    private func showText() {
+        model.pause()
+        guard let overlay else { return }
+        if !overlay.range.contains(model.currentTime) {
+            model.seek(to: overlay.range.start + MediaTime(seconds: min(0.5, overlay.range.duration.seconds / 2)))
+        }
+    }
+
     var body: some View {
         PanelContainer(title: "Text Position", onDone: { model.panel = nil }) {
             VStack(spacing: 10) {
                 AnchorGrid(selected: overlay?.anchor, idPrefix: "tpos") { a in
                     model.edit("Text position") { $0.setTextAnchor(textID, a) }
-                    if let overlay, !overlay.range.contains(model.currentTime) { model.seek(to: overlay.range.start + MediaTime(seconds: 0.5)) }
+                    showText()
                 }
                 HStack {
                     ChipButton(title: "Custom", isSelected: overlay?.anchor == nil) {
                         model.edit("Text position") { $0.setTextAnchor(textID, nil) }
+                        showText()
                     }
                     Spacer()
                 }

@@ -23,6 +23,9 @@ final class TimelineUIView: UIView, UIScrollViewDelegate, UIGestureRecognizerDel
     var onTrim: ((UUID, Project.TrimEdge, MediaTime, UIGestureRecognizer.State) -> Void)?
     var onTransitionTap: ((UUID) -> Void)?
     var onAddMedia: (() -> Void)?
+    /// A music / audio bar was dragged to a new timeline start.
+    var onAudioMove: ((UUID, MediaTime) -> Void)?
+    private var audioDragOrigin: CGFloat = 0
 
     private let scrollView = TimelineScrollView()
     private let content = UIView()
@@ -223,6 +226,12 @@ final class TimelineUIView: UIView, UIScrollViewDelegate, UIGestureRecognizerDel
             v.frame = CGRect(x: x(for: audio.start), y: Layout.audioTop + CGFloat(audio.lane) * (Layout.audioHeight + 4),
                              width: max(8, x(for: audio.sourceRange.duration)), height: Layout.audioHeight)
             v.accessibilityIdentifier = "audio.\(i)"
+            v.clipID = audio.id
+            // Press and hold, then slide, to move the track. Quick swipes still scroll.
+            let hold = UILongPressGestureRecognizer(target: self, action: #selector(handleAudioDrag(_:)))
+            hold.minimumPressDuration = 0.25
+            hold.allowableMovement = .greatestFiniteMagnitude
+            v.addGestureRecognizer(hold)
             content.addSubview(v)
             overlayViews.append(v)
         }
@@ -297,6 +306,32 @@ final class TimelineUIView: UIView, UIScrollViewDelegate, UIGestureRecognizerDel
             }
         }
         onSelect?(.none)
+    }
+
+    /// Moves the bar visually while dragging (no edits mid-gesture, so the view isn't
+    /// rebuilt under the finger), then reports the new start once on release.
+    @objc private func handleAudioDrag(_ g: UILongPressGestureRecognizer) {
+        guard let bar = g.view as? AudioBarView, let id = bar.clipID else { return }
+        let x = g.location(in: content).x
+        switch g.state {
+        case .began:
+            audioDragOrigin = x - bar.frame.minX
+            onSelect?(.audio(id))
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            bar.alpha = 0.85
+            bar.transform = CGAffineTransform(scaleX: 1, y: 1.08)
+        case .changed:
+            bar.frame.origin.x = max(0, x - audioDragOrigin)
+        case .ended:
+            bar.alpha = 1
+            bar.transform = .identity
+            let start = MediaTime(seconds: Double(max(0, bar.frame.minX) / pointsPerSecond))
+            onAudioMove?(id, start.snappedToFrame(fps: 30))
+        default:
+            bar.alpha = 1
+            bar.transform = .identity
+            rebuild()
+        }
     }
 
     func gestureRecognizer(_ g: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
@@ -511,6 +546,7 @@ final class LabelBar: UIView {
 }
 
 final class AudioBarView: UIView {
+    var clipID: UUID?
     private var peaks: [Float] = []
     private var visibleRange: ClosedRange<Double> = 0...1
     private var title = ""
@@ -583,6 +619,9 @@ struct TimelineRepresentable: UIViewRepresentable {
         }
         view.onSelect = { [weak model] sel in model?.select(sel) }
         view.onTrim = { [weak model] id, edge, delta, state in model?.trimDrag(id, edge: edge, delta: delta, state: state) }
+        view.onAudioMove = { [weak model] id, start in
+            model?.edit("Move audio") { try $0.moveAudio(id, toTimelineStart: start) }
+        }
         view.onTransitionTap = { [weak model] id in
             model?.select(.clip(id))
             model?.panel = .transition(id)

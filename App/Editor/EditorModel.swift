@@ -41,6 +41,12 @@ final class EditorModel {
             switch panel {
             case .filters, .adjust, .crop, .background, .volume, .speed, .duration:
                 showCleanFrameOfSelection()
+            case .textPosition(let id), .text(.some(let id)):
+                // Text panels: pause on a frame where that text is visible.
+                pause()
+                if let t = project.textOverlays.first(where: { $0.id == id }), !t.range.contains(currentTime) {
+                    seek(to: t.range.start + MediaTime(seconds: min(0.5, t.range.duration.seconds / 2)))
+                }
             default:
                 break
             }
@@ -332,6 +338,12 @@ final class EditorModel {
         loadWaveforms()
     }
 
+    func moveSelectedAudioToPlayhead() {
+        guard let id = selectedAudioID else { return }
+        edit("Move audio") { try $0.moveAudio(id, toTimelineStart: currentTime) }
+        showToast("Starts at \(currentTime.timecode)", systemImage: "arrow.right.to.line")
+    }
+
     func duplicateSelectedAudio() {
         guard let id = selectedAudioID else { return }
         var newID: UUID?
@@ -504,9 +516,12 @@ final class EditorModel {
         edit("Add music") { p in
             p.media.append(item)
             let length = p.layout.duration > .zero ? min(item.duration, p.layout.duration) : item.duration
+            // Another track starts where the existing music ends (if that's inside the video).
+            let musicEnd = p.audioClips.filter { $0.role == .music }.map(\.timelineRange.end).max() ?? .zero
+            let start = musicEnd < p.layout.duration ? musicEnd : .zero
             var clip = AudioClip(mediaID: item.id, role: .music,
                                  sourceRange: MediaTimeRange(start: .zero, duration: length),
-                                 start: .zero)
+                                 start: start)
             clip.name = name
             clip.volume = 0.7
             clip.fadeOut = MediaTime(seconds: min(1.5, length.seconds / 4))
