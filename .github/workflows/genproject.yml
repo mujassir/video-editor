@@ -11,15 +11,20 @@ on:
         default: claude/ecstatic-tesla-bodmbq
 jobs:
   generate:
-    runs-on: macos-26
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || 'claude/ecstatic-tesla-bodmbq' }}
-      - run: brew install xcodegen >/dev/null 2>&1 && xcodegen --version
-      - run: xcodegen generate
+      - name: Build XcodeGen (Linux)
+        run: |
+          swift --version
+          git clone --depth 1 --branch 2.46.0 https://github.com/yonaskolb/XcodeGen.git /tmp/xcodegen
+          cd /tmp/xcodegen && swift build -c release --product xcodegen 2>&1 | tail -5
+      - run: /tmp/xcodegen/.build/release/xcodegen generate
       - name: Export project (base64 tarball)
         run: |
           tar czf project.tgz Cutline.xcodeproj
           ls -la project.tgz
-          echo "PROJECT_TGZ $(base64 -i project.tgz | tr -d '\n')"
+          echo "PROJECT_TGZ $(base64 -w0 project.tgz | tr -d '\n')"
