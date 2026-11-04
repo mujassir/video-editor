@@ -43,6 +43,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mujassir.cutline
         PRODUCT_NAME: Cutline
+        DEVELOPMENT_TEAM: KMW97A6XG2
         GENERATE_INFOPLIST_FILE: YES
         SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
         INFOPLIST_KEY_CFBundleDisplayName: Cutline
