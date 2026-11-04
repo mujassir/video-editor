@@ -301,8 +301,8 @@ final class EditorModel {
         }
     }
 
-    /// Adds the user's own audio as background music: an audio file (Files app), a song
-    /// exported from the Music library, or the soundtrack of a video.
+    /// Adds the user's own audio as background music: an audio file (Files app)
+    /// or the soundtrack of a video from Photos.
     /// The file is copied into the project so the edit keeps working if the original moves.
     func addMusicFile(_ url: URL, name: String) {
         runBusy("Adding \(name)…") { model in
@@ -489,14 +489,10 @@ final class EditorModel {
 
 enum MusicImportError: LocalizedError {
     case noAudio
-    case protectedSong
-    case exportFailed
 
     var errorDescription: String? {
         switch self {
         case .noAudio: return "That file has no audio track."
-        case .protectedSong: return "This song is protected (Apple Music streaming / DRM) and can't be used. Pick a song you own or a file."
-        case .exportFailed: return "Couldn't read that song."
         }
     }
 }

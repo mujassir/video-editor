@@ -146,7 +146,7 @@ final class FeatureUITests: CutlineUITestCase {
         openProjectWithSamples()
         tap("tool.Music")
         // User-music sources are offered next to the built-in tracks.
-        for source in ["music.source.files", "music.source.music", "music.source.video"] {
+        for source in ["music.source.files", "music.source.video"] {
             XCTAssertTrue(element(source).waitForExistence(timeout: 5), "\(source) missing")
         }
         snapshot("09-music-sources")

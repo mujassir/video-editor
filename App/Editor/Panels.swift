@@ -1,7 +1,6 @@
 import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
-import MediaPlayer
 import AVFoundation
 import EditorKit
 
@@ -477,7 +476,6 @@ struct TextPanel: View {
 struct MusicPanel: View {
     @Bindable var model: EditorModel
     @State private var showFiles = false
-    @State private var showLibrary = false
     @State private var videoItem: PhotosPickerItem?
     var selectedAudio: AudioClip? {
         if case .audio(let id) = model.session.selection { return model.project.audioClips.first { $0.id == id } }
@@ -500,7 +498,6 @@ struct MusicPanel: View {
                 } else {
                     HStack(spacing: 8) {
                         sourceButton("Files", "folder") { showFiles = true }
-                        sourceButton("Music", "music.note.list") { showLibrary = true }
                         PhotosPicker(selection: $videoItem, matching: .videos) {
                             sourceLabel("From Video", "film")
                         }
@@ -534,23 +531,6 @@ struct MusicPanel: View {
             guard case .success(let urls) = result, let url = urls.first else { return }
             model.addMusicFile(url, name: url.deletingPathExtension().lastPathComponent)
             model.panel = nil
-        }
-        .sheet(isPresented: $showLibrary) {
-            MusicLibraryPicker { item in
-                showLibrary = false
-                guard let item else { return }
-                Task {
-                    do {
-                        let url = try await MusicLibraryExport.export(item)
-                        model.addMusicFile(url, name: item.title ?? "Song")
-                        model.panel = nil
-                    } catch {
-                        model.showToast((error as? LocalizedError)?.errorDescription ?? "Couldn't use that song",
-                                        systemImage: "exclamationmark.triangle")
-                    }
-                }
-            }
-            .ignoresSafeArea()
         }
         .onChange(of: videoItem) { _, item in
             guard let item else { return }
@@ -682,53 +662,5 @@ struct TrimPanel: View {
                 Text("Photos and freeze frames: drag the handle to change length.").font(.footnote)
             }
         }
-    }
-}
-
-// MARK: - Music library
-
-/// System Music library picker (songs synced to or bought on this iPhone).
-struct MusicLibraryPicker: UIViewControllerRepresentable {
-    let onPick: (MPMediaItem?) -> Void
-
-    func makeCoordinator() -> Coordinator { Coordinator(onPick: onPick) }
-
-    func makeUIViewController(context: Context) -> MPMediaPickerController {
-        let picker = MPMediaPickerController(mediaTypes: .music)
-        picker.allowsPickingMultipleItems = false
-        picker.showsCloudItems = false
-        picker.prompt = "Choose a song for the background"
-        picker.delegate = context.coordinator
-        return picker
-    }
-
-    func updateUIViewController(_ uiViewController: MPMediaPickerController, context: Context) {}
-
-    final class Coordinator: NSObject, MPMediaPickerControllerDelegate {
-        let onPick: (MPMediaItem?) -> Void
-        init(onPick: @escaping (MPMediaItem?) -> Void) { self.onPick = onPick }
-        func mediaPicker(_ mediaPicker: MPMediaPickerController, didPickMediaItems collection: MPMediaItemCollection) {
-            onPick(collection.items.first)
-        }
-        func mediaPickerDidCancel(_ mediaPicker: MPMediaPickerController) { onPick(nil) }
-    }
-}
-
-enum MusicLibraryExport {
-    /// Copies a library song to a temporary .m4a. Streaming/DRM songs have no readable asset.
-    static func export(_ item: MPMediaItem) async throws -> URL {
-        guard let assetURL = item.assetURL, !item.hasProtectedAsset else { throw MusicImportError.protectedSong }
-        let asset = AVURLAsset(url: assetURL)
-        guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
-            throw MusicImportError.exportFailed
-        }
-        let safeName = (item.title ?? "song").replacingOccurrences(of: "/", with: "-")
-        let out = FileManager.default.temporaryDirectory.appendingPathComponent("\(safeName)-\(UUID().uuidString.prefix(6)).m4a")
-        do {
-            try await session.export(to: out, as: .m4a)
-        } catch {
-            throw MusicImportError.exportFailed
-        }
-        return out
     }
 }
