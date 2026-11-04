@@ -184,6 +184,7 @@ final class DemoTourUITests: CutlineUITestCase {
             selectNone()
             tap("tool.Captions")
             tap("captions.generate")
+            allowSystemAlerts(timeout: 30)
             waitUntilIdle(timeout: 240)
             pause(0.8)
             tap("chip.Bold")

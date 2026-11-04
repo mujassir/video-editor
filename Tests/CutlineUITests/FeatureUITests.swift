@@ -222,6 +222,7 @@ final class CaptionUITests: CutlineUITestCase {
         waitUntilIdle()
         tap("tool.Captions")
         tap("captions.generate")
+        allowSystemAlerts(timeout: 30)
         waitUntilIdle(timeout: 240)
         let toast = toastText ?? ""
         print("CAPTIONS toast: \(toast)")

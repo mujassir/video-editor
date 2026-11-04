@@ -42,6 +42,25 @@ class CutlineUITestCase: XCTestCase {
         e.tap()
     }
 
+    /// Taps "Allow"/"OK" on any system permission alert shown within `timeout`.
+    func allowSystemAlerts(timeout: TimeInterval = 20) {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            for source in [springboard, app!] {
+                let alert = source.alerts.firstMatch
+                if alert.exists {
+                    for title in ["Allow", "OK", "Allow While Using App"] where alert.buttons[title].exists {
+                        print("ALERT: \(alert.label) -> \(title)")
+                        alert.buttons[title].tap()
+                        return
+                    }
+                }
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+    }
+
     func count(prefix: String) -> Int {
         app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", prefix)).count
     }

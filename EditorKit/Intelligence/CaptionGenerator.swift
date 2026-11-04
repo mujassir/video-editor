@@ -101,7 +101,7 @@ public enum CaptionGenerator {
     }
 
     static func transcribeWithSFSpeech(url: URL, locale: Locale) async throws -> [CaptionWord] {
-        let status = try await withTimeout(20, stage: "speech permission") {
+        let status = try await withTimeout(60, stage: "speech permission") {
             await withCheckedContinuation { (c: CheckedContinuation<SFSpeechRecognizerAuthorizationStatus, Never>) in
                 SFSpeechRecognizer.requestAuthorization { c.resume(returning: $0) }
             }
@@ -113,7 +113,9 @@ public enum CaptionGenerator {
         let request = SFSpeechURLRecognitionRequest(url: url)
         request.shouldReportPartialResults = false
         request.addsPunctuation = true
-        if recognizer.supportsOnDeviceRecognition { request.requiresOnDeviceRecognition = true }
+        // Privacy: never fall back to server-side recognition.
+        guard recognizer.supportsOnDeviceRecognition else { throw CaptionError.recognizerUnavailable }
+        request.requiresOnDeviceRecognition = true
         let audioSeconds = (try? AVAudioFile(forReading: url)).map { Double($0.length) / $0.fileFormat.sampleRate } ?? 30
         let onDevice = recognizer.supportsOnDeviceRecognition
         final class Box: @unchecked Sendable {
