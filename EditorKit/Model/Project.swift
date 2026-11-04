@@ -41,6 +41,7 @@ public struct MediaItem: Codable, Hashable, Identifiable, Sendable {
 
 public enum AspectRatio: String, Codable, CaseIterable, Sendable, Identifiable {
     case portrait9x16 = "9:16"
+    case portrait3x4 = "3:4"
     case square1x1 = "1:1"
     case portrait4x5 = "4:5"
     case landscape16x9 = "16:9"
@@ -52,6 +53,7 @@ public enum AspectRatio: String, Codable, CaseIterable, Sendable, Identifiable {
         switch self {
         case .portrait9x16: return 9.0 / 16.0
         case .square1x1: return 1
+        case .portrait3x4: return 3.0 / 4.0
         case .portrait4x5: return 4.0 / 5.0
         case .landscape16x9: return 16.0 / 9.0
         }

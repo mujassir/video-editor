@@ -199,7 +199,6 @@ struct EditorView: View {
 
     @ViewBuilder private var mainTools: some View {
         ToolButton(title: "Media", systemImage: "plus.rectangle.on.rectangle") { showAddMenu = true }
-        ToolButton(title: "Canvas", systemImage: "aspectratio") { model.panel = .canvas }
         ToolButton(title: "Text", systemImage: "textformat") { model.addText() }
         ToolButton(title: "Music", systemImage: "music.note") { model.select(.none); model.panel = .music }
         ToolButton(title: "Captions", systemImage: "captions.bubble", badge: "AI") { model.panel = .captions }

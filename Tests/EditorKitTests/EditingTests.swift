@@ -323,3 +323,13 @@ struct UndoTests {
         #expect(session.selection == .none)
     }
 }
+
+@Suite("Canvas")
+struct CanvasTests {
+    @Test func renderSizes() {
+        #expect(AspectRatio.portrait3x4.renderSize(shortEdge: 1080) == CGSize(width: 1080, height: 1440))
+        #expect(AspectRatio.portrait9x16.renderSize(shortEdge: 1080) == CGSize(width: 1080, height: 1920))
+        #expect(AspectRatio.landscape16x9.renderSize(shortEdge: 720) == CGSize(width: 1280, height: 720))
+        #expect(AspectRatio.allCases.map(\.rawValue) == ["9:16", "3:4", "1:1", "4:5", "16:9"])
+    }
+}

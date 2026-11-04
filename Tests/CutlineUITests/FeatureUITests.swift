@@ -176,6 +176,9 @@ final class FeatureUITests: CutlineUITestCase {
     func test11_CanvasAndBackground() {
         openProjectWithSamples()
         tap("editor.aspect")
+        tap("chip.3:4")
+        XCTAssertEqual(element("editor.aspect").label, "3:4")
+        snapshot("11-canvas-3x4")
         tap("chip.1:1")
         tap("swatch.4")
         snapshot("11-canvas-square")

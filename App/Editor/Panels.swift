@@ -66,10 +66,12 @@ struct CanvasPanel: View {
     var body: some View {
         PanelContainer(title: "Canvas", onDone: { model.panel = nil }) {
             VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 10) {
-                    ForEach(AspectRatio.allCases) { r in
-                        ChipButton(title: r.rawValue, isSelected: model.project.aspectRatio == r) {
-                            model.edit("Aspect ratio") { $0.aspectRatio = r }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(AspectRatio.allCases) { r in
+                            ChipButton(title: r.rawValue, isSelected: model.project.aspectRatio == r) {
+                                model.edit("Aspect ratio") { $0.aspectRatio = r }
+                            }
                         }
                     }
                 }
