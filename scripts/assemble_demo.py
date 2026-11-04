@@ -23,8 +23,10 @@ ACCENT = (255, 60, 97)
 
 
 def run(cmd):
+    if cmd[0] == "ffmpeg":
+        cmd = [cmd[0], "-nostdin"] + cmd[1:]
     print("+", " ".join(cmd[:6]), "…" if len(cmd) > 6 else "", flush=True)
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, check=True, timeout=900)
 
 
 def probe_duration(path):
@@ -160,6 +162,9 @@ def main():
         start = max(0.0, marks[idx])
         end = marks[order[k + 1]] if k + 1 < len(order) else rec_len
         end = min(end, rec_len)
+        if start >= rec_len - 0.5:
+            print(f"chapter {idx}: starts after the recording ends – skipped")
+            continue
         narr = os.path.join(a.narration, f"chapter-{idx:02d}.aiff")
         narr_len = probe_duration(narr) if os.path.exists(narr) else 3.0
         keep_head = narr_len + 0.8
