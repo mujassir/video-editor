@@ -742,7 +742,7 @@ struct PhotoMotionPanel: View {
                                     c.animation = a
                                 }
                             }
-                        }), range: 0.2...2, format: { String(format: "%.1fs", $0) })
+                        }), range: 0.2...3, format: { String(format: "%.1fs", $0) })
                 }
                 if model.project.clips.count > 1 {
                     Button { applyToAll() } label: {
