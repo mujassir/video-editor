@@ -535,6 +535,45 @@ public struct TitleCard: Codable, Hashable, Sendable {
         self.placement = placement
         self.title = title
     }
+
+    /// Ready-made colour styles for slides.
+    public struct Preset: Identifiable, Sendable, Hashable {
+        public let id: String
+        public let name: String
+        public let background: RGBAColor
+        public let accent: RGBAColor
+        public let textColor: RGBAColor
+        public let gradient: Bool
+    }
+
+    public static let presets: [Preset] = [
+        Preset(id: "midnight", name: "Midnight", background: RGBAColor(r: 0.08, g: 0.08, b: 0.1),
+               accent: RGBAColor(r: 1, g: 0.24, b: 0.38), textColor: .white, gradient: true),
+        Preset(id: "sunset", name: "Sunset", background: RGBAColor(r: 0.55, g: 0.12, b: 0.22),
+               accent: RGBAColor(r: 1, g: 0.6, b: 0.2), textColor: .white, gradient: true),
+        Preset(id: "ocean", name: "Ocean", background: RGBAColor(r: 0.04, g: 0.12, b: 0.28),
+               accent: RGBAColor(r: 0.2, g: 0.85, b: 0.85), textColor: .white, gradient: true),
+        Preset(id: "forest", name: "Forest", background: RGBAColor(r: 0.06, g: 0.2, b: 0.12),
+               accent: RGBAColor(r: 0.6, g: 0.9, b: 0.4), textColor: .white, gradient: true),
+        Preset(id: "grape", name: "Grape", background: RGBAColor(r: 0.2, g: 0.08, b: 0.35),
+               accent: RGBAColor(r: 0.85, g: 0.5, b: 1), textColor: .white, gradient: true),
+        Preset(id: "paper", name: "Paper", background: RGBAColor(r: 0.96, g: 0.95, b: 0.92),
+               accent: RGBAColor(r: 1, g: 0.24, b: 0.38), textColor: RGBAColor(r: 0.1, g: 0.1, b: 0.12), gradient: false),
+        Preset(id: "noir", name: "Noir", background: .black,
+               accent: .white, textColor: .white, gradient: false),
+    ]
+
+    public mutating func apply(_ preset: Preset) {
+        background = preset.background
+        accent = preset.accent
+        textColor = preset.textColor
+        gradient = preset.gradient
+    }
+
+    /// The preset these colours match, if any.
+    public var preset: Preset? {
+        Self.presets.first { $0.background == background && $0.accent == accent && $0.textColor == textColor }
+    }
 }
 
 // MARK: - Captions

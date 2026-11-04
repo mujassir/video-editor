@@ -11,7 +11,8 @@ on:
         default: true
 concurrency:
   group: ios-${{ github.ref }}
-  cancel-in-progress: true
+  # Queue instead of cancelling, so every pushed commit gets a complete run.
+  cancel-in-progress: false
 jobs:
   test:
     runs-on: macos-26

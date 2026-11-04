@@ -1187,13 +1187,17 @@ struct TitleCardPanel: View {
                         .submitLabel(.done).padding(10)
                         .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
                         .accessibilityIdentifier("titleCard.subtitle")
-                    HStack {
-                        Text("Background").font(.caption).foregroundStyle(Theme.secondaryText)
-                        SwatchRow(selected: card.background) { c in if let c { draft?.background = c } }
-                    }
-                    HStack {
-                        Text("Accent").font(.caption).foregroundStyle(Theme.secondaryText)
-                        SwatchRow(selected: card.accent) { c in if let c { draft?.accent = c } }
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(TitleCard.presets) { preset in
+                                Button { draft?.apply(preset) } label: {
+                                    TitleStyleTile(preset: preset, selected: card.preset?.id == preset.id)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("titleStyle.\(preset.id)")
+                            }
+                        }
+                        .padding(.vertical, 2)
                     }
                     LabeledSlider(title: "Duration", value: $seconds, range: 1...10, format: { String(format: "%.1fs", $0) })
                     HStack(spacing: 10) {
@@ -1226,6 +1230,31 @@ struct TitleCardPanel: View {
                 draft = TitleCard(placement: placement, title: placement == .opening ? model.project.name : "Thanks for watching")
                 seconds = 3
             }
+        }
+    }
+}
+
+/// Small preview of a slide style: background, accent bar and sample text.
+struct TitleStyleTile: View {
+    let preset: TitleCard.Preset
+    let selected: Bool
+    var body: some View {
+        VStack(spacing: 4) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8).fill(preset.background.color)
+                if preset.gradient {
+                    RadialGradient(colors: [preset.accent.color.opacity(0.45), .clear], center: .center,
+                                   startRadius: 0, endRadius: 40)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                VStack(spacing: 3) {
+                    Text("Aa").font(.system(size: 16, weight: .bold)).foregroundStyle(preset.textColor.color)
+                    Capsule().fill(preset.accent.color).frame(width: 14, height: 3)
+                }
+            }
+            .frame(width: 62, height: 46)
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(selected ? Theme.accent : Theme.stroke, lineWidth: selected ? 2.5 : 1))
+            Text(preset.name).font(.caption2.weight(.medium)).foregroundStyle(selected ? Theme.accent : .white)
         }
     }
 }

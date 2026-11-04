@@ -638,6 +638,15 @@ struct OverlayFeatureTests {
         #expect(p.clips.count == 2)
     }
 
+    @Test func titleCardPresets() {
+        var card = TitleCard(placement: .opening, title: "Hi")
+        #expect(card.preset?.id == "midnight", "default colours are the Midnight preset")
+        let paper = TitleCard.presets.first { $0.id == "paper" }!
+        card.apply(paper)
+        #expect(card.preset?.id == "paper" && card.gradient == false)
+        #expect(Set(TitleCard.presets.map(\.id)).count == TitleCard.presets.count)
+    }
+
     @Test func titleCardRendersSquarePNG() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("tc-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: dir) }
