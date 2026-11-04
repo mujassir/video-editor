@@ -150,6 +150,13 @@ final class FeatureUITests: CutlineUITestCase {
             XCTAssertTrue(element(source).waitForExistence(timeout: 5), "\(source) missing")
         }
         snapshot("09-music-sources")
+        // Files must actually present the system picker (regression: it silently did nothing).
+        tap("music.source.files")
+        let cancel = app.buttons["Cancel"]
+        XCTAssertTrue(cancel.waitForExistence(timeout: 10), "Files picker did not open from the Music panel")
+        snapshot("09-music-files-picker")
+        cancel.tap()
+        XCTAssertTrue(element("music.use.sunrise").waitForExistence(timeout: 5))
         tap("music.use.sunrise")
         waitUntilIdle()
         waitFor("music lane") { count(prefix: "audio.") == 1 }

@@ -506,7 +506,6 @@ struct TextPanel: View {
 
 struct MusicPanel: View {
     @Bindable var model: EditorModel
-    @State private var showFiles = false
     @State private var videoItem: PhotosPickerItem?
     var selectedAudio: AudioClip? {
         if case .audio(let id) = model.session.selection { return model.project.audioClips.first { $0.id == id } }
@@ -528,7 +527,7 @@ struct MusicPanel: View {
                     })).tint(Theme.accent).font(.subheadline)
                 } else {
                     HStack(spacing: 8) {
-                        sourceButton("Files", "folder") { showFiles = true }
+                        sourceButton("Files", "folder") { model.openFiles(for: .music) }
                         PhotosPicker(selection: $videoItem, matching: .videos) {
                             MusicSourceLabel(title: "From Video", icon: "film")
                         }
@@ -557,11 +556,6 @@ struct MusicPanel: View {
                     Text("Royalty-free · generated on device").font(.caption2).foregroundStyle(Theme.secondaryText)
                 }
             }
-        }
-        .fileImporter(isPresented: $showFiles, allowedContentTypes: [.audio], allowsMultipleSelection: false) { result in
-            guard case .success(let urls) = result, let url = urls.first else { return }
-            model.addMusicFile(url, name: url.deletingPathExtension().lastPathComponent)
-            model.panel = nil
         }
         .onChange(of: videoItem) { _, item in
             guard let item else { return }

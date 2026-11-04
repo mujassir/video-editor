@@ -8,7 +8,6 @@ struct EditorView: View {
     let onClose: () -> Void
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var showPicker = false
-    @State private var showFiles = false
     @State private var showExport = false
     @State private var showAddMenu = false
 
@@ -48,12 +47,22 @@ struct EditorView: View {
                 await model.importMedia(urls: urls)
             }
         }
-        .fileImporter(isPresented: $showFiles, allowedContentTypes: [.movie, .image, .audio], allowsMultipleSelection: true) { result in
-            if case .success(let urls) = result { Task { await model.importMedia(urls: urls) } }
+        .fileImporter(isPresented: $model.showFileImporter,
+                      allowedContentTypes: model.fileImportPurpose == .music ? [.audio] : [.movie, .image, .audio],
+                      allowsMultipleSelection: model.fileImportPurpose != .music) { result in
+            guard case .success(let urls) = result, !urls.isEmpty else { return }
+            switch model.fileImportPurpose {
+            case .music:
+                let url = urls[0]
+                model.addMusicFile(url, name: url.deletingPathExtension().lastPathComponent)
+                model.panel = nil
+            case .media:
+                Task { await model.importMedia(urls: urls) }
+            }
         }
         .confirmationDialog("Add", isPresented: $showAddMenu) {
             Button("Photos Library") { showPicker = true }
-            Button("Files") { showFiles = true }
+            Button("Files") { model.openFiles(for: .media) }
             if LaunchOptions.useSampleMedia || LaunchOptions.demoMediaFolder != nil {
                 Button("Sample Clips") { Task { await SampleImport.importSamples(into: model) } }
             }
