@@ -5,12 +5,14 @@ public enum CaptionError: Error, Sendable, LocalizedError {
     case noSpeechFound
     case recognizerUnavailable
     case notAuthorized
+    case timedOut(onDevice: Bool)
 
     public var errorDescription: String? {
         switch self {
         case .noSpeechFound: return "No speech was found in this video."
         case .recognizerUnavailable: return "On-device speech recognition isn't available for this language."
         case .notAuthorized: return "Speech recognition permission is needed to create captions."
+        case .timedOut(let onDevice): return "Speech recognition timed out (on-device model \(onDevice ? "present" : "not available"))."
         }
     }
 }
@@ -84,12 +86,26 @@ public enum CaptionGenerator {
         request.shouldReportPartialResults = false
         request.addsPunctuation = true
         if recognizer.supportsOnDeviceRecognition { request.requiresOnDeviceRecognition = true }
-        let result: SFSpeechRecognitionResult = try await withCheckedThrowingContinuation { c in
+        let audioSeconds = (try? AVAudioFile(forReading: url)).map { Double($0.length) / $0.fileFormat.sampleRate } ?? 30
+        let onDevice = recognizer.supportsOnDeviceRecognition
+        final class Box: @unchecked Sendable {
+            let lock = NSLock()
             var finished = false
-            recognizer.recognitionTask(with: request) { result, error in
-                guard !finished else { return }
-                if let error { finished = true; c.resume(throwing: error); return }
-                if let result, result.isFinal { finished = true; c.resume(returning: result) }
+            var task: SFSpeechRecognitionTask?
+            func finish() -> Bool { lock.lock(); defer { lock.unlock() }; if finished { return false }; finished = true; return true }
+        }
+        let box = Box()
+        let result: SFSpeechRecognitionResult = try await withCheckedThrowingContinuation { c in
+            box.task = recognizer.recognitionTask(with: request) { result, error in
+                if let error { if box.finish() { c.resume(throwing: error) }; return }
+                if let result, result.isFinal, box.finish() { c.resume(returning: result) }
+            }
+            // Never hang the UI: give up after a generous multiple of the audio length.
+            DispatchQueue.global().asyncAfter(deadline: .now() + 30 + audioSeconds * 3) {
+                if box.finish() {
+                    box.task?.cancel()
+                    c.resume(throwing: CaptionError.timedOut(onDevice: onDevice))
+                }
             }
         }
         return result.bestTranscription.segments.map {

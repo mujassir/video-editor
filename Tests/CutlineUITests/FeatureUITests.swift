@@ -33,8 +33,9 @@ final class FeatureUITests: CutlineUITestCase {
 
     func test03_SplitDeleteUndoRedo() {
         openProjectWithSamples()
-        // Move into the first clip and split.
-        element("timeline").swipeLeft(velocity: .slow)
+        // Move the playhead ~1.5 s into the first clip and split.
+        let tl = element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.2))
+        tl.press(forDuration: 0.05, thenDragTo: tl.withOffset(CGVector(dx: -100, dy: 0)))
         RunLoop.current.run(until: Date().addingTimeInterval(1))
         selectClipAtPlayhead()
         tap("tool.Split")
