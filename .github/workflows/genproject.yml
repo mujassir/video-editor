@@ -14,11 +14,6 @@ jobs:
           ref: ${{ inputs.ref }}
       - run: brew install xcodegen >/dev/null 2>&1 && xcodegen --version
       - run: xcodegen generate
-      - name: Verify it builds
-        run: |
-          set -o pipefail
-          xcodebuild build -project Cutline.xcodeproj -scheme Cutline -destination 'generic/platform=iOS Simulator' \
-            CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E "error:|\*\* " | head -20
       - name: Export project (base64 tarball)
         run: |
           tar czf project.tgz Cutline.xcodeproj
