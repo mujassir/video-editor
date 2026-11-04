@@ -6,12 +6,14 @@ public enum CaptionError: Error, Sendable, LocalizedError {
     case recognizerUnavailable
     case notAuthorized
     case timedOut(onDevice: Bool)
+    case stageTimedOut(String)
 
     public var errorDescription: String? {
         switch self {
         case .noSpeechFound: return "No speech was found in this video."
         case .recognizerUnavailable: return "On-device speech recognition isn't available for this language."
         case .notAuthorized: return "Speech recognition permission is needed to create captions."
+        case .stageTimedOut(let stage): return "Speech recognition stalled at: \(stage)."
         case .timedOut(let onDevice): return "Speech recognition timed out (on-device model \(onDevice ? "present" : "not available"))."
         }
     }
@@ -28,16 +30,45 @@ public enum CaptionGenerator {
     nonisolated(unsafe) public static var lastAnalyzerFailure: String?
 
     /// Transcribes an audio file into words with timestamps (seconds from file start).
+    /// Runs `work`, failing with `stageTimedOut(stage)` if it takes longer than `seconds`.
+    /// Unstructured on purpose: a hung system callback can't block the caller.
+    static func withTimeout<T: Sendable>(_ seconds: Double, stage: String,
+                                         _ work: @escaping @Sendable () async throws -> T) async throws -> T {
+        final class Once: @unchecked Sendable {
+            private let lock = NSLock()
+            private var done = false
+            func claim() -> Bool { lock.lock(); defer { lock.unlock() }; if done { return false }; done = true; return true }
+        }
+        let once = Once()
+        return try await withCheckedThrowingContinuation { (c: CheckedContinuation<T, Error>) in
+            let task = Task {
+                do {
+                    let value = try await work()
+                    if once.claim() { c.resume(returning: value) }
+                } catch {
+                    if once.claim() { c.resume(throwing: error) }
+                }
+            }
+            Task {
+                try? await Task.sleep(for: .seconds(seconds))
+                if once.claim() {
+                    task.cancel()
+                    c.resume(throwing: CaptionError.stageTimedOut(stage))
+                }
+            }
+        }
+    }
+
     public static func transcribe(url: URL, locale: Locale = Locale(identifier: "en-US")) async throws -> (words: [CaptionWord], engine: Engine) {
         do {
-            let words = try await transcribeWithAnalyzer(url: url, locale: locale)
+            let words = try await withTimeout(90, stage: "SpeechAnalyzer") { try await transcribeWithAnalyzer(url: url, locale: locale) }
             if !words.isEmpty { return (words, .speechAnalyzer) }
             lastAnalyzerFailure = "no words"
         } catch {
             // Fall through to the legacy on-device recognizer.
             lastAnalyzerFailure = String(describing: error)
         }
-        let words = try await transcribeWithSFSpeech(url: url, locale: locale)
+        let words = try await withTimeout(120, stage: "SFSpeechRecognizer") { try await transcribeWithSFSpeech(url: url, locale: locale) }
         return (words, .sfSpeech)
     }
 
@@ -75,8 +106,10 @@ public enum CaptionGenerator {
     }
 
     static func transcribeWithSFSpeech(url: URL, locale: Locale) async throws -> [CaptionWord] {
-        let status = await withCheckedContinuation { (c: CheckedContinuation<SFSpeechRecognizerAuthorizationStatus, Never>) in
-            SFSpeechRecognizer.requestAuthorization { c.resume(returning: $0) }
+        let status = try await withTimeout(20, stage: "speech permission") {
+            await withCheckedContinuation { (c: CheckedContinuation<SFSpeechRecognizerAuthorizationStatus, Never>) in
+                SFSpeechRecognizer.requestAuthorization { c.resume(returning: $0) }
+            }
         }
         guard status == .authorized else { throw CaptionError.notAuthorized }
         guard let recognizer = SFSpeechRecognizer(locale: locale), recognizer.isAvailable else {
@@ -182,7 +215,7 @@ public enum CaptionGenerator {
         let audioURL = workDirectory.appendingPathComponent("caption-audio-\(UUID().uuidString).caf")
         defer { try? FileManager.default.removeItem(at: audioURL) }
         try FileManager.default.createDirectory(at: workDirectory, withIntermediateDirectories: true)
-        try await writeSpeechMix(project: project, resolver: resolver, to: audioURL)
+        try await withTimeout(60, stage: "audio mixdown") { try await writeSpeechMix(project: project, resolver: resolver, to: audioURL) }
         let (words, engine) = try await transcribe(url: audioURL, locale: locale)
         guard !words.isEmpty else { throw CaptionError.noSpeechFound }
         var track = project.captions
