@@ -92,15 +92,22 @@ struct PreviewView: View {
             RoundedRectangle(cornerRadius: 4)
                 .stroke(Color.white, style: StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
                 .frame(width: box.width, height: box.height)
-                .position(x: overlay.centerX * canvas.width, y: overlay.centerY * canvas.height)
+                .position(x: handleCenter(overlay).x * canvas.width, y: handleCenter(overlay).y * canvas.height)
                 .gesture(DragGesture().onChanged { v in
                     let x = min(max(v.location.x / canvas.width, 0.05), 0.95)
                     let y = min(max(v.location.y / canvas.height, 0.05), 0.95)
                     model.editCoalescing("Move text", key: "move-\(id)") { p in
-                        p.updateText(id) { $0.centerX = x; $0.centerY = y }
+                        p.updateText(id) { $0.anchor = nil; $0.centerX = x; $0.centerY = y }
                     }
                 })
                 .accessibilityIdentifier("textHandle")
         }
+    }
+
+    /// Approximate on-screen centre of a text overlay (anchored text hugs an edge).
+    private func handleCenter(_ overlay: TextOverlay) -> CGPoint {
+        guard let anchor = overlay.anchor else { return CGPoint(x: overlay.centerX, y: overlay.centerY) }
+        let a = anchor.axes
+        return CGPoint(x: 0.5 + a.x * 0.32, y: 0.5 + a.y * 0.4)
     }
 }

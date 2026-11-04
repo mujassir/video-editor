@@ -165,10 +165,17 @@ struct EditorView: View {
         switch panel {
         case .canvas: CanvasPanel(model: model)
         case .music: MusicPanel(model: model)
+        case .audioTrim:
+            if case .audio(let id) = model.session.selection { AudioTrimPanel(model: model, audioID: id) } else { toolbar }
         case .captions: CaptionsPanel(model: model)
         case .text(let id):
             if let id { TextPanel(model: model, textID: id) } else { toolbar }
         case .transition(let id): TransitionPanel(model: model, clipID: id)
+        case .textDuration(let id): TextDurationPanel(model: model, textID: id)
+        case .textAnimate(let id): TextAnimatePanel(model: model, textID: id)
+        case .textPosition(let id): TextPositionPanel(model: model, textID: id)
+        case .watermark: WatermarkPanel(model: model)
+        case .titleCard(let placement): TitleCardPanel(model: model, placement: placement)
         case .trim, .duration, .motion, .filters, .adjust, .speed, .volume, .crop, .background:
             if let id = model.selectedClipID {
                 switch panel {
@@ -210,6 +217,9 @@ struct EditorView: View {
     @ViewBuilder private var mainTools: some View {
         ToolButton(title: "Media", systemImage: "plus.rectangle.on.rectangle") { showAddMenu = true }
         ToolButton(title: "Text", systemImage: "textformat") { model.addText() }
+        ToolButton(title: "Intro", systemImage: "rectangle.lefthalf.inset.filled") { model.select(.none); model.panel = .titleCard(.opening) }
+        ToolButton(title: "Outro", systemImage: "rectangle.righthalf.inset.filled") { model.select(.none); model.panel = .titleCard(.closing) }
+        ToolButton(title: "Watermark", systemImage: "seal", isActive: model.project.watermark != nil) { model.select(.none); model.panel = .watermark }
         ToolButton(title: "Music", systemImage: "music.note") { model.select(.none); model.panel = .music }
         ToolButton(title: "Captions", systemImage: "captions.bubble", badge: "AI") { model.panel = .captions }
         ToolButton(title: "Silence", systemImage: "waveform.badge.minus", badge: "AI") { model.removeSilences() }
@@ -259,11 +269,24 @@ struct EditorView: View {
     }
 
     @ViewBuilder private func textTools(_ id: UUID) -> some View {
+        let overlay = model.project.textOverlays.first { $0.id == id }
         ToolButton(title: "Edit", systemImage: "character.cursor.ibeam") { model.panel = .text(id) }
+        ToolButton(title: "Duration", systemImage: "timer") { model.panel = .textDuration(id) }
+        ToolButton(title: "Animate", systemImage: "camera.metering.center.weighted",
+                   isActive: !(overlay?.animation?.isEmpty ?? true)) { model.panel = .textAnimate(id) }
+        ToolButton(title: "Position", systemImage: "square.grid.3x3", isActive: overlay?.anchor != nil) { model.panel = .textPosition(id) }
+        ToolButton(title: "Duplicate", systemImage: "plus.square.on.square") {
+            var newID: UUID?
+            model.edit("Duplicate text") { newID = $0.duplicateText(id) }
+            if let newID { model.select(.text(newID)) }
+        }
         ToolButton(title: "Delete", systemImage: "trash") { model.deleteSelection() }
     }
 
     @ViewBuilder private var audioTools: some View {
+        ToolButton(title: "Trim", systemImage: "timeline.selection") { model.panel = .audioTrim }
+        ToolButton(title: "Split", systemImage: "scissors") { model.splitSelectedAudio() }
+        ToolButton(title: "Duplicate", systemImage: "plus.square.on.square") { model.duplicateSelectedAudio() }
         ToolButton(title: "Volume", systemImage: "speaker.wave.2") { model.panel = .music }
         ToolButton(title: "Beat Sync", systemImage: "metronome", badge: "AI") { model.beatSync() }
         ToolButton(title: "Delete", systemImage: "trash") { model.deleteSelection() }

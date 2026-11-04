@@ -6,6 +6,12 @@ final class FeatureUITests: CutlineUITestCase {
     func test01_ProjectLibraryAndImport() {
         XCTAssertTrue(element("projects.new").waitForExistence(timeout: 10))
         snapshot("01-projects-empty")
+        // A new project closed without adding anything is not kept.
+        tap("projects.new")
+        tap("editor.close")
+        XCTAssertTrue(element("projects.new").waitForExistence(timeout: 10))
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        XCTAssertFalse(element("project.card").exists, "empty project should not appear in the library")
         openProjectWithSamples()
         XCTAssertEqual(count(prefix: "clip."), 3)
         XCTAssertEqual(totalSeconds, 12, accuracy: 0.2)
@@ -118,7 +124,6 @@ final class FeatureUITests: CutlineUITestCase {
         if app.menuItems["Select All"].waitForExistence(timeout: 2) { app.menuItems["Select All"].tap() }
         field.typeText("Summer Trip")
         tap("font.Condensed")
-        tap("chip.Rise")
         tap("chip.Outline")
         snapshot("07-text")
         tap("panel.done")
@@ -187,7 +192,9 @@ final class FeatureUITests: CutlineUITestCase {
         XCTAssertEqual(element("editor.aspect").label, "3:4")
         snapshot("11-canvas-3x4")
         tap("chip.1:1")
-        tap("swatch.4")
+        // Background is always blurred: no background options in the canvas panel.
+        XCTAssertFalse(element("chip.Blur").exists)
+        XCTAssertFalse(element("swatch.4").exists)
         snapshot("11-canvas-square")
         tap("chip.Fill")
         tap("chip.Top")
@@ -195,7 +202,6 @@ final class FeatureUITests: CutlineUITestCase {
         tap("chip.Stretch")
         tap("chip.Fit")
         tap("chip.16:9")
-        tap("chip.Blur")
         tap("panel.done")
         XCTAssertEqual(element("editor.aspect").label, "16:9")
     }
@@ -220,10 +226,103 @@ final class FeatureUITests: CutlineUITestCase {
         openProjectWithSamples()
         tap("editor.export")
         tap("chip.720p")
+        let estimate = element("export.estimate")
+        XCTAssertTrue(estimate.waitForExistence(timeout: 5))
+        XCTAssertTrue(estimate.label.contains("Estimated size"), estimate.label)
         tap("export.start")
         XCTAssertTrue(element("export.done").waitForExistence(timeout: 300), "export did not finish")
         snapshot("13-exported")
         tap("export.close")
+    }
+
+    func test19_TextDurationAnimatePosition() {
+        openProjectWithSamples()
+        tap("tool.Text")
+        XCTAssertTrue(element("text.field").waitForExistence(timeout: 5))
+        tap("panel.done")
+        // Text stays selected: its toolbar has the photo-like tools.
+        for tool in ["tool.Duration", "tool.Animate", "tool.Position", "tool.Duplicate"] {
+            XCTAssertTrue(element(tool).waitForExistence(timeout: 5), "\(tool) missing for text")
+        }
+        tap("tool.Duration")
+        tap("chip.5s")
+        XCTAssertTrue(element("textDuration.value").label.hasPrefix("5.0 s"))
+        tap("panel.done")
+        tap("tool.Animate")
+        element("textAnimate.tabs").buttons["In"].tap()
+        tap("tanim.In.slideUp")
+        element("textAnimate.tabs").buttons["Combo"].tap()
+        tap("tanim.combo.pulse")
+        tap("panel.done")
+        tap("tool.Position")
+        tap("tpos.bottom")
+        snapshot("19-text-bottom")
+        tap("panel.done")
+        tap("tool.Duplicate")
+        waitFor("text duplicated") { count(prefix: "text.") == 2 }
+    }
+
+    func test20_WatermarkAndTitleCards() {
+        openProjectWithSamples()
+        tap("tool.Watermark")
+        tap("chip.Text")
+        XCTAssertTrue(element("watermark.text").waitForExistence(timeout: 5))
+        tap("wmpos.topLeft")
+        snapshot("20-watermark")
+        tap("panel.done")
+        let before = totalSeconds
+        tap("tool.Intro")
+        tap("titleCard.apply")
+        waitFor("opening slide added") { count(prefix: "clip.") == 4 && totalSeconds > before + 2.5 }
+        tap("panel.done")
+        tap("tool.Outro")
+        tap("titleCard.apply")
+        waitFor("closing slide added") { count(prefix: "clip.") == 5 }
+        snapshot("20-outro")
+        tap("titleCard.remove")
+        waitFor("closing slide removed") { count(prefix: "clip.") == 4 }
+    }
+
+    func test18_AudioTrimSplitDuplicate() {
+        openProjectWithSamples()
+        tap("tool.Music")
+        tap("music.use.sunrise")
+        waitUntilIdle()
+        waitFor("music lane") { count(prefix: "audio.") == 1 }
+        // Playhead a little into the song, then select the music clip.
+        let tl = element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.2))
+        tl.press(forDuration: 0.05, thenDragTo: tl.withOffset(CGVector(dx: -120, dy: 0)))
+        element("audio.0").tap()
+        XCTAssertTrue(element("tool.Trim").waitForExistence(timeout: 5))
+        tap("tool.Trim")
+        XCTAssertTrue(element("audioTrim.summary").waitForExistence(timeout: 5))
+        element("slider.Start").adjust(toNormalizedSliderPosition: 0.1)
+        snapshot("18-audio-trim")
+        tap("panel.done")
+        tap("tool.Split")
+        waitFor("audio split") { count(prefix: "audio.") == 2 }
+        tap("tool.Duplicate")
+        waitFor("audio duplicated") { count(prefix: "audio.") == 3 }
+        snapshot("18-audio-split-duplicate")
+    }
+
+    func test17_FilterPreviewShowsCleanFrame() {
+        openProjectWithSamples()
+        // Clip 1 spans 4–8 s and fades out; the playhead starts at 0 (outside it).
+        selectClip(1)
+        tap("tool.Animate")
+        element("animate.tabs").buttons["Out"].tap()
+        tap("anim.Out.fade")
+        tap("panel.done")
+        tap("tool.Filters")
+        // Opening Filters jumps to the middle of the clip's un-animated part.
+        waitFor("playhead in the clean part of clip 1") {
+            let parts = element("time.current").label.split(separator: ":")
+            guard parts.count == 2, let s = Double(parts[1]) else { return false }
+            return s > 4.5 && s < 7.0
+        }
+        tap("filter.mono")
+        snapshot("17-filter-clean-frame")
     }
 
     func test16_ClipAnimations() {

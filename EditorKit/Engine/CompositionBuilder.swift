@@ -45,7 +45,8 @@ public final class CompositionBuilder: @unchecked Sendable {
     }
 
     public func build(project: Project, resolver: MediaResolver, renderSize: CGSize,
-                      quality: RenderQuality = .preview) async throws -> BuiltComposition {
+                      quality: RenderQuality = .preview,
+                      toggles: RenderToggles = RenderToggles()) async throws -> BuiltComposition {
         let composition = AVMutableComposition()
         let layout = project.layout
         let total = project.duration
@@ -183,7 +184,12 @@ public final class CompositionBuilder: @unchecked Sendable {
             boundaries.insert(min(info.timelineRange.end, total))
         }
         let scene = RenderScene(renderSize: renderSize, background: project.background, quality: quality,
-                                clips: infos, texts: project.textOverlays, captions: project.captions, stills: stills)
+                                clips: infos, texts: project.textOverlays, captions: project.captions, stills: stills,
+                                toggles: toggles, watermark: project.watermark,
+                                watermarkImage: project.watermark.flatMap { w in
+                                    guard w.kind == .image, let name = w.imageFileName else { return nil }
+                                    return MediaImporter.loadImage(resolver.mediaDirectory.appendingPathComponent(name), maxPixelSize: 1024)
+                                })
         let sorted = boundaries.sorted()
         var instructions: [RenderInstruction] = []
         for (a, b) in zip(sorted, sorted.dropFirst()) where b > a {

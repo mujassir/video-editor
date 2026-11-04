@@ -10,11 +10,20 @@ final class AppModel {
 
     init(store: ProjectStore = .defaultStore()) {
         self.store = store
-        reload()
+        pruneEmptyProjects()
     }
 
     func reload() {
         projects = store.listProjects()
+    }
+
+    /// Projects that were opened but never given any content are removed, so the
+    /// library never shows empty "0:00" cards. `keeping` protects the open project.
+    func pruneEmptyProjects(keeping openID: UUID? = nil) {
+        for p in store.listProjects() where p.isEmptyEdit && p.id != openID {
+            try? store.delete(p.id)
+        }
+        reload()
     }
 
     func createProject() throws -> Project {

@@ -59,6 +59,14 @@ struct ExportView: View {
             let size = model.project.aspectRatio.renderSize(shortEdge: settings.resolution.rawValue)
             Text("\(Int(size.width))×\(Int(size.height)) · \(model.duration.timecode) · hardware encoded")
                 .font(.footnote).foregroundStyle(Theme.secondaryText)
+            HStack(spacing: 6) {
+                Image(systemName: "internaldrive")
+                Text("Estimated size ≈ \(Self.format(bytes: settings.estimatedBytes(duration: model.duration)))")
+                    .monospacedDigit()
+            }
+            .font(.subheadline.weight(.semibold))
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("export.estimate")
             Button(action: start) {
                 Text("Export Video").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14)
                     .background(Theme.accent, in: RoundedRectangle(cornerRadius: 14))
@@ -100,7 +108,7 @@ struct ExportView: View {
                     .frame(maxHeight: 360)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
             }
-            Label("Exported in \(String(format: "%.1f", elapsed))s", systemImage: "checkmark.circle.fill")
+            Label("Exported in \(String(format: "%.1f", elapsed))s · \(Self.format(bytes: Self.fileSize(url)))", systemImage: "checkmark.circle.fill")
                 .font(.headline).foregroundStyle(.green)
                 .accessibilityIdentifier("export.done")
             HStack(spacing: 12) {
@@ -148,5 +156,13 @@ struct ExportView: View {
                 progress = nil
             }
         }
+    }
+
+    static func format(bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
+    static func fileSize(_ url: URL) -> Int64 {
+        ((try? FileManager.default.attributesOfItem(atPath: url.path)[.size]) as? NSNumber)?.int64Value ?? 0
     }
 }

@@ -169,7 +169,6 @@ final class DemoTourUITests: CutlineUITestCase {
             pause(0.5)
             tap("chip.Outline")
             pause(0.5)
-            tap("chip.Pop")
             pause(2)
             tap("panel.done")
         }

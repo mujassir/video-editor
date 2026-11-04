@@ -234,7 +234,8 @@ public extension Project {
     mutating func setContentFit(_ fit: ContentFit, anchor: ContentAnchor) {
         defaultFit = fit
         defaultAnchor = anchor
-        for i in clips.indices {
+        // Title cards always fill (their content is kept in a safe centre area).
+        for i in clips.indices where clips[i].titleCard == nil {
             clips[i].transform.fit = fit
             clips[i].transform.anchor = anchor
         }
@@ -372,7 +373,16 @@ public extension Project {
 
     @discardableResult
     mutating func addText(_ text: String, at time: MediaTime, duration: MediaTime = MediaTime(seconds: 3)) -> UUID {
-        let overlay = TextOverlay(text: text, range: MediaTimeRange(start: time, duration: duration))
+        var overlay = TextOverlay(text: text, range: MediaTimeRange(start: time, duration: duration))
+        // New text uses the shared animation set: pop in, fade out.
+        var anim = ClipAnimation()
+        anim.entrance = .pop
+        anim.exit = .fade
+        anim.inDuration = 0.4
+        anim.outDuration = 0.4
+        overlay.animation = anim
+        overlay.animationIn = .none
+        overlay.animationOut = .none
         textOverlays.append(overlay)
         return overlay.id
     }
@@ -382,6 +392,60 @@ public extension Project {
         change(&textOverlays[i])
     }
 
+    static let textDurationRange = MediaTime(seconds: 0.5)...MediaTime(seconds: 30)
+
+    mutating func setTextDuration(_ id: UUID, _ duration: MediaTime) {
+        updateText(id) { $0.range.duration = duration.clamped(to: Self.textDurationRange) }
+    }
+
+    mutating func moveText(_ id: UUID, toStart start: MediaTime) {
+        updateText(id) { $0.range.start = max(.zero, start) }
+    }
+
+    /// Fixed position; nil returns the text to free (dragged) placement.
+    mutating func setTextAnchor(_ id: UUID, _ anchor: OverlayAnchor?) {
+        updateText(id) { t in
+            t.anchor = anchor
+            if anchor == nil { t.centerX = 0.5; t.centerY = 0.5 }
+        }
+    }
+
+    @discardableResult
+    mutating func duplicateText(_ id: UUID) -> UUID? {
+        guard let t = textOverlays.first(where: { $0.id == id }) else { return nil }
+        var copy = t
+        copy.id = UUID()
+        copy.range.start = t.range.end
+        textOverlays.append(copy)
+        return copy.id
+    }
+
+    /// Opening / closing slide clip, if present.
+    func titleCardClip(_ placement: TitleCard.Placement) -> VideoClip? {
+        clips.first { $0.titleCard?.placement == placement }
+    }
+
+    /// Adds or replaces the opening (first) / closing (last) slide with a rendered image.
+    mutating func upsertTitleCard(_ card: TitleCard, image: MediaItem, duration: MediaTime) {
+        if !media.contains(where: { $0.id == image.id }) { media.append(image) }
+        if let i = clips.firstIndex(where: { $0.titleCard?.placement == card.placement }) {
+            clips[i].mediaID = image.id
+            clips[i].titleCard = card
+            clips[i].sourceRange.duration = duration.clamped(to: Self.stillDurationRange)
+            return
+        }
+        var clip = VideoClip(mediaID: image.id, kind: .photo,
+                             sourceRange: MediaTimeRange(start: .zero, duration: duration.clamped(to: Self.stillDurationRange)))
+        clip.titleCard = card
+        clip.transform.fit = .fill      // square card, safe centre: fills any canvas ratio
+        if card.placement == .opening { clips.insert(clip, at: 0) } else { clips.append(clip) }
+    }
+
+    mutating func removeTitleCard(_ placement: TitleCard.Placement) {
+        clips.removeAll { $0.titleCard?.placement == placement }
+        if let last = clips.indices.last { clips[last].transitionOut = nil }
+    }
+
     mutating func deleteText(_ id: UUID) {
         textOverlays.removeAll { $0.id == id }
     }
@@ -389,6 +453,75 @@ public extension Project {
     mutating func updateAudio(_ id: UUID, _ change: (inout AudioClip) -> Void) {
         guard let i = audioClips.firstIndex(where: { $0.id == id }) else { return }
         change(&audioClips[i])
+    }
+
+    // MARK: Audio clip editing
+
+    static let minimumAudioDuration = MediaTime(seconds: 0.2)
+
+    private func audioIndex(_ id: UUID) throws -> (Int, MediaTime) {
+        guard let i = audioClips.firstIndex(where: { $0.id == id }),
+              let item = mediaItem(audioClips[i].mediaID) else { throw EditError.clipNotFound }
+        return (i, item.duration)
+    }
+
+    /// Sets which part of the song plays (source start/end), keeping its timeline start.
+    mutating func setAudioSourceRange(_ id: UUID, _ range: MediaTimeRange) throws {
+        let (i, total) = try audioIndex(id)
+        let start = range.start.clamped(to: .zero...max(.zero, total - Self.minimumAudioDuration))
+        let end = range.end.clamped(to: (start + Self.minimumAudioDuration)...max(start + Self.minimumAudioDuration, total))
+        audioClips[i].sourceRange = MediaTimeRange(start: start, end: min(end, total))
+    }
+
+    /// Slides the section of the song that plays, keeping its length ("use a part from the middle").
+    mutating func slideAudioContent(_ id: UUID, toSourceStart start: MediaTime) throws {
+        let (i, total) = try audioIndex(id)
+        let length = audioClips[i].sourceRange.duration
+        let s = start.clamped(to: .zero...max(.zero, total - length))
+        audioClips[i].sourceRange = MediaTimeRange(start: s, duration: length)
+    }
+
+    /// Moves where the audio starts on the timeline.
+    mutating func moveAudio(_ id: UUID, toTimelineStart start: MediaTime) throws {
+        let (i, _) = try audioIndex(id)
+        audioClips[i].start = max(.zero, start)
+    }
+
+    /// Splits an audio clip at a timeline time. Returns the new right-hand clip's id.
+    @discardableResult
+    mutating func splitAudio(_ id: UUID, at time: MediaTime) throws -> UUID {
+        let (i, _) = try audioIndex(id)
+        let clip = audioClips[i]
+        let local = time - clip.start
+        guard local >= Self.minimumAudioDuration, clip.sourceRange.duration - local >= Self.minimumAudioDuration else {
+            throw EditError.tooShort
+        }
+        var left = clip, right = clip
+        right.id = UUID()
+        left.sourceRange.duration = local
+        left.fadeOut = .zero
+        right.sourceRange = MediaTimeRange(start: clip.sourceRange.start + local, end: clip.sourceRange.end)
+        right.start = time
+        right.fadeIn = .zero
+        audioClips[i] = left
+        audioClips.insert(right, at: i + 1)
+        return right.id
+    }
+
+    /// Copies an audio clip and places it right after the original (same lane when free).
+    @discardableResult
+    mutating func duplicateAudio(_ id: UUID) throws -> UUID {
+        let (i, _) = try audioIndex(id)
+        var copy = audioClips[i]
+        copy.id = UUID()
+        copy.start = audioClips[i].timelineRange.end
+        let collides = audioClips.contains { $0.lane == copy.lane && $0.timelineRange.intersection(copy.timelineRange) != nil }
+        if collides {
+            addAudio(copy)
+        } else {
+            audioClips.insert(copy, at: i + 1)
+        }
+        return copy.id
     }
 
     mutating func deleteAudio(_ id: UUID) {

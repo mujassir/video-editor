@@ -342,6 +342,8 @@ public struct VideoClip: Codable, Hashable, Identifiable, Sendable {
     public var photoMotion: PhotoMotion?
     /// In / Out / Combo animations (photos and videos). Optional so old projects load.
     public var animation: ClipAnimation?
+    /// Set when this clip is an opening / closing slide.
+    public var titleCard: TitleCard?
 
     public init(id: UUID = UUID(), mediaID: UUID, kind: MediaKind, sourceRange: MediaTimeRange) {
         self.id = id
@@ -446,11 +448,92 @@ public struct TextOverlay: Codable, Hashable, Identifiable, Sendable {
     public var scale: Double = 1
     public var animationIn: TextAnimation = .pop
     public var animationOut: TextAnimation = .fade
+    /// In / Out / Combo animation (same set as clips). When set it replaces the
+    /// legacy `animationIn` / `animationOut`. Optional so old projects load.
+    public var animation: ClipAnimation?
+    /// Fixed placement that hugs a canvas edge/corner. nil = free position (centerX/Y).
+    public var anchor: OverlayAnchor?
 
     public init(id: UUID = UUID(), text: String, range: MediaTimeRange) {
         self.id = id
         self.text = text
         self.range = range
+    }
+}
+
+/// Fixed spots on the canvas for text and watermarks.
+public enum OverlayAnchor: String, Codable, CaseIterable, Sendable, Identifiable {
+    case topLeft, top, topRight, left, center, right, bottomLeft, bottom, bottomRight
+    public var id: String { rawValue }
+    public var displayName: String {
+        switch self {
+        case .topLeft: return "Top Left"
+        case .top: return "Top"
+        case .topRight: return "Top Right"
+        case .left: return "Left"
+        case .center: return "Center"
+        case .right: return "Right"
+        case .bottomLeft: return "Bottom Left"
+        case .bottom: return "Bottom"
+        case .bottomRight: return "Bottom Right"
+        }
+    }
+    /// -1 / 0 / +1 per axis (left/centre/right, top/centre/bottom).
+    public var axes: SIMD2<Double> {
+        switch self {
+        case .topLeft: return SIMD2(-1, -1)
+        case .top: return SIMD2(0, -1)
+        case .topRight: return SIMD2(1, -1)
+        case .left: return SIMD2(-1, 0)
+        case .center: return SIMD2(0, 0)
+        case .right: return SIMD2(1, 0)
+        case .bottomLeft: return SIMD2(-1, 1)
+        case .bottom: return SIMD2(0, 1)
+        case .bottomRight: return SIMD2(1, 1)
+        }
+    }
+
+    /// Centre (canvas-normalized) for an item of `size` px so it sits `margin` from the edges.
+    public func center(for size: CGSize, canvas: CGSize, margin: Double = 0.04) -> SIMD2<Double> {
+        let a = axes
+        let hw = size.width / canvas.width / 2, hh = size.height / canvas.height / 2
+        let mx = margin, my = margin * canvas.width / max(canvas.height, 1)   // same visual margin both axes
+        let x = a.x < 0 ? mx + hw : (a.x > 0 ? 1 - mx - hw : 0.5)
+        let y = a.y < 0 ? my + hh : (a.y > 0 ? 1 - my - hh : 0.5)
+        return SIMD2(x, y)
+    }
+}
+
+/// Logo or text stamped over the whole video.
+public struct Watermark: Codable, Hashable, Sendable {
+    public enum Kind: String, Codable, Sendable { case text, image }
+    public var kind: Kind = .text
+    public var text: String = "@yourname"
+    /// Image file in the project's media folder (for `.image`).
+    public var imageFileName: String?
+    public var anchor: OverlayAnchor = .bottomRight
+    public var opacity: Double = 0.7
+    /// Width as a fraction of the canvas width (image) or text height factor (text).
+    public var size: Double = 0.22
+    public var color: RGBAColor = .white
+    public init() {}
+}
+
+/// Opening / closing slide content. The slide itself is a photo clip whose image is
+/// rendered from this description (square, content kept in the centre so it survives
+/// any canvas ratio with Fill).
+public struct TitleCard: Codable, Hashable, Sendable {
+    public enum Placement: String, Codable, Sendable { case opening, closing }
+    public var placement: Placement
+    public var title: String
+    public var subtitle: String = ""
+    public var background: RGBAColor = RGBAColor(r: 0.08, g: 0.08, b: 0.1)
+    public var accent: RGBAColor = RGBAColor(r: 1, g: 0.24, b: 0.38)
+    public var textColor: RGBAColor = .white
+    public var gradient = true
+    public init(placement: Placement, title: String) {
+        self.placement = placement
+        self.title = title
     }
 }
 
@@ -516,6 +599,7 @@ public struct Project: Codable, Hashable, Identifiable, Sendable {
     public var textOverlays: [TextOverlay] = []
     public var captions = CaptionTrack()
     /// Fit applied to newly added media (set from the Canvas panel). Optional for old projects.
+    public var watermark: Watermark?
     public var defaultFit: ContentFit?
     public var defaultAnchor: ContentAnchor?
 

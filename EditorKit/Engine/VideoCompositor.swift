@@ -12,7 +12,7 @@ public final class VideoCompositor: NSObject, AVVideoCompositing, @unchecked Sen
     private var renderContext: AVVideoCompositionRenderContext?
     private var cancelled = false
     private let segmentation = SegmentationCache()
-    private var overlayCache: [String: CGImage] = [:]
+    var overlayCache: [String: CGImage] = [:]
 
     public var sourcePixelBufferAttributes: [String: any Sendable]? {
         [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
@@ -105,12 +105,13 @@ public final class VideoCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                 let start = info.timelineRange.duration - info.overlapOut
                 animation = LayerGeometry.transitionAnimation(t.kind, progress: (local - start).seconds / info.overlapOut.seconds, incoming: false)
             }
-            if let clipAnim = info.clip.animation, !clipAnim.isEmpty {
+            let animate = scene.toggles.animationsEnabled
+            if animate, let clipAnim = info.clip.animation, !clipAnim.isEmpty {
                 let anim = LayerGeometry.clipAnimation(clipAnim, local: local.seconds,
                                                        duration: info.timelineRange.duration.seconds)
                 animation = LayerGeometry.combine(anim, animation)
             }
-            if info.clip.isStill, let motion = info.clip.photoMotion, motion != .none {
+            if animate, info.clip.isStill, let motion = info.clip.photoMotion, motion != .none {
                 let progress = local.seconds / max(info.timelineRange.duration.seconds, 0.001)
                 animation = LayerGeometry.combine(LayerGeometry.photoMotion(motion, progress: progress), animation)
             }
@@ -237,7 +238,9 @@ public final class VideoCompositor: NSObject, AVVideoCompositing, @unchecked Sen
     private func drawOverlays(scene: RenderScene, time: MediaTime, canvas: CGSize,
                               renderer: MetalRenderer, encoder: MTLRenderCommandEncoder) {
         for overlay in scene.texts {
-            guard let state = OverlayAnimator.state(for: overlay, at: time), state.opacity > 0.001 else { continue }
+            guard var state = OverlayAnimator.state(for: overlay, at: time) else { continue }
+            if !scene.toggles.animationsEnabled { state = OverlayAnimationState() }   // paused: text at rest
+            guard state.opacity > 0.001 else { continue }
             let key = "t-\(overlay.id)-\(overlay.text.hashValue)-\(overlay.style.hashValue)-\(state.visibleCharacters ?? -1)-\(Int(canvas.height))"
             let image: CGImage?
             if let cached = overlayCache[key] {
@@ -248,11 +251,27 @@ public final class VideoCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                 overlayCache[key] = image
             }
             guard let image, let tex = renderer.texture(for: image) else { continue }
+            let size = CGSize(width: Double(image.width) * overlay.scale, height: Double(image.height) * overlay.scale)
+            var center = overlay.anchor?.center(for: size, canvas: canvas) ?? SIMD2(overlay.centerX, overlay.centerY)
+            center.y += state.offsetY
+            var scale = overlay.scale * state.scale
+            var rotation = overlay.rotation
+            var opacity = state.opacity
+            if let anim = overlay.animation, !anim.isEmpty, scene.toggles.animationsEnabled {
+                let a = LayerGeometry.clipAnimation(anim, local: (time - overlay.range.start).seconds,
+                                                    duration: overlay.range.duration.seconds)
+                center += a.offset
+                scale *= a.scale
+                rotation += a.rotation
+                opacity *= Double(a.opacity)
+            }
+            guard opacity > 0.001 else { continue }
             let quad = LayerGeometry.overlayQuad(size: CGSize(width: image.width, height: image.height),
-                                                 center: SIMD2(overlay.centerX, overlay.centerY + state.offsetY),
-                                                 canvas: canvas, scale: overlay.scale * state.scale, rotation: overlay.rotation)
-            renderer.drawOverlay(encoder, vertices: quad, texture: tex, opacity: Float(state.opacity))
+                                                 center: center, canvas: canvas, scale: scale, rotation: rotation)
+            renderer.drawOverlay(encoder, vertices: quad, texture: tex, opacity: Float(opacity))
         }
+
+        drawWatermark(scene: scene, canvas: canvas, renderer: renderer, encoder: encoder)
 
         if let (segment, active) = OverlayAnimator.caption(in: scene.captions, at: time) {
             let track = scene.captions
@@ -276,6 +295,37 @@ public final class VideoCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                 renderer.drawOverlay(encoder, vertices: quad, texture: tex, opacity: 1)
             }
         }
+    }
+}
+
+extension VideoCompositor {
+    /// Watermark: constant over the whole video, drawn above clips and text.
+    func drawWatermark(scene: RenderScene, canvas: CGSize, renderer: MetalRenderer, encoder: MTLRenderCommandEncoder) {
+        guard let mark = scene.watermark else { return }
+        let image: CGImage?
+        switch mark.kind {
+        case .image:
+            image = scene.watermarkImage
+        case .text:
+            guard !mark.text.isEmpty else { return }
+            let key = "wm-\(mark.text.hashValue)-\(mark.size)-\(mark.color.hashValue)-\(Int(canvas.height))"
+            if let cached = overlayCache[key] {
+                image = cached
+            } else {
+                let style = TextRasterizer.Style(fontName: "HelveticaNeue-Bold", fontSize: canvas.height * 0.12 * mark.size,
+                                                 shadow: true, maxWidth: canvas.width * 0.9)
+                image = TextRasterizer.render([TextRasterizer.Run(text: mark.text, color: mark.color)], style: style)
+                overlayCache[key] = image
+            }
+        }
+        guard let image, image.width > 0, let tex = renderer.texture(for: image) else { return }
+        // Image watermarks are sized by width; text by its font size above.
+        let scale = mark.kind == .image ? canvas.width * mark.size / Double(image.width) : 1
+        let size = CGSize(width: Double(image.width) * scale, height: Double(image.height) * scale)
+        let center = mark.anchor.center(for: size, canvas: canvas, margin: 0.035)
+        let quad = LayerGeometry.overlayQuad(size: CGSize(width: image.width, height: image.height),
+                                             center: center, canvas: canvas, scale: scale)
+        renderer.drawOverlay(encoder, vertices: quad, texture: tex, opacity: Float(mark.opacity))
     }
 }
 

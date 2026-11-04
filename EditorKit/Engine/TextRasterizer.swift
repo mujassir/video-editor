@@ -1,6 +1,7 @@
 import CoreText
 import CoreGraphics
 import Foundation
+import ImageIO
 
 /// Rasterizes text and captions into premultiplied BGRA bitmaps with Core Text.
 /// Pure Core Graphics, so it is safe on the compositor's background queue.
@@ -233,5 +234,85 @@ public enum OverlayAnimator {
         }) else { return nil }
         let active = segment.words.lastIndex { $0.range.start <= time }
         return (segment, active)
+    }
+}
+
+// MARK: - Title cards (opening / closing slides)
+
+
+/// Renders opening / closing slides as square images.
+///
+/// Content stays inside the central 48% of the square, so with Fill the slide works
+/// on every canvas ratio (9:16 crops the sides, 16:9 crops top and bottom).
+public enum TitleCardRenderer {
+    public static let side = 2160
+
+    public static func render(_ card: TitleCard) -> CGImage? {
+        let s = side
+        guard let ctx = CGContext(data: nil, width: s, height: s, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+        else { return nil }
+        let bg = TextRasterizer.cgColor(card.background)
+        ctx.setFillColor(bg)
+        ctx.fill(CGRect(x: 0, y: 0, width: s, height: s))
+        if card.gradient {
+            // Soft accent glow behind the text plus a darker edge.
+            let accent = card.accent
+            let glow = CGColor(srgbRed: accent.r, green: accent.g, blue: accent.b, alpha: 0.45)
+            let clear = CGColor(srgbRed: accent.r, green: accent.g, blue: accent.b, alpha: 0)
+            if let g = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: [glow, clear] as CFArray, locations: [0, 1]) {
+                let c = CGPoint(x: Double(s) * 0.5, y: Double(s) * 0.55)
+                ctx.drawRadialGradient(g, startCenter: c, startRadius: 0, endCenter: c, endRadius: Double(s) * 0.55, options: [])
+            }
+            let shade = CGColor(gray: 0, alpha: 0.35), none = CGColor(gray: 0, alpha: 0)
+            if let g = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: [none, shade] as CFArray, locations: [0, 1]) {
+                let c = CGPoint(x: Double(s) / 2, y: Double(s) / 2)
+                ctx.drawRadialGradient(g, startCenter: c, startRadius: Double(s) * 0.35, endCenter: c, endRadius: Double(s) * 0.75, options: [])
+            }
+        }
+        let safe = Double(s) * 0.48
+        let titleStyle = TextRasterizer.Style(fontName: "HelveticaNeue-Bold", fontSize: Double(s) * 0.075,
+                                              shadow: false, maxWidth: safe)
+        let subStyle = TextRasterizer.Style(fontName: "HelveticaNeue-Medium", fontSize: Double(s) * 0.034,
+                                            shadow: false, maxWidth: safe)
+        let title = card.title.isEmpty ? nil : TextRasterizer.render([.init(text: card.title, color: card.textColor)], style: titleStyle)
+        var subColor = card.textColor
+        subColor.a = 0.75
+        let sub = card.subtitle.isEmpty ? nil : TextRasterizer.render([.init(text: card.subtitle, color: subColor)], style: subStyle)
+        let gap = Double(s) * 0.03, bar = Double(s) * 0.008
+        let th = Double(title?.height ?? 0), sh = Double(sub?.height ?? 0)
+        let total = th + (sub != nil ? gap * 2 + bar + sh : 0)
+        // CoreGraphics origin is bottom-left: lay out top-down from the block's top.
+        var y = (Double(s) + total) / 2
+        if let title {
+            y -= th
+            ctx.draw(title, in: CGRect(x: (Double(s) - Double(title.width)) / 2, y: y, width: Double(title.width), height: th))
+        }
+        if let sub {
+            y -= gap + bar
+            ctx.setFillColor(TextRasterizer.cgColor(card.accent))
+            let w = Double(s) * 0.07
+            ctx.fill(CGRect(x: (Double(s) - w) / 2, y: y, width: w, height: bar))
+            y -= gap + sh
+            ctx.draw(sub, in: CGRect(x: (Double(s) - Double(sub.width)) / 2, y: y, width: Double(sub.width), height: sh))
+        }
+        return ctx.makeImage()
+    }
+
+    /// Renders and writes a PNG; returns the stored media item.
+    public static func write(_ card: TitleCard, to directory: URL) throws -> MediaItem {
+        guard let image = render(card) else { throw MediaImportError.unreadable }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let name = "title-\(card.placement.rawValue)-\(UUID().uuidString.prefix(8)).png"
+        let url = directory.appendingPathComponent(name)
+        guard let dest = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) else {
+            throw MediaImportError.unreadable
+        }
+        CGImageDestinationAddImage(dest, image, nil)
+        guard CGImageDestinationFinalize(dest) else { throw MediaImportError.unreadable }
+        return MediaItem(kind: .photo, fileName: name, naturalSize: CGSize(width: side, height: side),
+                         duration: .zero, hasAudio: false,
+                         displayName: card.placement == .opening ? "Opening slide" : "Closing slide")
     }
 }

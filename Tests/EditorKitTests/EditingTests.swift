@@ -353,3 +353,61 @@ struct PhotoDurationTests {
         #expect(p.layout.duration == s(8))
     }
 }
+
+@Suite("Audio editing")
+struct AudioEditingTests {
+    /// 10 s of video plus a 30 s song on the timeline.
+    private func project() -> (Project, UUID) {
+        var p = Project(name: "P")
+        p.appendClip(for: MediaItem(kind: .video, fileName: "v.mov", naturalSize: CGSize(width: 10, height: 10), duration: s(10), hasAudio: false))
+        let song = MediaItem(kind: .audio, fileName: "song.m4a", naturalSize: .zero, duration: s(30), hasAudio: true)
+        p.media.append(song)
+        var clip = AudioClip(mediaID: song.id, role: .music, sourceRange: MediaTimeRange(start: .zero, duration: s(10)), start: .zero)
+        clip.beats = stride(from: 0.0, to: 30, by: 0.5).map { s($0) }
+        p.addAudio(clip)
+        return (p, clip.id)
+    }
+
+    @Test func trimStartAndEndWithinSong() throws {
+        var (p, id) = project()
+        try p.setAudioSourceRange(id, MediaTimeRange(start: s(2), end: s(8)))
+        #expect(p.audioClips[0].sourceRange == MediaTimeRange(start: s(2), end: s(8)))
+        try p.setAudioSourceRange(id, MediaTimeRange(start: s(-5), end: s(99)))
+        #expect(p.audioClips[0].sourceRange == MediaTimeRange(start: s(0), end: s(30)), "clamped to the song")
+    }
+
+    @Test func slideSectionKeepsLength() throws {
+        var (p, id) = project()
+        try p.slideAudioContent(id, toSourceStart: s(12))
+        #expect(p.audioClips[0].sourceRange == MediaTimeRange(start: s(12), end: s(22)))
+        try p.slideAudioContent(id, toSourceStart: s(28))
+        #expect(p.audioClips[0].sourceRange == MediaTimeRange(start: s(20), end: s(30)), "can't run past the song end")
+        // Beats follow the section: the first timeline beat is still on the grid.
+        #expect(p.audioClips[0].timelineBeats.first == s(0))
+    }
+
+    @Test func moveSplitDuplicate() throws {
+        var (p, id) = project()
+        try p.moveAudio(id, toTimelineStart: s(1))
+        #expect(p.audioClips[0].start == s(1))
+        let right = try p.splitAudio(id, at: s(4))
+        #expect(p.audioClips.count == 2)
+        #expect(p.audioClips[0].sourceRange == MediaTimeRange(start: s(0), end: s(3)))
+        let r = try #require(p.audioClips.first { $0.id == right })
+        #expect(r.start == s(4) && r.sourceRange == MediaTimeRange(start: s(3), end: s(10)))
+        #expect(throws: EditError.tooShort) { try p.splitAudio(id, at: s(1.05)) }
+        let copy = try p.duplicateAudio(right)
+        let c = try #require(p.audioClips.first { $0.id == copy })
+        #expect(c.start == r.timelineRange.end && c.sourceRange == r.sourceRange && c.lane == r.lane)
+    }
+}
+
+@Suite("Empty projects")
+struct EmptyProjectTests {
+    @Test func emptyUntilSomethingIsAdded() {
+        var p = Project(name: "P")
+        #expect(p.isEmptyEdit)
+        p.addText("Hi", at: .zero)
+        #expect(!p.isEmptyEdit)
+    }
+}

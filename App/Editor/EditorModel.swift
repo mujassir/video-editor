@@ -4,7 +4,8 @@ import CoreImage
 import EditorKit
 
 enum EditorPanel: Equatable {
-    case canvas, trim, duration, motion, filters, adjust, speed, volume, transition(UUID), text(UUID?), music, captions, crop, background, export
+    case canvas, trim, audioTrim, duration, motion, filters, adjust, speed, volume, transition(UUID), text(UUID?), music, captions, crop, background, export
+    case textDuration(UUID), textAnimate(UUID), textPosition(UUID), watermark, titleCard(TitleCard.Placement)
 }
 
 /// Drives one editing session: project state, preview player, analysis jobs.
@@ -18,9 +19,55 @@ final class EditorModel {
     private let autosaver: Autosaver
 
     var currentTime: MediaTime = .zero
-    var isPlaying = false
+    /// Animations (clip In/Out/Combo, photo motion, text entrances) are drawn only
+    /// while playing; paused or scrubbing, the preview shows clips at rest for editing.
+    var isPlaying = false {
+        didSet {
+            guard isPlaying != oldValue else { return }
+            renderToggles.animationsEnabled = isPlaying
+            if !isPlaying {
+                // Redraw the paused frame without animation.
+                let t = currentTime
+                player.seek(to: t.cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
+            }
+        }
+    }
+    /// Shared with every preview composition; the compositor reads it per frame.
+    let renderToggles = RenderToggles(animations: false)
     var isScrubbing = false
-    var panel: EditorPanel?
+    var panel: EditorPanel? {
+        didSet {
+            guard let panel, panel != oldValue else { return }
+            switch panel {
+            case .filters, .adjust, .crop, .background, .volume, .speed, .duration:
+                showCleanFrameOfSelection()
+            default:
+                break
+            }
+        }
+    }
+
+    /// Moves the playhead to a frame of the selected clip where no In/Out animation,
+    /// transition or fade is active, so filters and adjustments can be judged.
+    func showCleanFrameOfSelection() {
+        guard let id = selectedClipID, let index = project.clipIndex(id),
+              let entry = project.layout.entry(for: id) else { return }
+        let clip = project.clips[index]
+        let duration = entry.range.duration.seconds
+        var restStart = entry.overlapIn.seconds
+        var restEnd = duration - entry.overlapOut.seconds
+        if let anim = clip.animation {
+            if anim.entrance != nil { restStart = max(restStart, min(anim.inDuration, duration / 2)) }
+            if anim.exit != nil { restEnd = min(restEnd, duration - min(anim.outDuration, duration / 2)) }
+        }
+        let local = restEnd > restStart ? (restStart + restEnd) / 2 : duration / 2
+        let target = entry.range.start + MediaTime(seconds: local)
+        // Already looking at a clean frame of this clip? Leave the playhead alone.
+        if currentTime >= entry.range.start + MediaTime(seconds: restStart),
+           currentTime <= entry.range.start + MediaTime(seconds: max(restStart, restEnd)) { return }
+        pause()
+        seek(to: target)
+    }
     var toast: Toast?
     var busyMessage: String?
     var busyProgress: Double?
@@ -97,7 +144,8 @@ final class EditorModel {
         }
         let size = project.aspectRatio.renderSize(shortEdge: 720)
         do {
-            let built = try await CompositionBuilder().build(project: project, resolver: resolver, renderSize: size)
+            let built = try await CompositionBuilder().build(project: project, resolver: resolver, renderSize: size,
+                                                             toggles: renderToggles)
             guard !Task.isCancelled else { return }
             // Grab what's on screen now so the swap is seamless.
             if let output = frameOutput, let pb = output.copyPixelBuffer(forItemTime: player.currentTime(), itemTimeForDisplay: nil) {
@@ -131,9 +179,15 @@ final class EditorModel {
             isPlaying = false
         } else {
             if currentTime >= duration - MediaTime(seconds: 0.05) { seek(to: .zero) }
+            isPlaying = true          // enable animations before the first frame plays
             player.play()
-            isPlaying = true
         }
+    }
+
+    /// Starts playback with animations on (used by panels to preview an effect).
+    func play() {
+        isPlaying = true
+        player.play()
     }
 
     func pause() {
@@ -263,6 +317,77 @@ final class EditorModel {
         guard let id = selectedClipID else { return }
         edit("Extract audio") { try $0.extractAudio(from: id) }
         loadWaveforms()
+    }
+
+    var selectedAudioID: UUID? {
+        if case .audio(let id) = session.selection { return id }
+        return nil
+    }
+
+    func splitSelectedAudio() {
+        guard let id = selectedAudioID else { return }
+        var newID: UUID?
+        edit("Split audio") { newID = try $0.splitAudio(id, at: currentTime) }
+        if let newID { session.selection = .audio(newID) }
+        loadWaveforms()
+    }
+
+    func duplicateSelectedAudio() {
+        guard let id = selectedAudioID else { return }
+        var newID: UUID?
+        edit("Duplicate audio") { newID = try $0.duplicateAudio(id) }
+        if let newID {
+            session.selection = .audio(newID)
+            showToast("Audio duplicated", systemImage: "plus.square.on.square")
+        }
+    }
+
+    // MARK: Watermark & title cards
+
+    func setWatermark(_ change: (inout Watermark) -> Void) {
+        edit("Watermark") { p in
+            var w = p.watermark ?? Watermark()
+            change(&w)
+            p.watermark = w
+        }
+    }
+
+    func removeWatermark() { edit("Remove watermark") { $0.watermark = nil } }
+
+    /// Stores a picked image in the project and uses it as the watermark.
+    func setWatermarkImage(_ data: Data) {
+        let name = "watermark-\(UUID().uuidString.prefix(8)).png"
+        let url = resolver.mediaDirectory.appendingPathComponent(name)
+        do {
+            try FileManager.default.createDirectory(at: resolver.mediaDirectory, withIntermediateDirectories: true)
+            try data.write(to: url)
+        } catch {
+            showToast("Couldn't use that image", systemImage: "exclamationmark.triangle")
+            return
+        }
+        setWatermark { $0.kind = .image; $0.imageFileName = name }
+    }
+
+    /// Renders and inserts / updates the opening or closing slide.
+    func applyTitleCard(_ card: TitleCard, duration: MediaTime) {
+        let dir = resolver.mediaDirectory
+        Task {
+            do {
+                let item = try await Task.detached { try TitleCardRenderer.write(card, to: dir) }.value
+                self.edit(card.placement == .opening ? "Opening slide" : "Closing slide") {
+                    $0.upsertTitleCard(card, image: item, duration: duration)
+                }
+                if let entry = self.project.titleCardClip(card.placement).flatMap({ self.project.layout.entry(for: $0.id) }) {
+                    self.seek(to: entry.range.start + MediaTime(seconds: min(0.8, entry.range.duration.seconds / 2)))
+                }
+            } catch {
+                self.showToast("Couldn't create the slide", systemImage: "exclamationmark.triangle")
+            }
+        }
+    }
+
+    func removeTitleCard(_ placement: TitleCard.Placement) {
+        edit("Remove slide") { $0.removeTitleCard(placement) }
     }
 
     func addText() {

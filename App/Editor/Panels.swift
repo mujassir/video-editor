@@ -97,15 +97,6 @@ struct CanvasPanel: View {
                         }
                     }
                 }
-                Text("Background").font(.subheadline).foregroundStyle(Theme.secondaryText)
-                HStack(spacing: 12) {
-                    ChipButton(title: "Blur", isSelected: model.project.background == .blur) {
-                        model.edit("Background") { $0.background = .blur }
-                    }
-                    SwatchRow(selected: { if case .color(let c) = model.project.background { return c }; return nil }()) { c in
-                        if let c { model.edit("Background") { $0.background = .color(c) } }
-                    }
-                }
             }
         }
     }
@@ -145,6 +136,7 @@ struct FiltersPanel: View {
         let selected = clip?.filter?.filterID == id
         return Button {
             model.edit("Filter") { p in try p.updateClip(clipID) { $0.filter = id.map { FilterSetting(filterID: $0) } } }
+            model.showCleanFrameOfSelection()
         } label: {
             VStack(spacing: 4) {
                 Group {
@@ -323,7 +315,7 @@ struct TransitionPanel: View {
                             }
                             if let entry = model.project.layout.entry(for: clipID) {
                                 model.seek(to: max(.zero, entry.range.end - entry.overlapOut - MediaTime(seconds: 0.4)))
-                                model.player.play()
+                                model.play()
                             }
                         }
                     }
@@ -478,22 +470,8 @@ struct TextPanel: View {
                         }
                         ChipButton(title: "Shadow", isSelected: overlay.style.shadow) { update("Shadow") { $0.style.shadow.toggle() } }
                     }
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(TextAnimation.allCases) { a in
-                                ChipButton(title: a.displayName, isSelected: overlay.animationIn == a) {
-                                    update("Animation") { $0.animationIn = a }
-                                    model.seek(to: overlay.range.start)
-                                    model.player.play()
-                                }
-                            }
-                        }
-                    }
                     LabeledSlider(title: "Size", value: Binding(get: { overlay.style.size }, set: { v in update("Text size", coalesce: true) { $0.style.size = v } }),
                                   range: 0.03...0.16, format: { String(format: "%.0f", $0 * 1000) })
-                    LabeledSlider(title: "Duration", value: Binding(get: { overlay.range.duration.seconds }, set: { v in
-                        update("Text duration", coalesce: true) { $0.range.duration = MediaTime(seconds: v) }
-                    }), range: 0.5...15, format: { String(format: "%.1fs", $0) })
                 }
                 }
                 .frame(maxHeight: 300)
@@ -742,7 +720,7 @@ struct PhotoMotionPanel: View {
                                     c.animation = a
                                 }
                             }
-                        }), range: 0.2...2, format: { String(format: "%.1fs", $0) })
+                        }), range: 0.2...3, format: { String(format: "%.1fs", $0) })
                 }
                 if model.project.clips.count > 1 {
                     Button { applyToAll() } label: {
@@ -817,7 +795,7 @@ struct PhotoMotionPanel: View {
         guard let entry = model.project.layout.entry(for: clipID) else { return }
         let lead = MediaTime(seconds: min(1.5, entry.range.duration.seconds))
         model.seek(to: atEnd ? max(entry.range.start, entry.range.end - lead) : entry.range.start)
-        model.player.play()
+        model.play()
     }
 }
 
@@ -878,5 +856,376 @@ struct MusicSourceLabel: View {
         .frame(maxWidth: .infinity).padding(.vertical, 10)
         .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
         .foregroundStyle(.white)
+    }
+}
+
+// MARK: - Audio trim
+
+struct AudioTrimPanel: View {
+    @Bindable var model: EditorModel
+    let audioID: UUID
+
+    private var clip: AudioClip? { model.project.audioClips.first { $0.id == audioID } }
+    private var songLength: Double {
+        clip.flatMap { model.project.mediaItem($0.mediaID) }.map { max($0.duration.seconds, 0.2) } ?? 1
+    }
+    private func secs(_ v: Double) -> String {
+        v >= 60 ? String(format: "%d:%04.1f", Int(v) / 60, v.truncatingRemainder(dividingBy: 60)) : String(format: "%.1fs", v)
+    }
+
+    var body: some View {
+        PanelContainer(title: "Trim Audio", onDone: { model.panel = nil }) {
+            if let clip {
+                VStack(spacing: 8) {
+                    Text("Plays \(secs(clip.sourceRange.start.seconds)) – \(secs(clip.sourceRange.end.seconds)) of the song · \(secs(clip.sourceRange.duration.seconds))")
+                        .font(.footnote.monospacedDigit()).foregroundStyle(Theme.secondaryText)
+                        .accessibilityIdentifier("audioTrim.summary")
+                    LabeledSlider(title: "Start", value: Binding(get: { clip.sourceRange.start.seconds }, set: { v in
+                        model.editCoalescing("Trim audio", key: "atrim-s-\(audioID)") { p in
+                            try? p.setAudioSourceRange(audioID, MediaTimeRange(start: MediaTime(seconds: v), end: clip.sourceRange.end))
+                        }
+                    }), range: 0...songLength, format: secs)
+                    LabeledSlider(title: "End", value: Binding(get: { clip.sourceRange.end.seconds }, set: { v in
+                        model.editCoalescing("Trim audio", key: "atrim-e-\(audioID)") { p in
+                            try? p.setAudioSourceRange(audioID, MediaTimeRange(start: clip.sourceRange.start, end: MediaTime(seconds: v)))
+                        }
+                    }), range: 0...songLength, format: secs)
+                    LabeledSlider(title: "Section", value: Binding(get: { clip.sourceRange.start.seconds }, set: { v in
+                        model.editCoalescing("Move song section", key: "atrim-m-\(audioID)") { p in
+                            try? p.slideAudioContent(audioID, toSourceStart: MediaTime(seconds: v))
+                        }
+                    }), range: 0...max(0.01, songLength - clip.sourceRange.duration.seconds), format: secs)
+                    LabeledSlider(title: "Starts at", value: Binding(get: { clip.start.seconds }, set: { v in
+                        model.editCoalescing("Move audio", key: "atrim-t-\(audioID)") { p in
+                            try? p.moveAudio(audioID, toTimelineStart: MediaTime(seconds: v))
+                        }
+                    }), range: 0...max(0.01, model.project.layout.duration.seconds), format: secs)
+                    Text("Section picks which part of the song plays (same length). Starts at moves it on the timeline.")
+                        .font(.caption2).foregroundStyle(Theme.secondaryText)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Text: duration, animation, position
+
+struct TextDurationPanel: View {
+    @Bindable var model: EditorModel
+    let textID: UUID
+    private var overlay: TextOverlay? { model.project.textOverlays.first { $0.id == textID } }
+
+    var body: some View {
+        PanelContainer(title: "Text Duration", onDone: { model.panel = nil }) {
+            if let overlay {
+                VStack(spacing: 12) {
+                    Text(String(format: "%.1f s · starts %@", overlay.range.duration.seconds, overlay.range.start.timecode))
+                        .font(.title3.monospacedDigit().weight(.semibold))
+                        .accessibilityIdentifier("textDuration.value")
+                    Slider(value: Binding(get: { overlay.range.duration.seconds }, set: { v in
+                        let r = (v * 10).rounded() / 10
+                        model.editCoalescing("Text duration", key: "tdur-\(textID)") { $0.setTextDuration(textID, MediaTime(seconds: r)) }
+                    }), in: 0.5...30).tint(Theme.accent).accessibilityIdentifier("slider.TextDuration")
+                    HStack(spacing: 8) {
+                        ForEach([2.0, 3, 5, 10], id: \.self) { v in
+                            ChipButton(title: String(format: "%gs", v), isSelected: abs(overlay.range.duration.seconds - v) < 0.05) {
+                                model.edit("Text duration") { $0.setTextDuration(textID, MediaTime(seconds: v)) }
+                            }
+                        }
+                    }
+                    HStack(spacing: 8) {
+                        ChipButton(title: "Start at playhead") {
+                            model.edit("Move text") { $0.moveText(textID, toStart: model.currentTime) }
+                        }
+                        ChipButton(title: "Whole video") {
+                            model.edit("Text duration") { p in
+                                p.moveText(textID, toStart: .zero)
+                                p.setTextDuration(textID, max(MediaTime(seconds: 0.5), p.layout.duration))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct TextAnimatePanel: View {
+    @Bindable var model: EditorModel
+    let textID: UUID
+    @State private var tab: Tab = .entrance
+
+    enum Tab: String, CaseIterable, Identifiable {
+        case entrance = "In", exit = "Out", combo = "Combo"
+        var id: String { rawValue }
+    }
+
+    private var overlay: TextOverlay? { model.project.textOverlays.first { $0.id == textID } }
+    private var anim: ClipAnimation { overlay?.animation ?? ClipAnimation() }
+
+    var body: some View {
+        PanelContainer(title: "Animate Text", onDone: { model.panel = nil }) {
+            VStack(spacing: 10) {
+                Picker("", selection: $tab) { ForEach(Tab.allCases) { Text($0.rawValue).tag($0) } }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("textAnimate.tabs")
+                ScrollView {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+                        switch tab {
+                        case .entrance, .exit:
+                            AnimationTile(title: "None", icon: "nosign",
+                                          selected: (tab == .entrance ? anim.entrance : anim.exit) == nil,
+                                          id: "tanim.\(tab.rawValue).none") { setEntrance(nil) }
+                            ForEach(ClipEntrance.allCases) { k in
+                                AnimationTile(title: k.displayName, icon: k.systemImage,
+                                              selected: (tab == .entrance ? anim.entrance : anim.exit) == k,
+                                              id: "tanim.\(tab.rawValue).\(k.rawValue)") { setEntrance(k) }
+                            }
+                        case .combo:
+                            AnimationTile(title: "None", icon: "nosign", selected: anim.combo == nil, id: "tanim.combo.none") { setCombo(nil) }
+                            ForEach(ClipCombo.allCases) { k in
+                                AnimationTile(title: k.displayName, icon: k.systemImage, selected: anim.combo == k,
+                                              id: "tanim.combo.\(k.rawValue)") { setCombo(k) }
+                            }
+                        }
+                    }
+                }
+                .frame(maxHeight: 190)
+                if tab != .combo {
+                    LabeledSlider(title: "Length", value: Binding(
+                        get: { tab == .entrance ? anim.inDuration : anim.outDuration },
+                        set: { v in
+                            let out = tab == .exit
+                            model.editCoalescing("Text animation length", key: "talen-\(tab.rawValue)-\(textID)") { p in
+                                p.updateText(textID) { t in
+                                    var a = t.animation ?? ClipAnimation()
+                                    if out { a.outDuration = v } else { a.inDuration = v }
+                                    t.animation = a
+                                }
+                            }
+                        }), range: 0.2...3, format: { String(format: "%.1fs", $0) })
+                }
+            }
+        }
+    }
+
+    private func change(_ label: String, _ f: @escaping (inout ClipAnimation) -> Void, previewAtEnd: Bool) {
+        model.edit(label) { p in
+            p.updateText(textID) { t in
+                var a = t.animation ?? ClipAnimation()
+                f(&a)
+                t.animation = a
+                t.animationIn = .none
+                t.animationOut = .none
+            }
+        }
+        guard let overlay else { return }
+        let lead = MediaTime(seconds: min(1.5, overlay.range.duration.seconds))
+        model.seek(to: previewAtEnd ? max(overlay.range.start, overlay.range.end - lead) : overlay.range.start)
+        model.play()
+    }
+
+    private func setEntrance(_ k: ClipEntrance?) {
+        let out = tab == .exit
+        change(out ? "Text out animation" : "Text in animation", { a in if out { a.exit = k } else { a.entrance = k } }, previewAtEnd: out)
+    }
+
+    private func setCombo(_ k: ClipCombo?) {
+        change("Text combo", { $0.combo = k }, previewAtEnd: false)
+    }
+}
+
+struct AnimationTile: View {
+    let title: String
+    let icon: String
+    let selected: Bool
+    let id: String
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: icon).font(.system(size: 17, weight: .semibold))
+                Text(title).font(.caption2.weight(.medium)).lineLimit(1).minimumScaleFactor(0.75)
+            }
+            .frame(maxWidth: .infinity).padding(.vertical, 9)
+            .background(selected ? Theme.accent : Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
+            .foregroundStyle(.white)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(id)
+    }
+}
+
+/// 3×3 grid of fixed spots, shared by text and watermark.
+struct AnchorGrid: View {
+    let selected: OverlayAnchor?
+    let idPrefix: String
+    let onPick: (OverlayAnchor) -> Void
+    var body: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
+            ForEach(OverlayAnchor.allCases) { a in
+                Button { onPick(a) } label: {
+                    Text(a.displayName).font(.caption.weight(.semibold))
+                        .frame(maxWidth: .infinity).padding(.vertical, 10)
+                        .background(selected == a ? Theme.accent : Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 8))
+                        .foregroundStyle(.white)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("\(idPrefix).\(a.rawValue)")
+            }
+        }
+    }
+}
+
+struct TextPositionPanel: View {
+    @Bindable var model: EditorModel
+    let textID: UUID
+    private var overlay: TextOverlay? { model.project.textOverlays.first { $0.id == textID } }
+
+    var body: some View {
+        PanelContainer(title: "Text Position", onDone: { model.panel = nil }) {
+            VStack(spacing: 10) {
+                AnchorGrid(selected: overlay?.anchor, idPrefix: "tpos") { a in
+                    model.edit("Text position") { $0.setTextAnchor(textID, a) }
+                    if let overlay, !overlay.range.contains(model.currentTime) { model.seek(to: overlay.range.start + MediaTime(seconds: 0.5)) }
+                }
+                HStack {
+                    ChipButton(title: "Free (drag)", isSelected: overlay?.anchor == nil) {
+                        model.edit("Text position") { $0.setTextAnchor(textID, nil) }
+                    }
+                    Spacer()
+                }
+                Text("Fixed spots hug the edge whatever the text length. Or drag the text on the preview.")
+                    .font(.caption2).foregroundStyle(Theme.secondaryText)
+            }
+        }
+    }
+}
+
+// MARK: - Watermark
+
+struct WatermarkPanel: View {
+    @Bindable var model: EditorModel
+    @State private var imageItem: PhotosPickerItem?
+    private var mark: Watermark? { model.project.watermark }
+
+    var body: some View {
+        PanelContainer(title: "Watermark", onDone: { model.panel = nil }) {
+            VStack(spacing: 10) {
+                HStack(spacing: 8) {
+                    ChipButton(title: "Text", isSelected: mark?.kind == .text) {
+                        model.setWatermark { $0.kind = .text }
+                    }
+                    PhotosPicker(selection: $imageItem, matching: .images) {
+                        Text(mark?.kind == .image ? "Change Image" : "Image")
+                            .font(.subheadline.weight(.medium))
+                            .padding(.horizontal, 14).padding(.vertical, 8)
+                            .background(mark?.kind == .image ? Theme.accent : Theme.surfaceRaised, in: Capsule())
+                            .foregroundStyle(.white)
+                    }
+                    .accessibilityIdentifier("watermark.image")
+                    Spacer()
+                    if mark != nil {
+                        Button("Remove", role: .destructive) { model.removeWatermark() }
+                            .font(.subheadline).accessibilityIdentifier("watermark.remove")
+                    }
+                }
+                if let mark {
+                    if mark.kind == .text {
+                        TextField("Watermark text", text: Binding(get: { mark.text }, set: { v in
+                            model.editCoalescing("Watermark text", key: "wm-text") { p in p.watermark?.text = v }
+                        }))
+                        .submitLabel(.done)
+                        .padding(10)
+                        .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
+                        .accessibilityIdentifier("watermark.text")
+                    }
+                    AnchorGrid(selected: mark.anchor, idPrefix: "wmpos") { a in model.setWatermark { $0.anchor = a } }
+                    LabeledSlider(title: "Size", value: Binding(get: { mark.size }, set: { v in
+                        model.editCoalescing("Watermark size", key: "wm-size") { p in p.watermark?.size = v }
+                    }), range: 0.08...0.5, format: { String(format: "%.0f%%", $0 * 100) })
+                    LabeledSlider(title: "Opacity", value: Binding(get: { mark.opacity }, set: { v in
+                        model.editCoalescing("Watermark opacity", key: "wm-opacity") { p in p.watermark?.opacity = v }
+                    }), range: 0.1...1, format: { String(format: "%.0f%%", $0 * 100) })
+                } else {
+                    Text("Stamp your name or logo on the whole video, including exports.")
+                        .font(.footnote).foregroundStyle(Theme.secondaryText)
+                }
+            }
+        }
+        .onChange(of: imageItem) { _, item in
+            guard let item else { return }
+            imageItem = nil
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self) { model.setWatermarkImage(data) }
+                else { model.showToast("Couldn't load that image", systemImage: "exclamationmark.triangle") }
+            }
+        }
+    }
+}
+
+// MARK: - Opening / closing slides
+
+struct TitleCardPanel: View {
+    @Bindable var model: EditorModel
+    let placement: TitleCard.Placement
+    @State private var draft: TitleCard?
+    @State private var seconds: Double = 3
+
+    private var existing: VideoClip? { model.project.titleCardClip(placement) }
+    private var name: String { placement == .opening ? "Opening Slide" : "Closing Slide" }
+
+    var body: some View {
+        PanelContainer(title: name, onDone: { model.panel = nil }) {
+            if let card = draft {
+                VStack(spacing: 10) {
+                    TextField("Title", text: Binding(get: { card.title }, set: { draft?.title = $0 }))
+                        .submitLabel(.done).padding(10)
+                        .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
+                        .accessibilityIdentifier("titleCard.title")
+                    TextField("Subtitle (optional)", text: Binding(get: { card.subtitle }, set: { draft?.subtitle = $0 }))
+                        .submitLabel(.done).padding(10)
+                        .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
+                        .accessibilityIdentifier("titleCard.subtitle")
+                    HStack {
+                        Text("Background").font(.caption).foregroundStyle(Theme.secondaryText)
+                        SwatchRow(selected: card.background) { c in if let c { draft?.background = c } }
+                    }
+                    HStack {
+                        Text("Accent").font(.caption).foregroundStyle(Theme.secondaryText)
+                        SwatchRow(selected: card.accent) { c in if let c { draft?.accent = c } }
+                    }
+                    LabeledSlider(title: "Duration", value: $seconds, range: 1...10, format: { String(format: "%.1fs", $0) })
+                    HStack(spacing: 10) {
+                        Button {
+                            if let d = draft { model.applyTitleCard(d, duration: MediaTime(seconds: seconds)) }
+                        } label: {
+                            Text(existing == nil ? "Add \(name)" : "Update").font(.headline)
+                                .frame(maxWidth: .infinity).padding(.vertical, 11)
+                                .background(Theme.accent, in: RoundedRectangle(cornerRadius: 12))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("titleCard.apply")
+                        if existing != nil {
+                            Button(role: .destructive) { model.removeTitleCard(placement) } label: {
+                                Image(systemName: "trash").frame(width: 44, height: 44)
+                                    .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 12))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("titleCard.remove")
+                        }
+                    }
+                }
+            }
+        }
+        .onAppear {
+            if let clip = existing, let card = clip.titleCard {
+                draft = card
+                seconds = clip.sourceRange.duration.seconds
+            } else {
+                draft = TitleCard(placement: placement, title: placement == .opening ? model.project.name : "Thanks for watching")
+                seconds = 3
+            }
+        }
     }
 }
