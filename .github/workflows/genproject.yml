@@ -1,17 +1,21 @@
 name: Generate Xcode project
 on:
+  push:
+    branches: [claude/ecstatic-tesla-bodmbq-ci]
+    paths: ['.github/workflows/genproject.yml']
   workflow_dispatch:
     inputs:
       ref:
         description: Branch to generate the project for
-        required: true
+        required: false
+        default: claude/ecstatic-tesla-bodmbq
 jobs:
   generate:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ inputs.ref || 'claude/ecstatic-tesla-bodmbq' }}
       - run: brew install xcodegen >/dev/null 2>&1 && xcodegen --version
       - run: xcodegen generate
       - name: Export project (base64 tarball)
