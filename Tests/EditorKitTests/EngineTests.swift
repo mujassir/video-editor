@@ -374,3 +374,75 @@ struct MediaEngineTests {
         #expect(abs(d - 4) < 0.1)
     }
 }
+
+@Suite("Photo animation")
+struct PhotoMotionTests {
+    private func s(_ v: Double) -> MediaTime { MediaTime(seconds: v) }
+
+    @Test func movesStayWithinSafeZoom() {
+        for motion in PhotoMotion.allCases {
+            for p in stride(from: 0.0, through: 1.0, by: 0.1) {
+                let a = LayerGeometry.photoMotion(motion, progress: p)
+                #expect(a.scale >= 1 && a.scale <= 1.3, "\(motion) scale \(a.scale)")
+                // Offset never exceeds what the zoom can hide (half the overflow).
+                let allowance = (a.scale - 1) / 2 + 0.0001
+                #expect(abs(a.offset.x) <= allowance && abs(a.offset.y) <= allowance, "\(motion) offset \(a.offset)")
+            }
+        }
+        #expect(LayerGeometry.photoMotion(.zoomIn, progress: 0).scale == 1)
+        #expect(abs(LayerGeometry.photoMotion(.zoomIn, progress: 1).scale - 1.25) < 1e-9)
+        #expect(LayerGeometry.photoMotion(.panLeft, progress: 0).offset.x > 0)
+        #expect(LayerGeometry.photoMotion(.panLeft, progress: 1).offset.x < 0)
+        #expect(LayerGeometry.photoMotion(.none, progress: 0.5) == LayerAnimation())
+    }
+
+    @Test func setMotionOnPhotosOnly() throws {
+        var p = Project(name: "P")
+        let video = MediaItem(kind: .video, fileName: "v.mov", naturalSize: CGSize(width: 10, height: 10), duration: s(2), hasAudio: false)
+        let photo = MediaItem(kind: .photo, fileName: "a.jpg", naturalSize: CGSize(width: 10, height: 10), duration: .zero, hasAudio: false)
+        p.appendClip(for: photo)
+        p.appendClip(for: video)
+        p.appendClip(for: MediaItem(kind: .photo, fileName: "b.jpg", naturalSize: CGSize(width: 10, height: 10), duration: .zero, hasAudio: false))
+        try p.setPhotoMotion(.zoomIn, clipID: p.clips[1].id)
+        #expect(p.clips[1].photoMotion == nil, "videos are not animated")
+        try p.setPhotoMotion(.kenBurns, clipID: p.clips[0].id, allPhotos: true)
+        #expect(p.clips[0].photoMotion == .kenBurns && p.clips[2].photoMotion == .kenBurns)
+        try p.setPhotoMotion(PhotoMotion.none, clipID: p.clips[2].id)
+        #expect(p.clips[2].photoMotion == nil)
+    }
+
+    @Test func oldProjectsWithoutMotionStillLoad() throws {
+        var clip = VideoClip(mediaID: UUID(), kind: .photo, sourceRange: MediaTimeRange(start: .zero, duration: s(3)))
+        clip.photoMotion = nil
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(clip)) as! [String: Any]
+        json.removeValue(forKey: "photoMotion")
+        let decoded = try JSONDecoder().decode(VideoClip.self, from: JSONSerialization.data(withJSONObject: json))
+        #expect(decoded.photoMotion == nil)
+    }
+
+    @Test func zoomInRendersLargerAtTheEnd() async throws {
+        var fx = try Fixture()
+        defer { fx.cleanup() }
+        // Black photo with a white centre square spanning 0.375–0.625.
+        let url = fx.store.mediaDirectory(for: fx.project.id).appendingPathComponent("square.png")
+        let ctx = CGContext(data: nil, width: 128, height: 128, bitsPerComponent: 8, bytesPerRow: 0,
+                            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.setFillColor(CGColor(gray: 0, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: 128, height: 128))
+        ctx.setFillColor(CGColor(gray: 1, alpha: 1)); ctx.fill(CGRect(x: 48, y: 48, width: 32, height: 32))
+        let dest = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil)!
+        CGImageDestinationAddImage(dest, ctx.makeImage()!, nil)
+        CGImageDestinationFinalize(dest)
+        let photo = try MediaImporter.probeImage(url, fileName: "square.png")
+        fx.project.appendClip(for: photo, photoDuration: s(3))
+        fx.project.aspectRatio = .square1x1
+        fx.project.background = .color(.black)
+        try fx.project.setPhotoMotion(.zoomIn, clipID: fx.project.clips[0].id)
+        let built = try await CompositionBuilder().build(project: fx.project, resolver: fx.resolver,
+                                                         renderSize: CGSize(width: 128, height: 128))
+        // A strip just outside the square at the start; covered once zoomed in.
+        let strip = CGRect(x: 0.35, y: 0.45, width: 0.015, height: 0.1)
+        let start = averageColor(try await renderFrame(built, at: 0.05), in: strip).x
+        let end = averageColor(try await renderFrame(built, at: 2.95), in: strip).x
+        #expect(start < 0.2 && end > 0.8, "zoom-in should grow the square: \(start) → \(end)")
+    }
+}

@@ -210,6 +210,17 @@ public extension Project {
         change(&clips[index])
     }
 
+    /// Sets the motion on one still clip, or on every photo when `allPhotos` is true.
+    mutating func setPhotoMotion(_ motion: PhotoMotion?, clipID: UUID, allPhotos: Bool = false) throws {
+        guard let index = clipIndex(clipID) else { throw EditError.clipNotFound }
+        guard clips[index].isStill else { return }
+        let value = motion == PhotoMotion.none ? nil : motion
+        if allPhotos {
+            for i in clips.indices where clips[i].kind == .photo { clips[i].photoMotion = value }
+        }
+        clips[index].photoMotion = value
+    }
+
     mutating func setTransition(_ transition: Transition?, after clipID: UUID) throws {
         guard let index = clipIndex(clipID) else { throw EditError.clipNotFound }
         guard index + 1 < clips.count else { return }

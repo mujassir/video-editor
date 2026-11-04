@@ -170,6 +170,36 @@ public struct Transition: Codable, Hashable, Sendable {
     }
 }
 
+/// Animated camera move over a still image.
+public enum PhotoMotion: String, Codable, CaseIterable, Sendable, Identifiable {
+    case none, zoomIn, zoomOut, panLeft, panRight, panUp, panDown, kenBurns
+    public var id: String { rawValue }
+    public var displayName: String {
+        switch self {
+        case .none: return "None"
+        case .zoomIn: return "Zoom In"
+        case .zoomOut: return "Zoom Out"
+        case .panLeft: return "Pan Left"
+        case .panRight: return "Pan Right"
+        case .panUp: return "Pan Up"
+        case .panDown: return "Pan Down"
+        case .kenBurns: return "Ken Burns"
+        }
+    }
+    public var systemImage: String {
+        switch self {
+        case .none: return "nosign"
+        case .zoomIn: return "plus.magnifyingglass"
+        case .zoomOut: return "minus.magnifyingglass"
+        case .panLeft: return "arrow.left"
+        case .panRight: return "arrow.right"
+        case .panUp: return "arrow.up"
+        case .panDown: return "arrow.down"
+        case .kenBurns: return "sparkles"
+        }
+    }
+}
+
 public enum BackgroundReplacement: Codable, Hashable, Sendable {
     /// Keep the person, blur everything else.
     case blur
@@ -214,6 +244,9 @@ public struct VideoClip: Codable, Hashable, Identifiable, Sendable {
     public var reframe: [ReframeKeyframe] = []
     /// Transition from this clip into the next one.
     public var transitionOut: Transition?
+    /// Motion applied to photos and freeze frames (Ken Burns style). Optional so
+    /// projects saved before this existed still load.
+    public var photoMotion: PhotoMotion?
 
     public init(id: UUID = UUID(), mediaID: UUID, kind: MediaKind, sourceRange: MediaTimeRange) {
         self.id = id

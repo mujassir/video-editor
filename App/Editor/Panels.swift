@@ -664,3 +664,55 @@ struct TrimPanel: View {
         }
     }
 }
+
+// MARK: - Photo animation
+
+struct PhotoMotionPanel: View {
+    @Bindable var model: EditorModel
+    let clipID: UUID
+    private var current: PhotoMotion {
+        model.project.clipIndex(clipID).flatMap { model.project.clips[$0].photoMotion } ?? .none
+    }
+    private var photoCount: Int { model.project.clips.filter { $0.kind == .photo }.count }
+
+    var body: some View {
+        PanelContainer(title: "Animate", onDone: { model.panel = nil }) {
+            VStack(spacing: 12) {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+                    ForEach(PhotoMotion.allCases) { motion in
+                        Button { apply(motion, allPhotos: false) } label: {
+                            VStack(spacing: 4) {
+                                Image(systemName: motion.systemImage).font(.system(size: 17, weight: .semibold))
+                                Text(motion.displayName).font(.caption2.weight(.medium)).lineLimit(1).minimumScaleFactor(0.8)
+                            }
+                            .frame(maxWidth: .infinity).padding(.vertical, 9)
+                            .background(current == motion ? Theme.accent : Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
+                            .foregroundStyle(.white)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("motion.\(motion.rawValue)")
+                    }
+                }
+                if photoCount > 1 {
+                    Button { apply(current, allPhotos: true) } label: {
+                        Label("Apply to all \(photoCount) photos", systemImage: "square.stack.3d.down.right")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.accent)
+                    .accessibilityIdentifier("motion.applyAll")
+                }
+            }
+        }
+    }
+
+    private func apply(_ motion: PhotoMotion, allPhotos: Bool) {
+        model.edit("Animate photo") { try $0.setPhotoMotion(motion, clipID: clipID, allPhotos: allPhotos) }
+        // Preview the move from the start of the clip.
+        if let entry = model.project.layout.entry(for: clipID) {
+            model.seek(to: entry.range.start)
+            model.player.play()
+        }
+        if allPhotos { model.showToast("Applied to all photos", systemImage: "square.stack.3d.down.right") }
+    }
+}

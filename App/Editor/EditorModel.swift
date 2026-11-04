@@ -4,7 +4,7 @@ import CoreImage
 import EditorKit
 
 enum EditorPanel: Equatable {
-    case canvas, trim, filters, adjust, speed, volume, transition(UUID), text(UUID?), music, captions, crop, background, export
+    case canvas, trim, motion, filters, adjust, speed, volume, transition(UUID), text(UUID?), music, captions, crop, background, export
 }
 
 /// Drives one editing session: project state, preview player, analysis jobs.

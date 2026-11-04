@@ -134,6 +134,50 @@ public enum LayerGeometry {
         }
     }
 
+    /// Camera move over a still image at `progress` (0 = clip start, 1 = clip end).
+    /// Moves are eased and stay within a 1.08–1.3× zoom so the edges never show
+    /// when the photo fills the canvas.
+    public static func photoMotion(_ motion: PhotoMotion, progress p: Double) -> LayerAnimation {
+        var a = LayerAnimation()
+        let t = min(max(p, 0), 1)
+        let e = t * t * (3 - 2 * t)
+        let pan = 0.06
+        switch motion {
+        case .none: break
+        case .zoomIn: a.scale = 1.0 + 0.25 * e
+        case .zoomOut: a.scale = 1.25 - 0.25 * e
+        case .panLeft:
+            a.scale = 1.18
+            a.offset = SIMD2(pan - 2 * pan * e, 0)
+        case .panRight:
+            a.scale = 1.18
+            a.offset = SIMD2(-pan + 2 * pan * e, 0)
+        case .panUp:
+            a.scale = 1.18
+            a.offset = SIMD2(0, pan - 2 * pan * e)
+        case .panDown:
+            a.scale = 1.18
+            a.offset = SIMD2(0, -pan + 2 * pan * e)
+        case .kenBurns:
+            a.scale = 1.08 + 0.2 * e
+            a.offset = SIMD2(-0.035 + 0.07 * e, 0.025 - 0.05 * e)
+        }
+        return a
+    }
+
+    /// Combines two animations (scales multiply, offsets add, fades multiply).
+    public static func combine(_ a: LayerAnimation, _ b: LayerAnimation) -> LayerAnimation {
+        var c = a
+        c.scale *= b.scale
+        c.offset += b.offset
+        c.opacity *= b.opacity
+        c.brightness *= b.brightness
+        c.blurRadius = max(a.blurRadius, b.blurRadius)
+        c.glitch = max(a.glitch, b.glitch)
+        if b.wipeProgress >= 0 { c.wipeProgress = b.wipeProgress }
+        return c
+    }
+
     /// Visual parameters for a clip during a transition.
     /// - Parameters:
     ///   - progress: 0 at transition start, 1 at end.
