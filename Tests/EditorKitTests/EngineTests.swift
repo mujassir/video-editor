@@ -493,3 +493,81 @@ struct CanvasFitTests {
         #expect(p.clips[1].transform.fit == .fill && p.clips[1].transform.anchor == .top)
     }
 }
+
+@Suite("Clip animations")
+struct ClipAnimationTests {
+    private func s(_ v: Double) -> MediaTime { MediaTime(seconds: v) }
+
+    @Test func everyEntranceEndsAtRest() {
+        for k in ClipEntrance.allCases {
+            let a = LayerGeometry.entrance(k, progress: 1)
+            #expect(abs(a.scale - 1) < 0.02 && abs(a.rotation) < 0.01 && abs(a.offset.x) < 0.01 && abs(a.offset.y) < 0.01,
+                    "\(k) should end at rest, got \(a)")
+            #expect(a.opacity > 0.99 && a.blurRadius < 0.01, "\(k) fully visible at the end")
+        }
+        // Starting poses actually differ from rest.
+        #expect(LayerGeometry.entrance(.fade, progress: 0).opacity == 0)
+        #expect(LayerGeometry.entrance(.slideLeft, progress: 0).offset.x == 1)
+        #expect(LayerGeometry.entrance(.spin, progress: 0).rotation < -6)
+    }
+
+    @Test func combosStaySubtle() {
+        for k in ClipCombo.allCases where k != .spin {
+            for t in stride(from: 0.0, to: 4, by: 0.05) {
+                let a = LayerGeometry.combo(k, seconds: t)
+                #expect(a.scale >= 0.99 && a.scale <= 1.1, "\(k) scale \(a.scale)")
+                #expect(abs(a.rotation) <= 0.11 && abs(a.offset.x) <= 0.02 && abs(a.offset.y) <= 0.03, "\(k) at \(t)")
+            }
+        }
+    }
+
+    @Test func inAndOutDontOverlapOnShortClips() {
+        var anim = ClipAnimation()
+        anim.entrance = .fade
+        anim.exit = .fade
+        anim.inDuration = 2
+        anim.outDuration = 2
+        // 1 s clip: In covers 0–0.5 s, Out 0.5–1 s.
+        #expect(abs(LayerGeometry.clipAnimation(anim, local: 0.25, duration: 1).opacity - 0.5) < 0.01)
+        #expect(abs(LayerGeometry.clipAnimation(anim, local: 0.75, duration: 1).opacity - 0.5) < 0.01)
+        // Middle of a long clip is untouched.
+        #expect(LayerGeometry.clipAnimation(anim, local: 5, duration: 10) == LayerAnimation())
+    }
+
+    @Test func rotationTurnsTheQuad() {
+        let media = MediaItem(kind: .photo, fileName: "x", naturalSize: CGSize(width: 100, height: 100), duration: .zero, hasAudio: false)
+        var a = LayerAnimation()
+        a.rotation = .pi / 2
+        let q = LayerGeometry.quad(media: media, transform: .identity, sourceTurns: 0, canvas: CGSize(width: 100, height: 100), animation: a)
+        // A quarter turn clockwise moves the top-left corner to the top-right.
+        #expect(abs(q[0].position.x - 1) < 1e-4 && abs(q[0].position.y - 1) < 1e-4)
+    }
+
+    @Test func oldClipsWithoutAnimationLoad() throws {
+        let clip = VideoClip(mediaID: UUID(), kind: .video, sourceRange: MediaTimeRange(start: .zero, duration: s(2)))
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(clip)) as! [String: Any]
+        json.removeValue(forKey: "animation")
+        let decoded = try JSONDecoder().decode(VideoClip.self, from: JSONSerialization.data(withJSONObject: json))
+        #expect(decoded.animation == nil)
+    }
+
+    @Test func slideInRendersFromOffscreen() async throws {
+        var fx = try Fixture()
+        defer { fx.cleanup() }
+        try await fx.addVideo("red", duration: 2, draw: SampleMedia.solid(RGBAColor(r: 1, g: 0, b: 0)))
+        fx.project.background = .color(RGBAColor(r: 0, g: 0, b: 1))
+        try fx.project.updateClip(fx.project.clips[0].id) { c in
+            var a = ClipAnimation()
+            a.entrance = .slideLeft
+            a.inDuration = 1
+            c.animation = a
+            c.transform.fit = .fill
+        }
+        let built = try await CompositionBuilder().build(project: fx.project, resolver: fx.resolver,
+                                                         renderSize: CGSize(width: 160, height: 120))
+        let early = averageColor(try await renderFrame(built, at: 0.02), in: CGRect(x: 0.05, y: 0.4, width: 0.1, height: 0.2))
+        let settled = averageColor(try await renderFrame(built, at: 1.5), in: CGRect(x: 0.05, y: 0.4, width: 0.1, height: 0.2))
+        #expect(early.z > 0.8, "clip still off to the right, canvas shows: \(early)")
+        #expect(settled.x > 0.8 && settled.z < 0.2, "clip slid in: \(settled)")
+    }
+}

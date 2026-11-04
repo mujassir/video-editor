@@ -384,6 +384,7 @@ final class ClipStripView: UIView {
         if clip.isReversed { badges.append("◀︎") }
         if clip.freezeAt != nil { badges.append("❄︎") }
         if let motion = clip.photoMotion, motion != .none { badges.append("↗︎") }
+        if let anim = clip.animation, !anim.isEmpty { badges.append("✦") }
         if clip.filter != nil { badges.append("FX") }
         if clip.backgroundRemoval != nil { badges.append("BG") }
         if !clip.reframe.isEmpty { badges.append("⌖") }

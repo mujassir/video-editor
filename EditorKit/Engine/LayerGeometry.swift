@@ -16,6 +16,8 @@ public struct LayerAnimation: Sendable, Equatable {
     public var blurRadius: Float = 0
     public var wipeProgress: Float = -1
     public var glitch: Float = 0
+    /// Rotation in radians (clockwise on screen) around the layer centre.
+    public var rotation: Double = 0
     public init() {}
 }
 
@@ -103,12 +105,20 @@ public enum LayerGeometry {
         let halfW = size.width / canvas.width / 2
         let halfH = size.height / canvas.height / 2
         // Canvas-normalized corners (origin top-left), order TL, TR, BL, BR.
-        let corners: [SIMD2<Double>] = [
+        var corners: [SIMD2<Double>] = [
             SIMD2(center.x - halfW, center.y - halfH),
             SIMD2(center.x + halfW, center.y - halfH),
             SIMD2(center.x - halfW, center.y + halfH),
             SIMD2(center.x + halfW, center.y + halfH),
         ]
+        if animation.rotation != 0 {
+            // Rotate in pixel space so non-square canvases don't skew the layer.
+            let c = cos(animation.rotation), s = sin(animation.rotation)
+            corners = corners.map { p in
+                let dx = (p.x - center.x) * canvas.width, dy = (p.y - center.y) * canvas.height
+                return SIMD2(center.x + (dx * c - dy * s) / canvas.width, center.y + (dx * s + dy * c) / canvas.height)
+            }
+        }
         let locals: [SIMD2<Double>] = [SIMD2(0, 0), SIMD2(1, 0), SIMD2(0, 1), SIMD2(1, 1)]
         let crop = transform.crop
         return zip(corners, locals).map { corner, local in
@@ -189,8 +199,106 @@ public enum LayerGeometry {
         c.brightness *= b.brightness
         c.blurRadius = max(a.blurRadius, b.blurRadius)
         c.glitch = max(a.glitch, b.glitch)
+        c.rotation += b.rotation
         if b.wipeProgress >= 0 { c.wipeProgress = b.wipeProgress }
         return c
+    }
+
+    // MARK: Clip animations (In / Out / Combo)
+
+    /// Entrance pose at `progress` (0 = start of the entrance, 1 = fully in).
+    /// Exits use the same curves played backwards.
+    public static func entrance(_ kind: ClipEntrance, progress p: Double) -> LayerAnimation {
+        var a = LayerAnimation()
+        let t = min(max(p, 0), 1)
+        let e = 1 - pow(1 - t, 3)                 // ease out cubic
+        let inv = 1 - e
+        switch kind {
+        case .fade:
+            a.opacity = Float(t)
+        case .zoomIn:
+            a.scale = 0.3 + 0.7 * e
+            a.opacity = Float(min(1, t * 2))
+        case .zoomOut:
+            a.scale = 1.6 - 0.6 * e
+            a.opacity = Float(min(1, t * 2))
+        case .slideLeft:  a.offset = SIMD2(inv, 0)      // enters from the right, moving left
+        case .slideRight: a.offset = SIMD2(-inv, 0)
+        case .slideUp:    a.offset = SIMD2(0, inv)
+        case .slideDown:  a.offset = SIMD2(0, -inv)
+        case .rotate:
+            a.rotation = -Double.pi / 2 * inv
+            a.scale = 0.6 + 0.4 * e
+            a.opacity = Float(min(1, t * 2))
+        case .spin:
+            a.rotation = -2 * Double.pi * inv
+            a.scale = 0.2 + 0.8 * e
+            a.opacity = Float(min(1, t * 1.5))
+        case .pop:
+            // Overshoot to ~1.1× then settle.
+            let back = 1.9, u = t - 1
+            a.scale = max(0.01, 1 + (back + 1) * u * u * u + back * u * u)
+            a.opacity = Float(min(1, t * 3))
+        case .bounce:
+            a.scale = max(0.01, bounceOut(t))
+        case .drop:
+            a.offset = SIMD2(0, -(1 - bounceOut(t)))
+        case .blur:
+            a.blurRadius = Float(inv * 28)
+            a.opacity = Float(min(1, t * 1.5))
+        case .swing:
+            a.rotation = 0.5 * inv * cos(t * .pi * 3)
+            a.opacity = Float(min(1, t * 2))
+        }
+        return a
+    }
+
+    static func bounceOut(_ t: Double) -> Double {
+        let n = 7.5625, d = 2.75
+        if t < 1 / d { return n * t * t }
+        if t < 2 / d { let u = t - 1.5 / d; return n * u * u + 0.75 }
+        if t < 2.5 / d { let u = t - 2.25 / d; return n * u * u + 0.9375 }
+        let u = t - 2.625 / d
+        return n * u * u + 0.984375
+    }
+
+    /// Looping emphasis at clip-local time `seconds` (periods of about a beat).
+    public static func combo(_ kind: ClipCombo, seconds s: Double) -> LayerAnimation {
+        var a = LayerAnimation()
+        let w = 2 * Double.pi
+        switch kind {
+        case .pulse:     a.scale = 1 + 0.05 * (0.5 - 0.5 * cos(w * s / 1.0))
+        case .heartbeat:
+            let ph = s.truncatingRemainder(dividingBy: 1.0)
+            let beat = exp(-pow((ph - 0.1) / 0.05, 2)) + 0.7 * exp(-pow((ph - 0.3) / 0.05, 2))
+            a.scale = 1 + 0.07 * beat
+        case .shake:     a.offset = SIMD2(0.012 * sin(w * s * 7) * (0.6 + 0.4 * sin(w * s * 1.3)), 0.006 * sin(w * s * 11))
+        case .wobble:    a.rotation = 0.06 * sin(w * s * 2)
+        case .swing:     a.rotation = 0.1 * sin(w * s / 1.6)
+        case .float:     a.offset = SIMD2(0, 0.02 * sin(w * s / 2.4))
+        case .rock:
+            a.rotation = 0.05 * sin(w * s / 1.2)
+            a.scale = 1.04
+        case .spin:      a.rotation = w * s / 6      // one turn every 6 s
+        }
+        return a
+    }
+
+    /// Full clip animation at clip-local time: entrance, exit and looping combo.
+    public static func clipAnimation(_ anim: ClipAnimation, local: Double, duration: Double) -> LayerAnimation {
+        var result = LayerAnimation()
+        if let combo = anim.combo {
+            result = combine(result, self.combo(combo, seconds: local))
+        }
+        // Keep In and Out from overlapping on short clips.
+        let inLen = min(anim.inDuration, duration / 2), outLen = min(anim.outDuration, duration / 2)
+        if let kind = anim.entrance, inLen > 0, local < inLen {
+            result = combine(result, entrance(kind, progress: local / inLen))
+        }
+        if let kind = anim.exit, outLen > 0, local > duration - outLen {
+            result = combine(result, entrance(kind, progress: (duration - local) / outLen))
+        }
+        return result
     }
 
     /// Visual parameters for a clip during a transition.

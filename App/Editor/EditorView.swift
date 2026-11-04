@@ -228,7 +228,8 @@ struct EditorView: View {
     @ViewBuilder private var photoTools: some View {
         ToolButton(title: "Duration", systemImage: "timer") { model.panel = .duration }
         ToolButton(title: "Animate", systemImage: "camera.metering.center.weighted",
-                   isActive: (model.selectedClip?.photoMotion ?? .none) != .none) { model.panel = .motion }
+                   isActive: (model.selectedClip?.photoMotion ?? .none) != .none
+                       || !(model.selectedClip?.animation?.isEmpty ?? true)) { model.panel = .motion }
         ToolButton(title: "Filters", systemImage: "camera.filters") { model.panel = .filters }
         ToolButton(title: "Adjust", systemImage: "slider.horizontal.3") { model.panel = .adjust }
         ToolButton(title: "Enhance", systemImage: "wand.and.stars", badge: "AI") { model.autoEnhance() }
@@ -242,6 +243,8 @@ struct EditorView: View {
         ToolButton(title: "Split", systemImage: "scissors") { model.split() }
         ToolButton(title: "Trim", systemImage: "timeline.selection") { model.panel = .trim }
         ToolButton(title: "Speed", systemImage: "speedometer") { model.panel = .speed }
+        ToolButton(title: "Animate", systemImage: "camera.metering.center.weighted",
+                   isActive: !(model.selectedClip?.animation?.isEmpty ?? true)) { model.panel = .motion }
         ToolButton(title: "Volume", systemImage: "speaker.wave.2") { model.panel = .volume }
         ToolButton(title: "Filters", systemImage: "camera.filters") { model.panel = .filters }
         ToolButton(title: "Adjust", systemImage: "slider.horizontal.3") { model.panel = .adjust }

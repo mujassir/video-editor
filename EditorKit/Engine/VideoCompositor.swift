@@ -105,6 +105,11 @@ public final class VideoCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                 let start = info.timelineRange.duration - info.overlapOut
                 animation = LayerGeometry.transitionAnimation(t.kind, progress: (local - start).seconds / info.overlapOut.seconds, incoming: false)
             }
+            if let clipAnim = info.clip.animation, !clipAnim.isEmpty {
+                let anim = LayerGeometry.clipAnimation(clipAnim, local: local.seconds,
+                                                       duration: info.timelineRange.duration.seconds)
+                animation = LayerGeometry.combine(anim, animation)
+            }
             if info.clip.isStill, let motion = info.clip.photoMotion, motion != .none {
                 let progress = local.seconds / max(info.timelineRange.duration.seconds, 0.001)
                 animation = LayerGeometry.combine(LayerGeometry.photoMotion(motion, progress: progress), animation)
