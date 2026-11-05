@@ -586,14 +586,23 @@ public extension Project {
         let videoEnd = layout.duration
         var original = audioClips[i]
         let length = original.playedDuration
-        guard length >= Self.minimumAudioDuration, original.timelineRange.end < videoEnd - Self.minimumAudioDuration else {
+        // Follow copies already repeated back to back after this clip (repeating twice extends the chain).
+        var last = i
+        while let n = audioClips.firstIndex(where: { $0.id != audioClips[last].id && $0.lane == original.lane
+                                                 && $0.mediaID == original.mediaID
+                                                 && abs(($0.start - audioClips[last].timelineRange.end).seconds) < 0.001 }) {
+            last = n
+        }
+        guard length >= Self.minimumAudioDuration, audioClips[last].timelineRange.end < videoEnd - Self.minimumAudioDuration else {
             return 0
         }
-        let fadeOut = original.fadeOut
+        let fadeOut = audioClips[last].fadeOut
         original.fitsVideo = false
         original.fadeOut = .zero
         audioClips[i] = original
-        var cursor = original.timelineRange.end
+        audioClips[last].fadeOut = .zero
+        audioClips[last].fitsVideo = false
+        var cursor = audioClips[last].timelineRange.end
         var copies: [AudioClip] = []
         while videoEnd - cursor >= Self.minimumAudioDuration {
             var copy = original

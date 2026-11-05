@@ -62,7 +62,8 @@ final class FeatureUITests: CutlineUITestCase {
         let handle = element("trim.leading")
         XCTAssertTrue(handle.waitForExistence(timeout: 5))
         let before = totalSeconds
-        let start = handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        // Grab the outer part of the handle (its accessibility frame can sit a few points inside the clip).
+        let start = handle.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5))
         print("TRIM handle frame: \(handle.frame)")
         start.press(forDuration: 0.3, thenDragTo: start.withOffset(CGVector(dx: 90, dy: 0)))
         RunLoop.current.run(until: Date().addingTimeInterval(1))

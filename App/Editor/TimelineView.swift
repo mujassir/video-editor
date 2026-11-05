@@ -474,7 +474,13 @@ final class ClipStripView: UIView {
     }
 }
 
-final class TrimHandle: UIView {}
+/// A trim handle: drawn 16 pt wide but touchable across 44 pt, so it is easy to grab.
+final class TrimHandle: UIView {
+    static let touchSlop: CGFloat = 14
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        bounds.insetBy(dx: -Self.touchSlop, dy: 0).contains(point)
+    }
+}
 
 final class SelectionFrameView: UIView {
     static let handleWidth: CGFloat = 16
@@ -517,7 +523,8 @@ final class SelectionFrameView: UIView {
 
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
         // Only the handles are interactive; taps in the middle reach the timeline.
-        left.frame.insetBy(dx: -8, dy: 0).contains(point) || right.frame.insetBy(dx: -8, dy: 0).contains(point)
+        let slop = TrimHandle.touchSlop
+        return left.frame.insetBy(dx: -slop, dy: 0).contains(point) || right.frame.insetBy(dx: -slop, dy: 0).contains(point)
     }
 
     @objc private func panLeft(_ g: UIPanGestureRecognizer) { onTrim?(.leading, g.translation(in: self).x, g.state) }
