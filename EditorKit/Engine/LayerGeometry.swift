@@ -204,6 +204,13 @@ public enum LayerGeometry {
         return c
     }
 
+    /// Cross-fade weight of the next source frame during slow motion: how far the
+    /// playback position is between two source frames (0 = on a frame, →1 = next frame).
+    public static func blendWeight(fileTime: Double, fps: Double) -> Double {
+        let f = fileTime * fps
+        return min(max(f - f.rounded(.down), 0), 1)
+    }
+
     // MARK: Clip animations (In / Out / Combo)
 
     /// Entrance pose at `progress` (0 = start of the entrance, 1 = fully in).

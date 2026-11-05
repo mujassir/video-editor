@@ -461,3 +461,77 @@ struct MusicFollowsVideoTests {
         #expect(session.project.audioClips[0].sourceRange.duration == s(90))
     }
 }
+
+@Suite("Repeat audio")
+struct RepeatAudioTests {
+    @Test func fillsToTheVideoEnd() throws {
+        var p = Project(name: "P")
+        p.appendClip(for: MediaItem(kind: .video, fileName: "v.mov", naturalSize: CGSize(width: 10, height: 10), duration: s(25), hasAudio: false))
+        let song = MediaItem(kind: .audio, fileName: "s.m4a", naturalSize: .zero, duration: s(60), hasAudio: true)
+        p.media.append(song)
+        var clip = AudioClip(mediaID: song.id, role: .music, sourceRange: MediaTimeRange(start: s(5), duration: s(8)), start: .zero)
+        clip.fadeOut = s(1.5)
+        clip.fitsVideo = false
+        p.addAudio(clip)
+        let added = try p.repeatAudio(clip.id)
+        // 0–8, 8–16, 16–24, 24–25 (last cut at the end).
+        #expect(added == 3)
+        let sorted = p.audioClips.sorted { $0.start < $1.start }
+        #expect(sorted.map(\.start) == [s(0), s(8), s(16), s(24)])
+        #expect(sorted.last?.sourceRange == MediaTimeRange(start: s(5), duration: s(1)))
+        #expect(sorted.allSatisfy { $0.sourceRange.start == s(5) && $0.lane == 0 })
+        #expect(sorted.dropLast().allSatisfy { $0.fadeOut == .zero } && sorted.last?.fadeOut == s(1.5))
+        #expect(try p.repeatAudio(clip.id) == 0, "already reaches the end")
+    }
+}
+
+@Suite("Audio markers & sections")
+struct AudioSectionTests {
+    private func project() -> (Project, UUID) {
+        var p = Project(name: "P")
+        p.appendClip(for: MediaItem(kind: .video, fileName: "v.mov", naturalSize: CGSize(width: 10, height: 10), duration: s(30), hasAudio: false))
+        let song = MediaItem(kind: .audio, fileName: "s.m4a", naturalSize: .zero, duration: s(60), hasAudio: true)
+        p.media.append(song)
+        var clip = AudioClip(mediaID: song.id, role: .music, sourceRange: MediaTimeRange(start: .zero, duration: s(30)), start: .zero)
+        clip.fitsVideo = true
+        p.addAudio(clip)
+        return (p, clip.id)
+    }
+
+    @Test func markersSplitIntoSections() throws {
+        var (p, id) = project()
+        try p.addAudioMarker(id, at: s(10))
+        try p.addAudioMarker(id, at: s(20))
+        let secs = p.audioClips[0].resolvedSections
+        #expect(secs.map(\.start) == [s(0), s(10), s(20)] && secs.map(\.end) == [s(10), s(20), s(30)])
+        #expect(!p.audioClips[0].followsVideo, "sectioned music keeps its own length")
+        #expect(throws: EditError.tooShort) { try p.addAudioMarker(id, at: s(10.05)) }
+        try p.removeAudioMarker(id, after: 0)
+        #expect(p.audioClips[0].resolvedSections.count == 2)
+        try p.clearAudioMarkers(id)
+        #expect(p.audioClips[0].sections == nil)
+    }
+
+    @Test func deleteAndVolumePerSection() throws {
+        var (p, id) = project()
+        try p.addAudioMarker(id, at: s(10))
+        try p.addAudioMarker(id, at: s(20))
+        try p.setAudioSectionDeleted(id, index: 1, true)
+        #expect(p.audioClips[0].playedDuration == s(20), "the deleted 10 s is cut out")
+        #expect(p.audioClips[0].timelineRange.duration == s(20))
+        try p.setAudioSectionVolume(id, index: 2, 0.4)
+        #expect(p.audioClips[0].resolvedSections[2].volume == 0.4)
+        try p.setAudioSectionDeleted(id, index: 0, true)
+        #expect(throws: EditError.tooShort) { try p.setAudioSectionDeleted(id, index: 2, true) }
+        try p.setAudioSectionDeleted(id, index: 1, false)
+        #expect(p.audioClips[0].playedDuration == s(20))
+    }
+
+    @Test func trimClipsSections() throws {
+        var (p, id) = project()
+        try p.addAudioMarker(id, at: s(10))
+        try p.setAudioSourceRange(id, MediaTimeRange(start: s(5), end: s(25)))
+        #expect(p.audioClips[0].resolvedSections.map(\.start) == [s(5), s(10)])
+        #expect(p.audioClips[0].playedDuration == s(20))
+    }
+}

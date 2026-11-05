@@ -330,18 +330,15 @@ final class EditorModel {
         return nil
     }
 
-    func splitSelectedAudio() {
-        guard let id = selectedAudioID else { return }
-        var newID: UUID?
-        edit("Split audio") { newID = try $0.splitAudio(id, at: currentTime) }
-        if let newID { session.selection = .audio(newID) }
-        loadWaveforms()
-    }
 
-    func moveSelectedAudioToPlayhead() {
+
+    func repeatSelectedAudio() {
         guard let id = selectedAudioID else { return }
-        edit("Move audio") { try $0.moveAudio(id, toTimelineStart: currentTime) }
-        showToast("Starts at \(currentTime.timecode)", systemImage: "arrow.right.to.line")
+        var added = 0
+        edit("Repeat audio") { added = try $0.repeatAudio(id) }
+        showToast(added > 0 ? "Repeated \(added + 1)× to the end" : "Already plays to the end",
+                  systemImage: "repeat")
+        loadWaveforms()
     }
 
     func duplicateSelectedAudio() {
@@ -508,11 +505,9 @@ final class EditorModel {
         }
     }
 
-    /// Puts music on its own lane at the start, analyses beats for Beat Sync,
+    /// Puts music on its own lane (after any existing music),
     /// and sets sensible defaults (70% volume, fade-out, ducking under speech).
     private func placeMusic(_ item: MediaItem, name: String) async throws {
-        let url = resolver.url(for: item)
-        let beats = (try? await BeatDetector.detect(url: url))?.beats ?? []
         edit("Add music") { p in
             p.media.append(item)
             let length = p.layout.duration > .zero ? min(item.duration, p.layout.duration) : item.duration
@@ -527,11 +522,10 @@ final class EditorModel {
             clip.fadeOut = MediaTime(seconds: min(1.5, length.seconds / 4))
             clip.autoDuck = true
             clip.fitsVideo = true
-            clip.beats = beats.map { MediaTime(seconds: $0) }
             p.addAudio(clip)
         }
         loadWaveforms()
-        showToast("Added \(name) · \(beats.count) beats", systemImage: "music.note")
+        showToast("Added \(name)", systemImage: "music.note")
     }
 
     // MARK: AI features
@@ -564,16 +558,6 @@ final class EditorModel {
         }
     }
 
-    func beatSync() {
-        guard let music = project.audioClips.first(where: { $0.role == .music && !$0.beats.isEmpty }) else {
-            showToast("Add music first", systemImage: "music.note")
-            panel = .music
-            return
-        }
-        var aligned = 0
-        edit("Beat sync") { aligned = $0.syncCutsToBeats(music.timelineBeats) }
-        showToast("Synced \(aligned) cut\(aligned == 1 ? "" : "s") to the beat", systemImage: "metronome")
-    }
 
     func autoReframe() {
         guard let clip = selectedClip, let media = project.mediaItem(clip.mediaID), clip.kind == .video, !clip.isStill else {

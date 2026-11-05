@@ -70,6 +70,10 @@ struct EditorView: View {
         .fullScreenCover(isPresented: $showExport) {
             ExportView(model: model)
         }
+        .fullScreenCover(isPresented: Binding(get: { model.panel == .audioTrim && model.selectedAudioID != nil },
+                                              set: { if !$0, model.panel == .audioTrim { model.panel = nil } })) {
+            if let id = model.selectedAudioID { AudioEditorView(model: model, audioID: id) }
+        }
         .preferredColorScheme(.dark)
         .statusBarHidden(false)
     }
@@ -128,17 +132,14 @@ struct EditorView: View {
                 Text(model.trimDebug).font(.system(size: 1)).opacity(0.01).accessibilityIdentifier("debug.trim")
             }
             Spacer()
+        }
+        // Play stays centred under the preview.
+        .overlay {
             Button { model.togglePlay() } label: {
                 Image(systemName: model.isPlaying ? "pause.fill" : "play.fill")
                     .font(.system(size: 22)).frame(width: 44, height: 36)
             }
             .accessibilityIdentifier("editor.play")
-            Spacer()
-            Button { model.split() } label: {
-                Image(systemName: "scissors").frame(width: 44, height: 36)
-            }
-            .disabled(model.project.clips.isEmpty)
-            .accessibilityIdentifier("editor.splitQuick")
         }
         .font(.system(size: 13, weight: .medium))
         .foregroundStyle(.white)
@@ -166,7 +167,7 @@ struct EditorView: View {
         case .canvas: CanvasPanel(model: model)
         case .music: MusicPanel(model: model)
         case .audioTrim:
-            if case .audio(let id) = model.session.selection { AudioTrimPanel(model: model, audioID: id) } else { toolbar }
+            toolbar   // the audio editor is presented full screen (see fullScreenCover)
         case .captions: CaptionsPanel(model: model)
         case .text(let id):
             if let id { TextPanel(model: model, textID: id) } else { toolbar }
@@ -216,14 +217,12 @@ struct EditorView: View {
 
     @ViewBuilder private var mainTools: some View {
         ToolButton(title: "Media", systemImage: "plus.rectangle.on.rectangle") { showAddMenu = true }
+        ToolButton(title: "Music", systemImage: "music.note") { model.select(.none); model.panel = .music }
+        ToolButton(title: "Captions", systemImage: "captions.bubble", badge: "AI") { model.panel = .captions }
+        ToolButton(title: "Watermark", systemImage: "seal", isActive: model.project.watermark != nil) { model.select(.none); model.panel = .watermark }
         ToolButton(title: "Text", systemImage: "textformat") { model.addText() }
         ToolButton(title: "Intro", systemImage: "rectangle.lefthalf.inset.filled") { model.select(.none); model.panel = .titleCard(.opening) }
         ToolButton(title: "Outro", systemImage: "rectangle.righthalf.inset.filled") { model.select(.none); model.panel = .titleCard(.closing) }
-        ToolButton(title: "Watermark", systemImage: "seal", isActive: model.project.watermark != nil) { model.select(.none); model.panel = .watermark }
-        ToolButton(title: "Music", systemImage: "music.note") { model.select(.none); model.panel = .music }
-        ToolButton(title: "Captions", systemImage: "captions.bubble", badge: "AI") { model.panel = .captions }
-        ToolButton(title: "Silence", systemImage: "waveform.badge.minus", badge: "AI") { model.removeSilences() }
-        ToolButton(title: "Beat Sync", systemImage: "metronome", badge: "AI") { model.beatSync() }
     }
 
     @ViewBuilder private var clipTools: some View {
@@ -251,7 +250,6 @@ struct EditorView: View {
 
     @ViewBuilder private var videoTools: some View {
         ToolButton(title: "Split", systemImage: "scissors") { model.split() }
-        ToolButton(title: "Trim", systemImage: "timeline.selection") { model.panel = .trim }
         ToolButton(title: "Speed", systemImage: "speedometer") { model.panel = .speed }
         ToolButton(title: "Animate", systemImage: "camera.metering.center.weighted",
                    isActive: !(model.selectedClip?.animation?.isEmpty ?? true)) { model.panel = .motion }
@@ -284,12 +282,9 @@ struct EditorView: View {
     }
 
     @ViewBuilder private var audioTools: some View {
-        ToolButton(title: "Trim", systemImage: "timeline.selection") { model.panel = .audioTrim }
-        ToolButton(title: "To Playhead", systemImage: "arrow.right.to.line") { model.moveSelectedAudioToPlayhead() }
-        ToolButton(title: "Split", systemImage: "scissors") { model.splitSelectedAudio() }
+        ToolButton(title: "Edit", systemImage: "slider.horizontal.below.rectangle") { model.panel = .audioTrim }
+        ToolButton(title: "Repeat", systemImage: "repeat") { model.repeatSelectedAudio() }
         ToolButton(title: "Duplicate", systemImage: "plus.square.on.square") { model.duplicateSelectedAudio() }
-        ToolButton(title: "Volume", systemImage: "speaker.wave.2") { model.panel = .music }
-        ToolButton(title: "Beat Sync", systemImage: "metronome", badge: "AI") { model.beatSync() }
         ToolButton(title: "Delete", systemImage: "trash") { model.deleteSelection() }
     }
 

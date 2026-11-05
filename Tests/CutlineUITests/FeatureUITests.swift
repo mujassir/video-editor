@@ -66,15 +66,11 @@ final class FeatureUITests: CutlineUITestCase {
         print("TRIM handle frame: \(handle.frame)")
         start.press(forDuration: 0.3, thenDragTo: start.withOffset(CGVector(dx: 90, dy: 0)))
         RunLoop.current.run(until: Date().addingTimeInterval(1))
-        print("TRIM debug: '\(element("debug.trim").label)' total \(totalSeconds)")
+        print("TRIM debug: '\(element("debug.trim").label)' total \(totalSeconds) before \(before)")
         snapshot("04-trim-handle")
-        // Precise trim panel.
-        tap("tool.Trim")
-        let end = element("slider.End")
-        XCTAssertTrue(end.waitForExistence(timeout: 5))
-        end.adjust(toNormalizedSliderPosition: 0.5)
-        waitFor("trim shortens the edit") { totalSeconds < before - 1 }
-        snapshot("04-trimmed")
+        // Video clips are trimmed with the timeline handles only (no Trim tool).
+        XCTAssertFalse(element("tool.Trim").exists, "video toolbar should not offer Trim")
+        waitFor("trim shortens the edit") { totalSeconds < before - 0.5 }
     }
 
     func test05_SpeedReverseFreezeDuplicate() {
@@ -168,21 +164,26 @@ final class FeatureUITests: CutlineUITestCase {
         snapshot("09-music")
         element("editor.aspect").tap() // dismiss selection state
         tap("panel.done")
-        tap("tool.Beat Sync")
-        let toast = toastText ?? ""
-        XCTAssertTrue(toast.contains("Synced"), "unexpected toast: \(toast)")
-        snapshot("09-beatsync")
+        // Beat Sync has been removed everywhere, including the music toolbar.
+        XCTAssertFalse(element("tool.Beat Sync").exists)
+        element("audio.0").tap()
+        XCTAssertTrue(element("tool.Edit").waitForExistence(timeout: 5))
+        XCTAssertFalse(element("tool.Beat Sync").exists, "music toolbar should not offer Beat Sync")
     }
 
-    func test10_RemoveSilence() {
+    func test10_MainToolbarOrder() {
         openProjectWithSamples()
-        let before = totalSeconds
-        tap("tool.Silence")
-        waitUntilIdle()
-        waitFor("silence removed") { totalSeconds < before - 2 }
-        let toast = toastText ?? ""
-        XCTAssertTrue(toast.contains("Removed"), "unexpected toast: \(toast)")
-        snapshot("10-silence")
+        // Main toolbar: Media, Music, Captions, Watermark, Text, Intro, Outro – no Silence / Beat Sync.
+        let ids = ["tool.Media", "tool.Music", "tool.Captions", "tool.Watermark", "tool.Text", "tool.Intro", "tool.Outro"]
+        var lastX = -CGFloat.infinity
+        for id in ids {
+            let e = element(id)
+            XCTAssertTrue(e.waitForExistence(timeout: 5), "\(id) missing")
+            XCTAssertGreaterThan(e.frame.minX, lastX, "\(id) out of order")
+            lastX = e.frame.minX
+        }
+        XCTAssertFalse(element("tool.Silence").exists)
+        XCTAssertFalse(element("tool.Beat Sync").exists)
     }
 
     func test11_CanvasAndBackground() {
@@ -303,7 +304,7 @@ final class FeatureUITests: CutlineUITestCase {
         waitFor("first track") { count(prefix: "audio.") == 1 }
         // Shorten the first track so there is room for a second one.
         element("audio.0").tap()
-        tap("tool.Trim")
+        tap("tool.Edit")
         let endHandle = element("audioTrim.endHandle")
         XCTAssertTrue(endHandle.waitForExistence(timeout: 5))
         let from = endHandle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
@@ -330,8 +331,9 @@ final class FeatureUITests: CutlineUITestCase {
         print("AUDIODRAG timeline value: \(String(describing: element("timeline").value)) audio.1 frame: \(element("audio.1").frame) before: \(second)")
         snapshot("21-after-drag")
         waitFor("track moved") { element("audio.1").frame.minX < second.minX - 15 }
-        // And the toolbar can snap it to the playhead.
-        XCTAssertTrue(element("tool.To Playhead").waitForExistence(timeout: 5))
+        // Music toolbar is just Edit / Duplicate / Delete.
+        for id in ["tool.Edit", "tool.Repeat", "tool.Duplicate", "tool.Delete"] { XCTAssertTrue(element(id).exists, "\(id) missing") }
+        XCTAssertFalse(element("tool.To Playhead").exists)
         snapshot("21-two-tracks")
     }
 
@@ -345,8 +347,8 @@ final class FeatureUITests: CutlineUITestCase {
         let tl = element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.2))
         tl.press(forDuration: 0.05, thenDragTo: tl.withOffset(CGVector(dx: -120, dy: 0)))
         element("audio.0").tap()
-        XCTAssertTrue(element("tool.Trim").waitForExistence(timeout: 5))
-        tap("tool.Trim")
+        XCTAssertTrue(element("tool.Edit").waitForExistence(timeout: 5))
+        tap("tool.Edit")
         let summary = element("audioTrim.summary")
         XCTAssertTrue(summary.waitForExistence(timeout: 5))
         let before = summary.label
@@ -364,12 +366,23 @@ final class FeatureUITests: CutlineUITestCase {
         // Undo inside the panel restores the previous section.
         tap("panel.undo")
         waitFor("undo restores") { element("audioTrim.summary").label == before }
+        // Full-screen editor: timer, markers, per-section volume and delete.
+        XCTAssertTrue(element("audioEditor.timer").exists)
+        let timeline = element("timeline")
+        XCTAssertTrue(!timeline.exists || !timeline.isHittable, "timeline/layers are hidden while editing audio")
+        tap("audioEditor.addMarker")
+        waitFor("two sections") { element("audioTrim.summary").label.contains("2 sections") }
+        XCTAssertTrue(element("audioEditor.section").waitForExistence(timeout: 5))
+        tap("audioEditor.deleteSection")
+        waitFor("section deleted") { element("audioEditor.section").label.contains("Deleted") }
+        tap("audioEditor.deleteSection")   // Restore
+        snapshot("18-audio-editor-sections")
         tap("panel.done")
-        tap("tool.Split")
-        waitFor("audio split") { count(prefix: "audio.") == 2 }
+        // Music has no Split tool (trim with the Trim Audio slider instead).
+        XCTAssertFalse(element("tool.Split").exists, "audio toolbar should not offer Split")
         tap("tool.Duplicate")
-        waitFor("audio duplicated") { count(prefix: "audio.") == 3 }
-        snapshot("18-audio-split-duplicate")
+        waitFor("audio duplicated") { count(prefix: "audio.") == 2 }
+        snapshot("18-audio-duplicate")
     }
 
     func test17_FilterPreviewShowsCleanFrame() {

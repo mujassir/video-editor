@@ -24,12 +24,12 @@ A fast, private video editor for iPhone. It's built natively in Swift, SwiftUI, 
 - Live preview rendered by the Metal compositor, with no black flash after edits.
 - UIKit timeline:
   - Centre playhead, pinch to zoom, filmstrip thumbnails.
-  - Audio waveforms with beat marks.
+  - Audio waveforms.
   - Lanes for text, captions and music.
 - Animations play only during playback. Paused or scrubbing, the preview shows clips at rest, so edits are easy to judge.
 
 ### Video clips
-- Split, trim (drag the handles or use precise sliders), duplicate, reorder and delete.
+- Split, trim (drag the clip's handles on the timeline), duplicate, reorder and delete.
 - Speed from 0.1× to 10×, reverse, freeze frame, volume, extract audio.
 - 20 filters (3D lookup tables), plus adjustments: exposure, contrast, saturation, warmth, highlights, shadows, vignette, sharpen.
 - Crop, rotate, flip, zoom; Fit, Fill or Stretch per clip.
@@ -54,12 +54,13 @@ A fast, private video editor for iPhone. It's built natively in Swift, SwiftUI, 
 ### Music and audio
 - 4 built-in royalty-free tracks, synthesized on the device.
 - Your own music from **Files**, or the soundtrack of a video (**From Video**).
-- **Trim Audio:**
+- **Music toolbar:** Edit, Repeat (loops the track's section until the end of the video), Duplicate, Delete.
+- **Edit Audio:**
   - One range slider over the song's waveform.
   - Play the selected section, with a moving cursor.
-  - Trim, Undo, and ✓ to save.
-- Split, duplicate, and **To Playhead**. Press and hold a music bar, then drag it, to move it.
-- Music follows the video's length as you add or remove content. Choosing an End yourself switches this off, and **Match video** switches it back on.
+  - Trim, Volume, Undo, and ✓ to save.
+- Press and hold a music bar, then drag it, to move it.
+- Music follows the video's length as you add or remove content. Choosing an End yourself switches this off, and **Match video** (in Edit Audio) switches it back on.
 - Fade-out, and automatic ducking of music under speech.
 
 ### Canvas
@@ -77,8 +78,6 @@ A fast, private video editor for iPhone. It's built natively in Swift, SwiftUI, 
 
 ### On-device AI
 - **Auto captions:** Apple's on-device speech recognition, with word timing and 5 animated styles. It never falls back to server recognition.
-- **Remove silence:** finds pauses and cuts them in one step.
-- **Beat detection and Beat Sync:** moves cuts onto the music's beats.
 - **Auto enhance:** corrects exposure, contrast, colour and white balance.
 - **Auto reframe:** follows faces and subjects so a wide shot fits a vertical canvas.
 - **Background removal (Cutout):** person segmentation with blur, colour or transparent background.

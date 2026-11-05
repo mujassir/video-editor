@@ -224,7 +224,7 @@ final class TimelineUIView: UIView, UIScrollViewDelegate, UIGestureRecognizerDel
             let mediaDuration = project.mediaItem(audio.mediaID)?.duration.seconds ?? audio.sourceRange.duration.seconds
             v.configure(clip: audio, peaks: peaks, mediaDuration: mediaDuration, pointsPerSecond: pointsPerSecond)
             v.frame = CGRect(x: x(for: audio.start), y: Layout.audioTop + CGFloat(audio.lane) * (Layout.audioHeight + 4),
-                             width: max(8, x(for: audio.sourceRange.duration)), height: Layout.audioHeight)
+                             width: max(8, x(for: audio.timelineRange.duration)), height: Layout.audioHeight)
             v.accessibilityIdentifier = "audio.\(i)"
             v.clipID = audio.id
             // Press and hold, then slide, to move the track. Quick swipes still scroll.
@@ -594,10 +594,6 @@ final class AudioBarView: UIView {
                 let h = max(1.5, CGFloat(p) * (bounds.height - 6))
                 UIRectFill(CGRect(x: CGFloat(i) * barW, y: bounds.midY - h / 2, width: max(1, barW - 0.5), height: h))
             }
-        }
-        UIColor.white.withAlphaComponent(0.55).setFill()
-        for b in beats {
-            UIRectFill(CGRect(x: CGFloat(b) * pps, y: bounds.height - 4, width: 1.5, height: 4))
         }
         let attrs: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: 10, weight: .semibold), .foregroundColor: UIColor.white]
         ("♪ " + title as NSString).draw(at: CGPoint(x: 6, y: 2), withAttributes: attrs)
