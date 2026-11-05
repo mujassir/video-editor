@@ -1,0 +1,92 @@
+name: iOS build & test
+on:
+  push:
+    branches: ['claude/**', main]
+    paths-ignore: ['.github/workflows/scout.yml', '.github/workflows/demo.yml', 'scripts/**', '**.md']
+  workflow_dispatch:
+    inputs:
+      ui_tests:
+        description: Run UI tests
+        type: boolean
+        default: true
+concurrency:
+  group: ios-${{ github.ref }}
+  # Queue instead of cancelling, so every pushed commit gets a complete run.
+  cancel-in-progress: false
+jobs:
+  test:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Environment
+        run: |
+          sw_vers; xcodebuild -version
+          ls /Applications | grep -i xcode || true
+          xcrun simctl list devices available | grep -iE "iphone (1[5-9]|2[0-9])" | head -20
+          say -v '?' | grep -iE "en_(US|GB)" | head -40
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate test fixtures
+        run: |
+          mkdir -p Tests/EditorKitTests/Fixtures
+          say -v Daniel -o /tmp/speech.aiff "Welcome to Cutline. [[slnc 1200]] This video was captioned entirely on device, with no cloud at all."
+          afconvert -f m4af -d aac /tmp/speech.aiff Tests/EditorKitTests/Fixtures/speech.m4a
+          curl -fsSL --retry 3 -A "CutlineCI/1.0 (test fixture)" -o Tests/EditorKitTests/Fixtures/portrait.jpg \
+            "https://upload.wikimedia.org/wikipedia/commons/d/d3/Albert_Einstein_Head.jpg" \
+            || echo "portrait fixture unavailable"
+          ls -la Tests/EditorKitTests/Fixtures
+          # Speech footage for the captions UI test.
+          brew install ffmpeg >/dev/null 2>&1 || true
+          mkdir -p "$RUNNER_TEMP/demo-media"
+          say -v Daniel -o /tmp/talk.aiff "Hi, I'm testing Cutline. [[slnc 1500]] Captions are generated right here on the phone."
+          ffmpeg -loglevel error -y -f lavfi -i "testsrc2=size=1280x720:rate=30" -i /tmp/talk.aiff -shortest \
+            -c:v libx264 -pix_fmt yuv420p -c:a aac "$RUNNER_TEMP/demo-media/01-talk.mov"
+          ls -la "$RUNNER_TEMP/demo-media"
+      - name: Generate project
+        run: xcodegen generate && mkdir -p build
+      - name: Pick simulator
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json,sys
+          d=json.load(sys.stdin)["devices"]
+          c=[(rt,x) for rt,l in d.items() if "iOS" in rt for x in l if x["name"].startswith("iPhone 1") and "Pro" in x["name"]]
+          c.sort(key=lambda t:t[0])
+          print(c[-1][1]["udid"])')
+          echo "udid=$UDID" >> $GITHUB_OUTPUT
+          xcrun simctl boot "$UDID" || true
+      - name: Unit tests (EditorKit)
+        run: |
+          set -o pipefail
+          xcodebuild test -project Cutline.xcodeproj -scheme EditorKit \
+            -destination "id=${{ steps.sim.outputs.udid }}" -resultBundlePath build/unit.xcresult \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/unit.log | grep -E "error:|warning: .*concurrency|Test (Suite|Case)|✔|✘|passed|failed|\*\* |BEAT|PERF|CAPTIONS|SEGMENTATION|REFRAME" | head -400
+      - name: Build app
+        if: always()
+        run: |
+          set -o pipefail
+          xcodebuild build -project Cutline.xcodeproj -scheme Cutline \
+            -destination "id=${{ steps.sim.outputs.udid }}" CODE_SIGNING_ALLOWED=NO 2>&1 \
+            | grep -E "error:|\*\* " | head -200
+      - name: UI tests
+        if: ${{ always() && (github.event_name == 'push' || inputs.ui_tests) }}
+        run: |
+          set -o pipefail
+          for svc in photos photos-add microphone speech-recognition; do
+            xcrun simctl privacy ${{ steps.sim.outputs.udid }} grant $svc com.mujassir.cutline || true
+          done
+          TEST_RUNNER_PRINT_SCREENSHOTS=1 TEST_RUNNER_DEMO_MEDIA="$RUNNER_TEMP/demo-media" \
+          xcodebuild test -project Cutline.xcodeproj -scheme Cutline -only-testing:CutlineUITests \
+            -destination "id=${{ steps.sim.outputs.udid }}" -resultBundlePath build/ui.xcresult \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/ui.log | grep -E "error:|Test (Suite|Case)|passed|failed|\*\* |CAPTIONS|XCTAssert|Timed out|AUDIODRAG" | head -400
+      - name: Screenshots (base64, for log review)
+        if: always()
+        run: grep -oE "SCREENSHOT [^ ]+ [A-Za-z0-9+/=]+" build/ui.log || echo "no screenshots"
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: build/*.xcresult
+          retention-days: 7

@@ -1,0 +1,104 @@
+name: Cutline
+options:
+  bundleIdPrefix: com.mujassir.cutline
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    DEAD_CODE_STRIPPING: YES
+    SWIFT_STRICT_CONCURRENCY: complete
+  configs:
+    Release:
+      SWIFT_OPTIMIZATION_LEVEL: "-O"
+      SWIFT_COMPILATION_MODE: wholemodule
+      MTL_FAST_MATH: YES
+targets:
+  EditorKit:
+    type: framework
+    platform: iOS
+    sources:
+      - path: EditorKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mujassir.cutline.EditorKit
+        GENERATE_INFOPLIST_FILE: YES
+        APPLICATION_EXTENSION_API_ONLY: NO
+        MTL_ENABLE_DEBUG_INFO: INCLUDE_SOURCE
+        MTL_LANGUAGE_REVISION: Metal32
+  Cutline:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+    dependencies:
+      - target: EditorKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mujassir.cutline
+        PRODUCT_NAME: Cutline
+        DEVELOPMENT_TEAM: KMW97A6XG2
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+        INFOPLIST_KEY_CFBundleDisplayName: Cutline
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        INFOPLIST_KEY_UIStatusBarStyle: UIStatusBarStyleLightContent
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: Cutline imports your videos and photos so you can edit them.
+        INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription: Cutline saves exported videos to your photo library.
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: Cutline records voiceovers with the microphone.
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: Cutline transcribes speech on device to create captions.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+  EditorKitTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests/EditorKitTests
+    dependencies:
+      - target: EditorKit
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.mujassir.cutline.EditorKitTests
+  CutlineUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: Tests/CutlineUITests
+    dependencies:
+      - target: Cutline
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.mujassir.cutline.UITests
+        TEST_TARGET_NAME: Cutline
+schemes:
+  Cutline:
+    build:
+      targets:
+        Cutline: all
+        EditorKitTests: [test]
+        CutlineUITests: [test]
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets:
+        - EditorKitTests
+        - CutlineUITests
+  EditorKit:
+    build:
+      targets:
+        EditorKit: all
+        EditorKitTests: [test]
+    test:
+      config: Debug
+      targets:
+        - EditorKitTests
