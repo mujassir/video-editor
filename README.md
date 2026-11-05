@@ -24,7 +24,7 @@ A fast, private video editor for iPhone. It's built natively in Swift, SwiftUI, 
 - Live preview rendered by the Metal compositor, with no black flash after edits.
 - UIKit timeline:
   - Centre playhead, pinch to zoom, filmstrip thumbnails.
-  - Audio waveforms with beat marks.
+  - Audio waveforms.
   - Lanes for text, captions and music.
 - Animations play only during playback. Paused or scrubbing, the preview shows clips at rest, so edits are easy to judge.
 
@@ -77,8 +77,6 @@ A fast, private video editor for iPhone. It's built natively in Swift, SwiftUI, 
 
 ### On-device AI
 - **Auto captions:** Apple's on-device speech recognition, with word timing and 5 animated styles. It never falls back to server recognition.
-- **Remove silence:** finds pauses and cuts them in one step.
-- **Beat detection and Beat Sync:** moves cuts onto the music's beats.
 - **Auto enhance:** corrects exposure, contrast, colour and white balance.
 - **Auto reframe:** follows faces and subjects so a wide shot fits a vertical canvas.
 - **Background removal (Cutout):** person segmentation with blur, colour or transparent background.

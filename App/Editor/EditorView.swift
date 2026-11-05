@@ -216,14 +216,12 @@ struct EditorView: View {
 
     @ViewBuilder private var mainTools: some View {
         ToolButton(title: "Media", systemImage: "plus.rectangle.on.rectangle") { showAddMenu = true }
+        ToolButton(title: "Music", systemImage: "music.note") { model.select(.none); model.panel = .music }
+        ToolButton(title: "Captions", systemImage: "captions.bubble", badge: "AI") { model.panel = .captions }
+        ToolButton(title: "Watermark", systemImage: "seal", isActive: model.project.watermark != nil) { model.select(.none); model.panel = .watermark }
         ToolButton(title: "Text", systemImage: "textformat") { model.addText() }
         ToolButton(title: "Intro", systemImage: "rectangle.lefthalf.inset.filled") { model.select(.none); model.panel = .titleCard(.opening) }
         ToolButton(title: "Outro", systemImage: "rectangle.righthalf.inset.filled") { model.select(.none); model.panel = .titleCard(.closing) }
-        ToolButton(title: "Watermark", systemImage: "seal", isActive: model.project.watermark != nil) { model.select(.none); model.panel = .watermark }
-        ToolButton(title: "Music", systemImage: "music.note") { model.select(.none); model.panel = .music }
-        ToolButton(title: "Captions", systemImage: "captions.bubble", badge: "AI") { model.panel = .captions }
-        ToolButton(title: "Silence", systemImage: "waveform.badge.minus", badge: "AI") { model.removeSilences() }
-        ToolButton(title: "Beat Sync", systemImage: "metronome", badge: "AI") { model.beatSync() }
     }
 
     @ViewBuilder private var clipTools: some View {
@@ -288,7 +286,6 @@ struct EditorView: View {
         ToolButton(title: "To Playhead", systemImage: "arrow.right.to.line") { model.moveSelectedAudioToPlayhead() }
         ToolButton(title: "Duplicate", systemImage: "plus.square.on.square") { model.duplicateSelectedAudio() }
         ToolButton(title: "Volume", systemImage: "speaker.wave.2") { model.panel = .music }
-        ToolButton(title: "Beat Sync", systemImage: "metronome", badge: "AI") { model.beatSync() }
         ToolButton(title: "Delete", systemImage: "trash") { model.deleteSelection() }
     }
 

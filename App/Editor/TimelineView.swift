@@ -595,10 +595,6 @@ final class AudioBarView: UIView {
                 UIRectFill(CGRect(x: CGFloat(i) * barW, y: bounds.midY - h / 2, width: max(1, barW - 0.5), height: h))
             }
         }
-        UIColor.white.withAlphaComponent(0.55).setFill()
-        for b in beats {
-            UIRectFill(CGRect(x: CGFloat(b) * pps, y: bounds.height - 4, width: 1.5, height: 4))
-        }
         let attrs: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: 10, weight: .semibold), .foregroundColor: UIColor.white]
         ("♪ " + title as NSString).draw(at: CGPoint(x: 6, y: 2), withAttributes: attrs)
     }

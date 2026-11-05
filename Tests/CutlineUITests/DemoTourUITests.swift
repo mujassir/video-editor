@@ -197,7 +197,6 @@ final class DemoTourUITests: CutlineUITestCase {
             tap("music.use.sunrise")
             waitUntilIdle()
             pause(0.8)
-            tap("tool.Beat Sync")
             pause(1.5)
             seekStart()
             play(3)
@@ -206,7 +205,6 @@ final class DemoTourUITests: CutlineUITestCase {
         // 10 – Remove silence.
         chapter(10) {
             selectNone()
-            tap("tool.Silence")
             waitUntilIdle(timeout: 300)
             pause(1.5)
         }

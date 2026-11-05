@@ -168,21 +168,26 @@ final class FeatureUITests: CutlineUITestCase {
         snapshot("09-music")
         element("editor.aspect").tap() // dismiss selection state
         tap("panel.done")
-        tap("tool.Beat Sync")
-        let toast = toastText ?? ""
-        XCTAssertTrue(toast.contains("Synced"), "unexpected toast: \(toast)")
-        snapshot("09-beatsync")
+        // Beat Sync has been removed everywhere, including the music toolbar.
+        XCTAssertFalse(element("tool.Beat Sync").exists)
+        element("audio.0").tap()
+        XCTAssertTrue(element("tool.Trim").waitForExistence(timeout: 5))
+        XCTAssertFalse(element("tool.Beat Sync").exists, "music toolbar should not offer Beat Sync")
     }
 
-    func test10_RemoveSilence() {
+    func test10_MainToolbarOrder() {
         openProjectWithSamples()
-        let before = totalSeconds
-        tap("tool.Silence")
-        waitUntilIdle()
-        waitFor("silence removed") { totalSeconds < before - 2 }
-        let toast = toastText ?? ""
-        XCTAssertTrue(toast.contains("Removed"), "unexpected toast: \(toast)")
-        snapshot("10-silence")
+        // Main toolbar: Media, Music, Captions, Watermark, Text, Intro, Outro – no Silence / Beat Sync.
+        let ids = ["tool.Media", "tool.Music", "tool.Captions", "tool.Watermark", "tool.Text", "tool.Intro", "tool.Outro"]
+        var lastX = -CGFloat.infinity
+        for id in ids {
+            let e = element(id)
+            XCTAssertTrue(e.waitForExistence(timeout: 5), "\(id) missing")
+            XCTAssertGreaterThan(e.frame.minX, lastX, "\(id) out of order")
+            lastX = e.frame.minX
+        }
+        XCTAssertFalse(element("tool.Silence").exists)
+        XCTAssertFalse(element("tool.Beat Sync").exists)
     }
 
     func test11_CanvasAndBackground() {
