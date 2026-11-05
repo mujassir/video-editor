@@ -313,6 +313,7 @@ final class TimelineUIView: UIView, UIScrollViewDelegate, UIGestureRecognizerDel
     @objc private func handleAudioDrag(_ g: UILongPressGestureRecognizer) {
         guard let bar = g.view as? AudioBarView, let id = bar.clipID else { return }
         let x = g.location(in: content).x
+        scrollView.accessibilityValue = "audioDrag state=\(g.state.rawValue) x=\(Int(x)) bar=\(Int(bar.frame.minX))"
         switch g.state {
         case .began:
             scrollView.isDraggingItem = true
