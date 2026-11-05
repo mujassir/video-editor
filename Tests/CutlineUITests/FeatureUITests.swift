@@ -372,7 +372,8 @@ final class FeatureUITests: CutlineUITestCase {
         waitFor("undo restores") { element("audioTrim.summary").label == before }
         // Full-screen editor: timer, markers, per-section volume and delete.
         XCTAssertTrue(element("audioEditor.timer").exists)
-        XCTAssertFalse(element("timeline").isHittable, "timeline/layers are hidden while editing audio")
+        let timeline = element("timeline")
+        XCTAssertTrue(!timeline.exists || !timeline.isHittable, "timeline/layers are hidden while editing audio")
         tap("audioEditor.addMarker")
         waitFor("two sections") { element("audioTrim.summary").label.contains("2 sections") }
         XCTAssertTrue(element("audioEditor.section").waitForExistence(timeout: 5))
