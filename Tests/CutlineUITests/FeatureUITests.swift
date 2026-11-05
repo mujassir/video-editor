@@ -376,13 +376,29 @@ final class FeatureUITests: CutlineUITestCase {
         tap("audioEditor.addMarker")
         tap("audioEditor.addMarker")
         waitFor("four sections") { element("audioTrim.summary").label.contains("4 sections") }
-        for k in 0..<4 { XCTAssertTrue(element("audioEditor.sectionChip.\(k)").exists, "chip \(k) missing") }
-        tap("audioEditor.sectionChip.1")
+        // Tapping the waveform selects a section; it does not move the play position.
+        let timeBefore = element("audioEditor.timer").label
+        element("audioEditor.wave").coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.5)).tap()
         XCTAssertTrue(element("audioEditor.section").waitForExistence(timeout: 5))
-        XCTAssertTrue(element("audioEditor.section").label.contains("Section 2"))
+        XCTAssertTrue(element("audioEditor.section").label.contains("Section 2"), element("audioEditor.section").label)
+        XCTAssertEqual(element("audioEditor.timer").label, timeBefore, "tapping the waveform must not seek")
+        XCTAssertFalse(element("audioEditor.sectionChip.0").exists, "no section buttons")
+        // Deleting cuts that part out: the music gets shorter and the rest closes up.
+        let lengthBefore = element("audioEditor.endLabel").label
         tap("audioEditor.deleteSection")
-        waitFor("section deleted") { element("audioEditor.section").label.contains("Deleted") }
-        // Undo inside the editor brings the section back.
+        waitFor("section deleted") { element("audioTrim.summary").label.contains("1 deleted") }
+        XCTAssertNotEqual(element("audioEditor.endLabel").label, lengthBefore, "play bar should shrink")
+        // Delete the first section too, then Play must start (from the first kept part).
+        element("audioEditor.wave").coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.5)).tap()
+        XCTAssertTrue(element("audioEditor.section").label.contains("Section 1"))
+        tap("audioEditor.deleteSection")
+        waitFor("first section deleted") { element("audioTrim.summary").label.contains("2 deleted") }
+        tap("audioTrim.play")
+        let t0 = element("audioEditor.timer").label
+        waitFor("plays after deleting the first section") { element("audioEditor.timer").label != t0 }
+        tap("audioTrim.play")
+        // Undo inside the editor brings the sections back.
+        tap("panel.undo")
         tap("panel.undo")
         waitFor("undo restores") { !element("audioTrim.summary").label.contains("deleted") }
         snapshot("18-audio-editor-sections")

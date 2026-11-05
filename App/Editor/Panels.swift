@@ -863,9 +863,20 @@ struct MusicSourceLabel: View {
 
 // MARK: - Audio editor (full screen)
 
-/// Full-screen audio editor: the playing part of the song as a large waveform,
-/// a live timer, markers that split it into sections (each with its own volume,
-/// deletable to cut that part out), Undo and ✓.
+/// A kept (not deleted) section placed on the played timeline.
+struct KeptSegment: Equatable {
+    let index: Int          // index into the clip's sections
+    let start: Double       // song time
+    let end: Double
+    let volume: Double
+    let offset: Double      // where it starts in the played music
+    var duration: Double { end - start }
+}
+
+/// Full-screen audio editor. Only the music that plays is shown: deleted sections
+/// are cut out and the rest closes up, on the waveform, play bar and timer alike.
+/// Tap the waveform to select a section (own volume / delete); drag the play-bar
+/// knob to move the playing position; markers split the music into sections.
 struct AudioEditorView: View {
     @Bindable var model: EditorModel
     let audioID: UUID
@@ -876,8 +887,32 @@ struct AudioEditorView: View {
     private var clip: AudioClip? { model.project.audioClips.first { $0.id == audioID } }
     private var media: MediaItem? { clip.flatMap { model.project.mediaItem($0.mediaID) } }
     private var sections: [AudioSection] { clip?.resolvedSections ?? [] }
-    private var rangeStart: Double { clip?.sourceRange.start.seconds ?? 0 }
-    private var rangeEnd: Double { max(clip?.sourceRange.end.seconds ?? 1, rangeStart + 0.1) }
+
+    private var kept: [KeptSegment] {
+        var out: [KeptSegment] = [], offset = 0.0
+        for (k, s) in sections.enumerated() where !s.deleted {
+            out.append(KeptSegment(index: k, start: s.start.seconds, end: s.end.seconds, volume: s.volume, offset: offset))
+            offset += s.end.seconds - s.start.seconds
+        }
+        return out
+    }
+    private var playedLength: Double { kept.last.map { $0.offset + $0.duration } ?? 0 }
+    private var songEnd: Double { kept.last?.end ?? (clip?.sourceRange.end.seconds ?? 0) }
+
+    /// Song time → position in the played music (a deleted part maps to where the next kept part starts).
+    private func toPlayed(_ t: Double) -> Double {
+        for seg in kept {
+            if t < seg.start { return seg.offset }
+            if t < seg.end { return seg.offset + (t - seg.start) }
+        }
+        return playedLength
+    }
+
+    /// Position in the played music → song time.
+    private func toSong(_ p: Double) -> Double {
+        for seg in kept where p < seg.offset + seg.duration { return seg.start + max(0, p - seg.offset) }
+        return songEnd
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -887,18 +922,14 @@ struct AudioEditorView: View {
                     timer
                     AudioWaveEditor(peaks: media.flatMap { model.waveforms[$0.id] } ?? [],
                                     songLength: max(media?.duration.seconds ?? 1, 0.5),
-                                    rangeStart: rangeStart, rangeEnd: rangeEnd,
-                                    sections: sections, selected: selectedSection, cursor: preview.position,
-                                    onTapTime: { t in
-                                        preview.seekIdle(to: t)
-                                        selectedSection = sections.firstIndex { t >= $0.start.seconds && t < $0.end.seconds }
-                                    })
+                                    segments: kept, selected: selectedSection,
+                                    cursor: toPlayed(preview.position),
+                                    onTapSection: { k in selectedSection = k })
                         .frame(height: 150)
                         .accessibilityIdentifier("audioEditor.wave")
                     scrubBar
                     controls
-                    if sections.count > 1 { sectionChips }
-                    if let k = selectedSection, sections.indices.contains(k) { sectionPanel(k) }
+                    if let k = selectedSection, sections.indices.contains(k), !sections[k].deleted { sectionPanel(k) }
                     overall
                     Text(clip.map { "\(Self.time($0.playedDuration.seconds)) of music · \(sections.count) section\(sections.count == 1 ? "" : "s")\(sections.contains { $0.deleted } ? " · \(sections.filter(\.deleted).count) deleted" : "")" } ?? "")
                         .font(.caption2).foregroundStyle(Theme.secondaryText)
@@ -913,10 +944,10 @@ struct AudioEditorView: View {
             model.pause()
             if let media { preview.load(model.resolver.url(for: media)) }
             syncPreview()
-            preview.position = rangeStart
+            preview.seekIdle(to: toSong(0))
         }
         .onDisappear { preview.stop() }
-        .onChange(of: clip?.sections) { _, _ in syncPreview() }
+        .onChange(of: clip?.sections) { _, _ in syncPreview(); keepPositionInMusic() }
         .onChange(of: clip?.volume) { _, _ in syncPreview() }
     }
 
@@ -946,13 +977,39 @@ struct AudioEditorView: View {
         .background(Theme.surface)
     }
 
-    /// Live position in the song while playing.
+    /// Live position in the played music.
     private var timer: some View {
         VStack(spacing: 2) {
-            Text(Self.time(rel(preview.position))).font(.system(size: 34, weight: .semibold).monospacedDigit())
+            Text(Self.time(toPlayed(preview.position))).font(.system(size: 34, weight: .semibold).monospacedDigit())
                 .accessibilityIdentifier("audioEditor.timer")
-            Text("of \(Self.time(rangeEnd - rangeStart))")
+            Text("of \(Self.time(playedLength))")
                 .font(.footnote.monospacedDigit()).foregroundStyle(Theme.secondaryText)
+        }
+    }
+
+    /// Single-line play bar: drag the knob to move the playing position.
+    private var scrubBar: some View {
+        VStack(spacing: 4) {
+            Slider(value: Binding(get: { min(max(toPlayed(preview.position), 0), playedLength) },
+                                  set: { p in preview.seekIdle(to: toSong(p)) }),
+                   in: 0...max(playedLength, 0.1)) { editing in
+                if editing {
+                    resumeAfterScrub = preview.isPlaying
+                    preview.pause()
+                } else if resumeAfterScrub {
+                    resumeAfterScrub = false
+                    preview.play(from: preview.position, to: songEnd)
+                }
+            }
+            .tint(Theme.accent)
+            .accessibilityIdentifier("audioEditor.scrub")
+            HStack {
+                Text("0:00").accessibilityIdentifier("audioEditor.startLabel")
+                Spacer()
+                Text(Self.clock(playedLength)).accessibilityIdentifier("audioEditor.endLabel")
+            }
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(Theme.secondaryText)
         }
     }
 
@@ -977,37 +1034,32 @@ struct AudioEditorView: View {
 
     private func sectionPanel(_ k: Int) -> some View {
         let s = sections[k]
+        let number = (kept.firstIndex { $0.index == k } ?? 0) + 1
+        let start = toPlayed(s.start.seconds), length = s.end.seconds - s.start.seconds
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Section \(k + 1) of \(sections.count)").font(.subheadline.weight(.semibold))
-                Text("\(Self.time(rel(s.start.seconds))) – \(Self.time(rel(s.end.seconds)))").font(.caption.monospacedDigit())
+                Text("Section \(number) of \(kept.count)").font(.subheadline.weight(.semibold))
+                Text("\(Self.clock(start)) – \(Self.clock(start + length))").font(.caption.monospacedDigit())
                     .foregroundStyle(Theme.secondaryText)
                 Spacer()
-                if s.deleted { Text("Deleted").font(.caption.weight(.bold)).foregroundStyle(.red) }
             }
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("audioEditor.section")
-            if !s.deleted {
-                LabeledSlider(title: "Volume", value: Binding(get: { s.volume }, set: { v in
-                    model.editCoalescing("Section volume", key: "secvol-\(audioID)-\(k)") { p in
-                        try? p.setAudioSectionVolume(audioID, index: k, v)
-                    }
-                }), range: 0...2, format: { String(format: "%.0f%%", $0 * 100) })
-            }
+            LabeledSlider(title: "Volume", value: Binding(get: { s.volume }, set: { v in
+                model.editCoalescing("Section volume", key: "secvol-\(audioID)-\(k)") { p in
+                    try? p.setAudioSectionVolume(audioID, index: k, v)
+                }
+            }), range: 0...2, format: { String(format: "%.0f%%", $0 * 100) })
             HStack(spacing: 10) {
-                Button(role: .destructive) {
-                    preview.stop()
-                    model.edit(s.deleted ? "Restore section" : "Delete section") { p in
-                        try p.setAudioSectionDeleted(audioID, index: k, !s.deleted)
-                    }
-                } label: {
-                    Label(s.deleted ? "Restore" : "Delete", systemImage: s.deleted ? "arrow.uturn.backward" : "trash")
+                Button(role: .destructive) { deleteSection(k) } label: {
+                    Label("Delete section", systemImage: "trash")
                         .font(.subheadline.weight(.semibold))
                         .padding(.horizontal, 14).padding(.vertical, 8)
                         .background(Theme.surfaceRaised, in: Capsule())
                 }
+                .disabled(kept.count < 2)
                 .accessibilityIdentifier("audioEditor.deleteSection")
-                if k + 1 < sections.count {
+                if k + 1 < sections.count, !sections[k + 1].deleted {
                     Button {
                         model.edit("Remove marker") { try $0.removeAudioMarker(audioID, after: k) }
                         clampSelection()
@@ -1034,6 +1086,7 @@ struct AudioEditorView: View {
                 }), range: 0...1.5, format: { String(format: "%.0f%%", $0 * 100) })
                 if sections.count > 1 {
                     Button("Clear all markers") {
+                        preview.stop()
                         model.edit("Clear markers") { try $0.clearAudioMarkers(audioID) }
                         selectedSection = nil
                     }
@@ -1046,80 +1099,37 @@ struct AudioEditorView: View {
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
     }
 
-    /// Single-line play bar: drag the knob to move the playing position.
-    private var scrubBar: some View {
-        VStack(spacing: 4) {
-            Slider(value: Binding(get: { min(max(preview.position, rangeStart), rangeEnd) },
-                                  set: { v in
-                                      preview.seekIdle(to: v)
-                                      selectedSection = sections.firstIndex { v >= $0.start.seconds && v < $0.end.seconds }
-                                  }),
-                   in: rangeStart...rangeEnd) { editing in
-                if editing {
-                    resumeAfterScrub = preview.isPlaying
-                    preview.pause()
-                } else if resumeAfterScrub {
-                    resumeAfterScrub = false
-                    preview.play(from: preview.position, to: rangeEnd)
-                }
-            }
-            .tint(Theme.accent)
-            .accessibilityIdentifier("audioEditor.scrub")
-            HStack {
-                Text("0:00").accessibilityIdentifier("audioEditor.startLabel")
-                Spacer()
-                Text(Self.clock(rangeEnd - rangeStart)).accessibilityIdentifier("audioEditor.endLabel")
-            }
-            .font(.caption.monospacedDigit())
-            .foregroundStyle(Theme.secondaryText)
-        }
-    }
-
-    /// One chip per section (0 → marker 1, marker 1 → marker 2, …); tap to select it.
-    private var sectionChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(Array(sections.enumerated()), id: \.offset) { k, s in
-                    Button {
-                        selectedSection = k
-                        preview.seekIdle(to: s.start.seconds)
-                    } label: {
-                        VStack(spacing: 2) {
-                            Text("Section \(k + 1)").font(.caption.weight(.semibold))
-                            Text("\(Self.clock(rel(s.start.seconds)))–\(Self.clock(rel(s.end.seconds)))")
-                                .font(.caption2.monospacedDigit())
-                        }
-                        .strikethrough(s.deleted)
-                        .foregroundStyle(s.deleted ? Color.red : .white)
-                        .padding(.horizontal, 12).padding(.vertical, 8)
-                        .background(selectedSection == k ? Theme.accent : Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("audioEditor.sectionChip.\(k)")
-                }
-            }
-        }
-    }
-
     // MARK: Actions
-
-    private func rel(_ t: Double) -> Double { max(0, t - rangeStart) }
 
     private func syncPreview() {
         preview.sections = clip?.resolvedSections ?? []
         preview.baseVolume = clip?.volume ?? 1
     }
 
+    /// After sections change (delete, undo, clear), park the playhead on music that plays.
+    private func keepPositionInMusic() {
+        clampSelection()
+        let t = preview.position
+        let inKept = kept.contains { t >= $0.start && t < $0.end }
+        if !inKept { preview.seekIdle(to: toSong(min(toPlayed(t), max(0, playedLength - 0.05)))) }
+    }
+
     private func clampSelection() {
-        if let k = selectedSection, k >= sections.count { selectedSection = nil }
+        if let k = selectedSection, k >= sections.count || sections[k].deleted { selectedSection = nil }
+    }
+
+    private func deleteSection(_ k: Int) {
+        preview.stop()
+        model.edit("Delete section") { try $0.setAudioSectionDeleted(audioID, index: k, true) }
+        selectedSection = nil
     }
 
     private func togglePreview() {
         if preview.isPlaying {
             preview.pause()
         } else {
-            let from = preview.position >= rangeStart && preview.position < rangeEnd - 0.05 ? preview.position : rangeStart
-            preview.play(from: from, to: rangeEnd)
+            let p = toPlayed(preview.position)
+            preview.play(from: toSong(p < playedLength - 0.05 ? p : 0), to: songEnd)
         }
     }
 
@@ -1128,15 +1138,14 @@ struct AudioEditorView: View {
     private func addMarker() {
         let gap = 0.25   // engine minimum section (0.2 s) plus slack
         var t = preview.position
-        if !sections.contains(where: { t > $0.start.seconds + gap && t < $0.end.seconds - gap }) {
-            let target = selectedSection.flatMap { sections.indices.contains($0) ? sections[$0] : nil }
-                .flatMap { $0.duration.seconds > gap * 2 ? $0 : nil }
-                ?? sections.max { $0.duration.seconds < $1.duration.seconds }
-            guard let target, target.duration.seconds > gap * 2 else {
+        if !kept.contains(where: { t > $0.start + gap && t < $0.end - gap }) {
+            let target = kept.first { $0.index == selectedSection && $0.duration > gap * 2 }
+                ?? kept.max { $0.duration < $1.duration }
+            guard let target, target.duration > gap * 2 else {
                 model.showToast("Section too short for another marker")
                 return
             }
-            t = (target.start.seconds + target.end.seconds) / 2
+            t = (target.start + target.end) / 2
         }
         model.edit("Add marker") { try $0.addAudioMarker(audioID, at: MediaTime(seconds: t)) }
         selectedSection = clip?.resolvedSections.firstIndex { t >= $0.start.seconds && t < $0.end.seconds }
@@ -1155,55 +1164,57 @@ struct AudioEditorView: View {
     }
 }
 
-/// Waveform of the playing part of the song with section shading, markers and a cursor.
+/// Waveform of the music that plays: kept sections back to back, the selected one
+/// highlighted, markers between sections and the play cursor. Tapping selects a section.
 struct AudioWaveEditor: View {
     let peaks: [Float]
     let songLength: Double
-    let rangeStart: Double
-    let rangeEnd: Double
-    let sections: [AudioSection]
+    let segments: [KeptSegment]
     let selected: Int?
     var cursor: Double
-    var onTapTime: (Double) -> Void = { _ in }
+    var onTapSection: (Int) -> Void = { _ in }
+
+    private var total: Double { segments.last.map { $0.offset + $0.duration } ?? 0 }
 
     var body: some View {
         GeometryReader { geo in
-            let span = max(rangeEnd - rangeStart, 0.001)
-            let x = { (t: Double) -> CGFloat in CGFloat((t - rangeStart) / span) * geo.size.width }
+            let span = max(total, 0.001)
+            let x = { (p: Double) -> CGFloat in CGFloat(p / span) * geo.size.width }
             ZStack(alignment: .topLeading) {
                 Canvas { ctx, size in
-                    for (k, s) in sections.enumerated() {
-                        let r = CGRect(x: x(s.start.seconds), y: 0, width: max(1, x(s.end.seconds) - x(s.start.seconds)), height: size.height)
-                        if s.deleted {
-                            ctx.fill(Path(r), with: .color(Color.red.opacity(0.22)))
-                        } else if k == selected {
-                            ctx.fill(Path(r), with: .color(Theme.accent.opacity(0.22)))
-                        }
+                    for seg in segments where seg.index == selected {
+                        let r = CGRect(x: x(seg.offset), y: 0, width: max(1, x(seg.offset + seg.duration) - x(seg.offset)), height: size.height)
+                        ctx.fill(Path(r), with: .color(Theme.accent.opacity(0.25)))
                     }
                     guard !peaks.isEmpty, songLength > 0 else { return }
-                    // Only the bars inside the playing part, stretched across the width.
-                    let first = max(0, Int(rangeStart / songLength * Double(peaks.count)))
-                    let last = min(peaks.count, Int(ceil(rangeEnd / songLength * Double(peaks.count))))
-                    guard last > first else { return }
-                    let barW = size.width / CGFloat(last - first)
-                    for i in first..<last {
-                        let t = Double(i) / Double(peaks.count) * songLength
-                        let sec = sections.first { t >= $0.start.seconds && t < $0.end.seconds }
-                        let gain = CGFloat(sec.map { $0.deleted ? 0.15 : min(1.4, $0.volume) } ?? 1)
-                        let h = max(2, CGFloat(peaks[i]) * (size.height - 16) * min(1, gain))
-                        let rect = CGRect(x: CGFloat(i - first) * barW, y: (size.height - h) / 2, width: max(1, barW - 0.5), height: h)
-                        ctx.fill(Path(rect), with: .color(Theme.clipAudio.opacity(sec?.deleted == true ? 0.3 : 0.9)))
+                    let perSecond = Double(peaks.count) / songLength
+                    for seg in segments {
+                        let first = max(0, Int(seg.start * perSecond))
+                        let last = min(peaks.count, Int(ceil(seg.end * perSecond)))
+                        guard last > first else { continue }
+                        let x0 = x(seg.offset), w = x(seg.offset + seg.duration) - x0
+                        let barW = w / CGFloat(last - first)
+                        let gain = CGFloat(min(1, seg.volume))
+                        for i in first..<last {
+                            let h = max(2, CGFloat(peaks[i]) * (size.height - 16) * max(0.08, gain))
+                            let rect = CGRect(x: x0 + CGFloat(i - first) * barW, y: (size.height - h) / 2,
+                                              width: max(0.5, barW - 0.5), height: h)
+                            ctx.fill(Path(rect), with: .color(Theme.clipAudio.opacity(0.9)))
+                        }
                     }
                 }
                 .contentShape(Rectangle())
                 .onTapGesture { loc in
-                    onTapTime(min(max(rangeStart, rangeStart + Double(loc.x / max(geo.size.width, 1)) * span), rangeEnd))
+                    let p = Double(loc.x / max(geo.size.width, 1)) * span
+                    if let seg = segments.first(where: { p < $0.offset + $0.duration }) ?? segments.last {
+                        onTapSection(seg.index)
+                    }
                 }
-                ForEach(Array(sections.dropFirst().enumerated()), id: \.offset) { _, s in
-                    Rectangle().fill(Color.yellow).frame(width: 2).offset(x: x(s.start.seconds) - 1)
+                ForEach(Array(segments.dropFirst().enumerated()), id: \.offset) { _, seg in
+                    Rectangle().fill(Color.yellow).frame(width: 2).offset(x: x(seg.offset) - 1)
                         .overlay(alignment: .topLeading) {
                             Image(systemName: "flag.fill").font(.system(size: 10)).foregroundStyle(.yellow)
-                                .offset(x: x(s.start.seconds) + 3, y: 2)
+                                .offset(x: x(seg.offset) + 3, y: 2)
                         }
                         .allowsHitTesting(false)
                 }
@@ -1228,6 +1239,7 @@ final class AudioPreview {
     @ObservationIgnored private var player: AVPlayer?
     @ObservationIgnored private var timeObserver: Any?
     @ObservationIgnored private var endTime: Double = 0
+    @ObservationIgnored private var pendingSeek: Double?
 
     func load(_ url: URL) {
         player = AVPlayer(url: url)
@@ -1244,36 +1256,58 @@ final class AudioPreview {
         guard let player else { return }
         removeObserver()
         endTime = end
-        position = start
-        player.seek(to: CMTime(seconds: start, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        // Never start inside a deleted section: begin where the next kept part starts.
+        let begin = playableTime(from: start)
+        position = begin
+        pendingSeek = nil
+        apply(at: begin)
+        player.seek(to: CMTime(seconds: begin, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            DispatchQueue.main.async {
+                guard let self, self.isPlaying else { return }
+                self.player?.play()
+            }
+        }
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 30), queue: .main) { [weak self] t in
             MainActor.assumeIsolated { self?.tick(t.seconds) }
         }
-        apply(at: start)
-        player.play()
         isPlaying = true
     }
 
+    /// First time at or after `t` that isn't in a deleted section.
+    private func playableTime(from t: Double) -> Double {
+        var t = t
+        while let s = sections.first(where: { t >= $0.start.seconds && t < $0.end.seconds }), s.deleted { t = s.end.seconds }
+        return t
+    }
+
     private func tick(_ t: Double) {
+        if pendingSeek != nil { return }   // jumping over a deleted section
         position = t
         if t >= endTime - 0.02 { pause(); position = endTime; return }
         apply(at: t)
     }
 
-    /// Section volume, and jump over deleted sections.
+    /// Section volume, and jump over deleted sections (one seek at a time).
     private func apply(at t: Double) {
         guard let s = sections.first(where: { t >= $0.start.seconds && t < $0.end.seconds }) else {
             player?.volume = Float(baseVolume)
             return
         }
         if s.deleted {
-            player?.seek(to: CMTime(seconds: s.end.seconds, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+            let target = playableTime(from: t)
+            if target >= endTime - 0.02 { pause(); position = endTime; return }
+            pendingSeek = target
+            position = target
+            player?.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+                DispatchQueue.main.async { self?.pendingSeek = nil }
+            }
             return
         }
         player?.volume = Float(min(1, baseVolume * s.volume))
     }
 
     func pause() {
+        pendingSeek = nil
         player?.pause()
         removeObserver()
         isPlaying = false
