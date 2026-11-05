@@ -107,7 +107,7 @@ final class FeatureUITests: CutlineUITestCase {
         element("slider.Saturation").adjust(toNormalizedSliderPosition: 0.8)
         snapshot("06-adjust")
         tap("adjust.auto")
-        waitUntilIdle()
+        // Read the toast right away: waiting for idle first can outlast it on a slow runner.
         XCTAssertEqual(toastText, "Enhanced")
     }
 

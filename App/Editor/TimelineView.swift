@@ -654,7 +654,10 @@ final class TimelineScrollView: UIScrollView {
     override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
         if g === panGestureRecognizer {
             if isDraggingItem { return false }
-            let p = g.location(in: self)
+            // Test where the drag *started*: by the time a pan is recognized the finger has
+            // already moved several points, often off the narrow handle.
+            let now = g.location(in: self), moved = panGestureRecognizer.translation(in: self)
+            let p = CGPoint(x: now.x - moved.x, y: now.y - moved.y)
             if let hit = hitTest(p, with: nil), hit is TrimHandle || hit.superview is TrimHandle { return false }
         }
         return super.gestureRecognizerShouldBegin(g)
