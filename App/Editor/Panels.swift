@@ -1148,8 +1148,13 @@ struct AudioEditorView: View {
             t = (target.start + target.end) / 2
         }
         model.edit("Add marker") { try $0.addAudioMarker(audioID, at: MediaTime(seconds: t)) }
-        selectedSection = clip?.resolvedSections.firstIndex { t >= $0.start.seconds && t < $0.end.seconds }
-        if !preview.isPlaying { preview.seekIdle(to: t) }
+        // Select the section that starts at the new marker (the marker time is stored rounded,
+        // so match the nearest section start rather than testing which section contains `t`).
+        let secs = clip?.resolvedSections ?? []
+        if let k = secs.indices.dropFirst().min(by: { abs(secs[$0].start.seconds - t) < abs(secs[$1].start.seconds - t) }) {
+            selectedSection = k
+            if !preview.isPlaying { preview.seekIdle(to: secs[k].start.seconds) }
+        }
     }
 
     /// m:ss for the play-bar labels.
