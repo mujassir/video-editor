@@ -477,10 +477,14 @@ final class ClipStripView: UIView {
 /// A trim handle: drawn 16 pt wide but touchable across 44 pt, so it is easy to grab.
 final class TrimHandle: UIView {
     static let touchSlop: CGFloat = 14
+    /// Diagnostics for UI tests (exposed as the handles' accessibility value).
+    static var diag = "" { didSet { if diag.count > 400 { diag = String(diag.suffix(400)) }; NotificationCenter.default.post(name: .trimDiag, object: nil) } }
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
         bounds.insetBy(dx: -Self.touchSlop, dy: 0).contains(point)
     }
 }
+
+extension Notification.Name { static let trimDiag = Notification.Name("trimDiag") }
 
 final class SelectionFrameView: UIView {
     static let handleWidth: CGFloat = 16
@@ -509,6 +513,12 @@ final class SelectionFrameView: UIView {
             h.addGestureRecognizer(pan)
             addSubview(h)
         }
+        NotificationCenter.default.addObserver(forName: .trimDiag, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.left.accessibilityValue = TrimHandle.diag
+                self?.right.accessibilityValue = TrimHandle.diag
+            }
+        }
     }
     required init?(coder: NSCoder) { fatalError() }
 
@@ -527,7 +537,7 @@ final class SelectionFrameView: UIView {
         return left.frame.insetBy(dx: -slop, dy: 0).contains(point) || right.frame.insetBy(dx: -slop, dy: 0).contains(point)
     }
 
-    @objc private func panLeft(_ g: UIPanGestureRecognizer) { onTrim?(.leading, g.translation(in: self).x, g.state) }
+    @objc private func panLeft(_ g: UIPanGestureRecognizer) { TrimHandle.diag += " pan\(g.state.rawValue)"; onTrim?(.leading, g.translation(in: self).x, g.state) }
     @objc private func panRight(_ g: UIPanGestureRecognizer) { onTrim?(.trailing, g.translation(in: self).x, g.state) }
 }
 
@@ -651,6 +661,12 @@ final class TimelineScrollView: UIScrollView {
     /// True while a music bar is being held / dragged: scrolling must not steal the finger.
     var isDraggingItem = false
 
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        let v = super.hitTest(point, with: event)
+        if event?.type == .touches { TrimHandle.diag += " ht@\(Int(point.x))=\(v.map { String(describing: type(of: $0)) } ?? "nil")" }
+        return v
+    }
+
     override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
         if g === panGestureRecognizer {
             if isDraggingItem { return false }
@@ -658,7 +674,9 @@ final class TimelineScrollView: UIScrollView {
             // already moved several points, often off the narrow handle.
             let now = g.location(in: self), moved = panGestureRecognizer.translation(in: self)
             let p = CGPoint(x: now.x - moved.x, y: now.y - moved.y)
-            if let hit = hitTest(p, with: nil), hit is TrimHandle || hit.superview is TrimHandle { return false }
+            let hit = hitTest(p, with: nil)
+            TrimHandle.diag += " sv@\(Int(p.x)),\(Int(p.y)) hit=\(hit.map { String(describing: type(of: $0)) } ?? "nil")"
+            if let hit, hit is TrimHandle || hit.superview is TrimHandle { return false }
         }
         return super.gestureRecognizerShouldBegin(g)
     }
