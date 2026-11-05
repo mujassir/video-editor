@@ -405,12 +405,56 @@ public struct AudioClip: Codable, Hashable, Identifiable, Sendable {
         self.start = start
     }
 
-    public var timelineRange: MediaTimeRange { MediaTimeRange(start: start, duration: sourceRange.duration) }
+    /// Marker-separated sections of the song (source time). nil = one section, full volume.
+    public var sections: [AudioSection]?
+
+    /// Sections clipped to the trimmed range (always at least one).
+    public var resolvedSections: [AudioSection] {
+        guard let sections, !sections.isEmpty else {
+            return [AudioSection(start: sourceRange.start, end: sourceRange.end)]
+        }
+        let clipped = sections.compactMap { s -> AudioSection? in
+            let a = max(s.start, sourceRange.start), b = min(s.end, sourceRange.end)
+            guard b > a else { return nil }
+            var c = s
+            c.start = a
+            c.end = b
+            return c
+        }
+        return clipped.isEmpty ? [AudioSection(start: sourceRange.start, end: sourceRange.end)] : clipped
+    }
+
+    /// How long the clip plays (deleted sections are cut out).
+    public var playedDuration: MediaTime {
+        resolvedSections.filter { !$0.deleted }.reduce(.zero) { $0 + ($1.end - $1.start) }
+    }
+
+    public var hasSectionEdits: Bool {
+        guard let sections else { return false }
+        return sections.count > 1 || sections.contains { $0.deleted || $0.volume != 1 }
+    }
+
+    public var timelineRange: MediaTimeRange { MediaTimeRange(start: start, duration: playedDuration) }
 
     /// Beat times mapped onto the timeline.
     public var timelineBeats: [MediaTime] {
         beats.filter { sourceRange.contains($0) }.map { start + ($0 - sourceRange.start) }
     }
+}
+
+/// Part of a song between two markers, with its own volume; deleted parts are cut out.
+public struct AudioSection: Codable, Hashable, Sendable {
+    public var start: MediaTime
+    public var end: MediaTime
+    public var volume: Double = 1
+    public var deleted = false
+    public init(start: MediaTime, end: MediaTime, volume: Double = 1, deleted: Bool = false) {
+        self.start = start
+        self.end = end
+        self.volume = volume
+        self.deleted = deleted
+    }
+    public var duration: MediaTime { end - start }
 }
 
 public enum TextAnimation: String, Codable, CaseIterable, Sendable, Identifiable {

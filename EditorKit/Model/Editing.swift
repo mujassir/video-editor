@@ -462,7 +462,7 @@ public extension Project {
     mutating func refitMusic() {
         let videoEnd = layout.duration
         guard videoEnd > .zero else { return }
-        for i in audioClips.indices where audioClips[i].followsVideo {
+        for i in audioClips.indices where audioClips[i].followsVideo && !audioClips[i].hasSectionEdits {
             guard let item = mediaItem(audioClips[i].mediaID) else { continue }
             let clip = audioClips[i]
             let available = item.duration - clip.sourceRange.start
@@ -527,6 +527,56 @@ public extension Project {
         return right.id
     }
 
+    // MARK: Audio markers & sections
+
+    /// Adds a marker at a song (source) time, splitting the section that contains it.
+    mutating func addAudioMarker(_ id: UUID, at time: MediaTime) throws {
+        let (i, _) = try audioIndex(id)
+        var secs = audioClips[i].resolvedSections
+        guard let k = secs.firstIndex(where: { time > $0.start + Self.minimumAudioDuration && time < $0.end - Self.minimumAudioDuration })
+        else { throw EditError.tooShort }
+        let s = secs[k]
+        secs[k].end = time
+        secs.insert(AudioSection(start: time, end: s.end, volume: s.volume, deleted: s.deleted), at: k + 1)
+        audioClips[i].sections = secs
+        audioClips[i].fitsVideo = false
+    }
+
+    /// Removes the marker after section `index` (merges it with the next section).
+    mutating func removeAudioMarker(_ id: UUID, after index: Int) throws {
+        let (i, _) = try audioIndex(id)
+        var secs = audioClips[i].resolvedSections
+        guard index >= 0, index + 1 < secs.count else { throw EditError.outOfRange }
+        secs[index].end = secs[index + 1].end
+        secs.remove(at: index + 1)
+        audioClips[i].sections = secs.count == 1 && secs[0].volume == 1 && !secs[0].deleted ? nil : secs
+    }
+
+    mutating func clearAudioMarkers(_ id: UUID) throws {
+        let (i, _) = try audioIndex(id)
+        audioClips[i].sections = nil
+    }
+
+    mutating func setAudioSectionVolume(_ id: UUID, index: Int, _ volume: Double) throws {
+        let (i, _) = try audioIndex(id)
+        var secs = audioClips[i].resolvedSections
+        guard secs.indices.contains(index) else { throw EditError.outOfRange }
+        secs[index].volume = min(max(volume, 0), 2)
+        audioClips[i].sections = secs
+        audioClips[i].fitsVideo = false
+    }
+
+    /// Deletes (cuts out) or restores a section. At least one section always remains.
+    mutating func setAudioSectionDeleted(_ id: UUID, index: Int, _ deleted: Bool) throws {
+        let (i, _) = try audioIndex(id)
+        var secs = audioClips[i].resolvedSections
+        guard secs.indices.contains(index) else { throw EditError.outOfRange }
+        if deleted, secs.filter({ !$0.deleted }).count <= 1 { throw EditError.tooShort }
+        secs[index].deleted = deleted
+        audioClips[i].sections = secs
+        audioClips[i].fitsVideo = false
+    }
+
     /// Repeats an audio clip's section back to back until the end of the video.
     /// The last copy is cut at the video's end and carries the original fade-out.
     /// Returns how many copies were added (0 when it already reaches the end).
@@ -535,7 +585,7 @@ public extension Project {
         let (i, _) = try audioIndex(id)
         let videoEnd = layout.duration
         var original = audioClips[i]
-        let length = original.sourceRange.duration
+        let length = original.playedDuration
         guard length >= Self.minimumAudioDuration, original.timelineRange.end < videoEnd - Self.minimumAudioDuration else {
             return 0
         }
@@ -550,7 +600,8 @@ public extension Project {
             copy.id = UUID()
             copy.start = cursor
             copy.fadeIn = .zero
-            copy.sourceRange.duration = min(length, videoEnd - cursor)
+            // Sectioned clips keep their structure; the composition stops them at the video end.
+            if !original.hasSectionEdits { copy.sourceRange.duration = min(length, videoEnd - cursor) }
             copies.append(copy)
             cursor = copy.timelineRange.end
         }

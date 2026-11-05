@@ -688,3 +688,30 @@ struct ExportEstimateTests {
         #expect(ExportSettings().estimatedBytes(duration: .zero) == 0)
     }
 }
+
+@Suite("Audio sections render")
+struct AudioSectionRenderTests {
+    @Test func deletedSectionShortensTheMix() async throws {
+        var fx = try Fixture()
+        defer { fx.cleanup() }
+        try await fx.addVideo("v", duration: 6, draw: SampleMedia.solid(.black))
+        let url = fx.store.mediaDirectory(for: fx.project.id).appendingPathComponent("tone.m4a")
+        try SampleMedia.renderTonePattern([(true, 6)], to: url)
+        let song = try await MediaImporter.probeAudio(url, fileName: "tone.m4a")
+        fx.project.media.append(song)
+        let clip = AudioClip(mediaID: song.id, role: .music, sourceRange: MediaTimeRange(start: .zero, duration: MediaTime(seconds: 6)), start: .zero)
+        fx.project.addAudio(clip)
+        try fx.project.addAudioMarker(clip.id, at: MediaTime(seconds: 2))
+        try fx.project.addAudioMarker(clip.id, at: MediaTime(seconds: 4))
+        try fx.project.setAudioSectionDeleted(clip.id, index: 1, true)
+        let built = try await CompositionBuilder().build(project: fx.project, resolver: fx.resolver,
+                                                         renderSize: CGSize(width: 64, height: 64))
+        let tracks = try await built.composition.loadTracks(withMediaType: .audio)
+        var musicEnd = 0.0
+        for t in tracks {
+            let r = try await t.load(.timeRange)
+            musicEnd = max(musicEnd, r.end.seconds)
+        }
+        #expect(abs(musicEnd - 4) < 0.1, "4 s of music after cutting 2 s out, got \(musicEnd)")
+    }
+}

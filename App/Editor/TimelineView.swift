@@ -224,7 +224,7 @@ final class TimelineUIView: UIView, UIScrollViewDelegate, UIGestureRecognizerDel
             let mediaDuration = project.mediaItem(audio.mediaID)?.duration.seconds ?? audio.sourceRange.duration.seconds
             v.configure(clip: audio, peaks: peaks, mediaDuration: mediaDuration, pointsPerSecond: pointsPerSecond)
             v.frame = CGRect(x: x(for: audio.start), y: Layout.audioTop + CGFloat(audio.lane) * (Layout.audioHeight + 4),
-                             width: max(8, x(for: audio.sourceRange.duration)), height: Layout.audioHeight)
+                             width: max(8, x(for: audio.timelineRange.duration)), height: Layout.audioHeight)
             v.accessibilityIdentifier = "audio.\(i)"
             v.clipID = audio.id
             // Press and hold, then slide, to move the track. Quick swipes still scroll.

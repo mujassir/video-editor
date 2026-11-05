@@ -168,12 +168,28 @@ public final class CompositionBuilder: @unchecked Sendable {
             guard let src = try await a.loadTracks(withMediaType: .audio).first,
                   let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
             else { continue }
-            let available = min(clip.sourceRange.duration, total - clip.start)
-            guard available > .zero else { continue }
-            let range = MediaTimeRange(start: clip.sourceRange.start, duration: available)
-            try track.insertTimeRange(range.cmTimeRange, of: src, at: clip.start.cmTime)
             let p = AVMutableAudioMixInputParameters(track: track)
-            Self.applyEnvelope(to: p, clip: clip, playedDuration: available, speech: clip.autoDuck ? speech : [])
+            if clip.hasSectionEdits {
+                // Kept sections play back to back (deleted ones are cut out), each at its own volume.
+                var cursor = clip.start
+                var placed: [(range: MediaTimeRange, volume: Float)] = []
+                for s in clip.resolvedSections where !s.deleted {
+                    guard cursor < total else { break }
+                    let len = min(s.duration, total - cursor)
+                    guard len > .zero else { continue }
+                    try track.insertTimeRange(MediaTimeRange(start: s.start, duration: len).cmTimeRange, of: src, at: cursor.cmTime)
+                    placed.append((MediaTimeRange(start: cursor, duration: len), Float(clip.volume * s.volume)))
+                    cursor += len
+                }
+                guard !placed.isEmpty else { continue }
+                Self.applySectionEnvelope(to: p, sections: placed, fadeIn: clip.fadeIn, fadeOut: clip.fadeOut)
+            } else {
+                let available = min(clip.sourceRange.duration, total - clip.start)
+                guard available > .zero else { continue }
+                let range = MediaTimeRange(start: clip.sourceRange.start, duration: available)
+                try track.insertTimeRange(range.cmTimeRange, of: src, at: clip.start.cmTime)
+                Self.applyEnvelope(to: p, clip: clip, playedDuration: available, speech: clip.autoDuck ? speech : [])
+            }
             audioParams[track.trackID] = p
         }
 
@@ -220,6 +236,28 @@ public final class CompositionBuilder: @unchecked Sendable {
     }
 
     /// Volume envelope: fades in/out plus optional ducking under speech.
+    /// Per-section volumes (in timeline order) with an optional fade at the very start and end.
+    static func applySectionEnvelope(to p: AVMutableAudioMixInputParameters,
+                                     sections: [(range: MediaTimeRange, volume: Float)],
+                                     fadeIn: MediaTime, fadeOut: MediaTime) {
+        p.setVolume(sections[0].volume, at: .zero)
+        for (k, s) in sections.enumerated() {
+            let isFirst = k == 0, isLast = k == sections.count - 1
+            let inLen = isFirst ? min(fadeIn, s.range.duration) : .zero
+            let outLen = isLast ? min(fadeOut, s.range.duration - inLen) : .zero
+            if inLen > .zero {
+                p.setVolumeRamp(fromStartVolume: 0, toEndVolume: s.volume,
+                                timeRange: MediaTimeRange(start: s.range.start, duration: inLen).cmTimeRange)
+            } else {
+                p.setVolume(s.volume, at: s.range.start.cmTime)
+            }
+            if outLen > .zero {
+                p.setVolumeRamp(fromStartVolume: s.volume, toEndVolume: 0,
+                                timeRange: MediaTimeRange(start: s.range.end - outLen, duration: outLen).cmTimeRange)
+            }
+        }
+    }
+
     static func applyEnvelope(to p: AVMutableAudioMixInputParameters, clip: AudioClip, playedDuration: MediaTime,
                               speech: [MediaTimeRange], duckLevel: Double = 0.25) {
         let vol = Float(clip.volume)

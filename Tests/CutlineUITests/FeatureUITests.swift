@@ -370,6 +370,16 @@ final class FeatureUITests: CutlineUITestCase {
         // Undo inside the panel restores the previous section.
         tap("panel.undo")
         waitFor("undo restores") { element("audioTrim.summary").label == before }
+        // Full-screen editor: timer, markers, per-section volume and delete.
+        XCTAssertTrue(element("audioEditor.timer").exists)
+        XCTAssertFalse(element("timeline").isHittable, "timeline/layers are hidden while editing audio")
+        tap("audioEditor.addMarker")
+        waitFor("two sections") { element("audioTrim.summary").label.contains("2 sections") }
+        XCTAssertTrue(element("audioEditor.section").waitForExistence(timeout: 5))
+        tap("audioEditor.deleteSection")
+        waitFor("section deleted") { element("audioEditor.section").label.contains("Deleted") }
+        tap("audioEditor.deleteSection")   // Restore
+        snapshot("18-audio-editor-sections")
         tap("panel.done")
         // Music has no Split tool (trim with the Trim Audio slider instead).
         XCTAssertFalse(element("tool.Split").exists, "audio toolbar should not offer Split")

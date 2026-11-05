@@ -70,6 +70,10 @@ struct EditorView: View {
         .fullScreenCover(isPresented: $showExport) {
             ExportView(model: model)
         }
+        .fullScreenCover(isPresented: Binding(get: { model.panel == .audioTrim && model.selectedAudioID != nil },
+                                              set: { if !$0, model.panel == .audioTrim { model.panel = nil } })) {
+            if let id = model.selectedAudioID { AudioEditorView(model: model, audioID: id) }
+        }
         .preferredColorScheme(.dark)
         .statusBarHidden(false)
     }
@@ -166,7 +170,7 @@ struct EditorView: View {
         case .canvas: CanvasPanel(model: model)
         case .music: MusicPanel(model: model)
         case .audioTrim:
-            if case .audio(let id) = model.session.selection { AudioTrimPanel(model: model, audioID: id) } else { toolbar }
+            toolbar   // the audio editor is presented full screen (see fullScreenCover)
         case .captions: CaptionsPanel(model: model)
         case .text(let id):
             if let id { TextPanel(model: model, textID: id) } else { toolbar }
