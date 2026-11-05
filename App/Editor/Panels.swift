@@ -1246,10 +1246,13 @@ final class AudioPreview {
         player?.automaticallyWaitsToMinimizeStalling = false
     }
 
+    /// Exact media time (a coarse timescale rounded marker times back into the deleted part before them).
+    private func cm(_ t: Double) -> CMTime { CMTime(seconds: t, preferredTimescale: 48_000) }
+
     func seekIdle(to t: Double) {
         stop()
         position = t
-        player?.seek(to: CMTime(seconds: t, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        player?.seek(to: cm(t), toleranceBefore: .zero, toleranceAfter: .zero)
     }
 
     func play(from start: Double, to end: Double) {
@@ -1259,29 +1262,36 @@ final class AudioPreview {
         // Never start inside a deleted section: begin where the next kept part starts.
         let begin = playableTime(from: start)
         position = begin
-        pendingSeek = nil
+        pendingSeek = begin   // ignore stale ticks until the seek lands
+        isPlaying = true
         apply(at: begin)
-        player.seek(to: CMTime(seconds: begin, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+        player.seek(to: cm(begin), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
             DispatchQueue.main.async {
                 guard let self, self.isPlaying else { return }
+                self.pendingSeek = nil
                 self.player?.play()
             }
         }
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 30), queue: .main) { [weak self] t in
             MainActor.assumeIsolated { self?.tick(t.seconds) }
         }
-        isPlaying = true
+    }
+
+    /// The deleted section `t` is inside, if any. Within 30 ms of its end counts as past it,
+    /// so a time that lands just short of a marker never bounces back into the cut part.
+    private func deletedSection(at t: Double) -> AudioSection? {
+        sections.first { $0.deleted && t >= $0.start.seconds - 0.001 && t < $0.end.seconds - 0.03 }
     }
 
     /// First time at or after `t` that isn't in a deleted section.
     private func playableTime(from t: Double) -> Double {
         var t = t
-        while let s = sections.first(where: { t >= $0.start.seconds && t < $0.end.seconds }), s.deleted { t = s.end.seconds }
+        while let s = deletedSection(at: t) { t = s.end.seconds + 0.005 }
         return t
     }
 
     private func tick(_ t: Double) {
-        if pendingSeek != nil { return }   // jumping over a deleted section
+        if pendingSeek != nil { return }   // a seek is in flight
         position = t
         if t >= endTime - 0.02 { pause(); position = endTime; return }
         apply(at: t)
@@ -1289,21 +1299,18 @@ final class AudioPreview {
 
     /// Section volume, and jump over deleted sections (one seek at a time).
     private func apply(at t: Double) {
-        guard let s = sections.first(where: { t >= $0.start.seconds && t < $0.end.seconds }) else {
-            player?.volume = Float(baseVolume)
-            return
-        }
-        if s.deleted {
+        if deletedSection(at: t) != nil {
             let target = playableTime(from: t)
             if target >= endTime - 0.02 { pause(); position = endTime; return }
             pendingSeek = target
             position = target
-            player?.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            player?.seek(to: cm(target), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
                 DispatchQueue.main.async { self?.pendingSeek = nil }
             }
             return
         }
-        player?.volume = Float(min(1, baseVolume * s.volume))
+        let s = sections.first { !$0.deleted && t >= $0.start.seconds - 0.03 && t < $0.end.seconds }
+        player?.volume = Float(min(1, baseVolume * (s?.volume ?? 1)))
     }
 
     func pause() {

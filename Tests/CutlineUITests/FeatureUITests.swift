@@ -393,6 +393,8 @@ final class FeatureUITests: CutlineUITestCase {
         XCTAssertTrue(element("audioEditor.section").label.contains("Section 1"))
         tap("audioEditor.deleteSection")
         waitFor("first section deleted") { element("audioTrim.summary").label.contains("2 deleted") }
+        // From the very start of the rearranged music, Play must start right away.
+        scrub.adjust(toNormalizedSliderPosition: 0)
         tap("audioTrim.play")
         let t0 = element("audioEditor.timer").label
         waitFor("plays after deleting the first section") { element("audioEditor.timer").label != t0 }
