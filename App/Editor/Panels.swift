@@ -883,7 +883,7 @@ struct AudioTrimPanel: View {
     }
 
     var body: some View {
-        PanelContainer(title: "Trim Audio", onDone: save,
+        PanelContainer(title: "Edit Audio", onDone: save,
                        onUndo: { preview.stop(); model.undo(); loadFromClip() }, canUndo: model.session.canUndo) {
             VStack(spacing: 12) {
                 HStack(spacing: 12) {
@@ -928,6 +928,11 @@ struct AudioTrimPanel: View {
                         .tint(Theme.accent).font(.subheadline).fixedSize()
                         .accessibilityIdentifier("audioTrim.matchVideo")
                     }
+                }
+                if let clip {
+                    LabeledSlider(title: "Volume", value: Binding(get: { clip.volume }, set: { v in
+                        model.editCoalescing("Music volume", key: "mv-\(audioID)") { $0.updateAudio(audioID) { $0.volume = v } }
+                    }), range: 0...1.5, format: { String(format: "%.0f%%", $0 * 100) })
                 }
                 Text(clip.map { "Plays \(Self.time($0.sourceRange.start.seconds)) – \(Self.time($0.sourceRange.end.seconds)) of the song" } ?? "")
                     .font(.caption2).foregroundStyle(Theme.secondaryText)

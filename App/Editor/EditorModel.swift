@@ -331,11 +331,6 @@ final class EditorModel {
     }
 
 
-    func moveSelectedAudioToPlayhead() {
-        guard let id = selectedAudioID else { return }
-        edit("Move audio") { try $0.moveAudio(id, toTimelineStart: currentTime) }
-        showToast("Starts at \(currentTime.timecode)", systemImage: "arrow.right.to.line")
-    }
 
     func duplicateSelectedAudio() {
         guard let id = selectedAudioID else { return }

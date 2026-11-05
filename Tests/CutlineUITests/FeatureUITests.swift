@@ -171,7 +171,7 @@ final class FeatureUITests: CutlineUITestCase {
         // Beat Sync has been removed everywhere, including the music toolbar.
         XCTAssertFalse(element("tool.Beat Sync").exists)
         element("audio.0").tap()
-        XCTAssertTrue(element("tool.Trim").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("tool.Edit").waitForExistence(timeout: 5))
         XCTAssertFalse(element("tool.Beat Sync").exists, "music toolbar should not offer Beat Sync")
     }
 
@@ -308,7 +308,7 @@ final class FeatureUITests: CutlineUITestCase {
         waitFor("first track") { count(prefix: "audio.") == 1 }
         // Shorten the first track so there is room for a second one.
         element("audio.0").tap()
-        tap("tool.Trim")
+        tap("tool.Edit")
         let endHandle = element("audioTrim.endHandle")
         XCTAssertTrue(endHandle.waitForExistence(timeout: 5))
         let from = endHandle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
@@ -335,8 +335,9 @@ final class FeatureUITests: CutlineUITestCase {
         print("AUDIODRAG timeline value: \(String(describing: element("timeline").value)) audio.1 frame: \(element("audio.1").frame) before: \(second)")
         snapshot("21-after-drag")
         waitFor("track moved") { element("audio.1").frame.minX < second.minX - 15 }
-        // And the toolbar can snap it to the playhead.
-        XCTAssertTrue(element("tool.To Playhead").waitForExistence(timeout: 5))
+        // Music toolbar is just Edit / Duplicate / Delete.
+        for id in ["tool.Edit", "tool.Duplicate", "tool.Delete"] { XCTAssertTrue(element(id).exists, "\(id) missing") }
+        XCTAssertFalse(element("tool.To Playhead").exists)
         snapshot("21-two-tracks")
     }
 
@@ -350,8 +351,8 @@ final class FeatureUITests: CutlineUITestCase {
         let tl = element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.2))
         tl.press(forDuration: 0.05, thenDragTo: tl.withOffset(CGVector(dx: -120, dy: 0)))
         element("audio.0").tap()
-        XCTAssertTrue(element("tool.Trim").waitForExistence(timeout: 5))
-        tap("tool.Trim")
+        XCTAssertTrue(element("tool.Edit").waitForExistence(timeout: 5))
+        tap("tool.Edit")
         let summary = element("audioTrim.summary")
         XCTAssertTrue(summary.waitForExistence(timeout: 5))
         let before = summary.label
