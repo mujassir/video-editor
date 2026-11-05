@@ -79,7 +79,7 @@ jobs:
           TEST_RUNNER_PRINT_SCREENSHOTS=1 TEST_RUNNER_DEMO_MEDIA="$RUNNER_TEMP/demo-media" \
           xcodebuild test -project Cutline.xcodeproj -scheme Cutline -only-testing:CutlineUITests \
             -destination "id=${{ steps.sim.outputs.udid }}" -resultBundlePath build/ui.xcresult \
-            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/ui.log | grep -E "error:|Test (Suite|Case)|passed|failed|\*\* |CAPTIONS|XCTAssert|Timed out" | head -400
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/ui.log | grep -E "error:|Test (Suite|Case)|passed|failed|\*\* |CAPTIONS|XCTAssert|Timed out|AUDIODRAG" | head -400
       - name: Screenshots (base64, for log review)
         if: always()
         run: grep -oE "SCREENSHOT [^ ]+ [A-Za-z0-9+/=]+" build/ui.log || echo "no screenshots"

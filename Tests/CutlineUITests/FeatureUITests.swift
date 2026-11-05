@@ -316,11 +316,19 @@ final class FeatureUITests: CutlineUITestCase {
         tap("music.use.night")
         waitUntilIdle()
         waitFor("second track") { count(prefix: "audio.") == 2 }
-        let first = element("audio.0").frame, second = element("audio.1").frame
-        XCTAssertGreaterThan(second.minX, first.minX + 20, "second track should start later")
-        // Hold and drag the second track left on the timeline.
-        let bar = element("audio.1").coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5))
-        bar.press(forDuration: 0.6, thenDragTo: bar.withOffset(CGVector(dx: -40, dy: 0)))
+        let first = element("audio.0").frame, startFrame = element("audio.1").frame
+        XCTAssertGreaterThan(startFrame.minX, first.minX + 20, "second track should start later")
+        // Scroll the second track on screen (it starts beyond the right edge), then hold and drag it left.
+        revealAndTap("audio.1")
+        RunLoop.current.run(until: Date().addingTimeInterval(0.8))
+        let second = element("audio.1").frame
+        XCTAssertLessThan(second.minX + 20, app.windows.firstMatch.frame.maxX, "second track should be visible before dragging")
+        let bar = element("audio.1").coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5))
+        bar.press(forDuration: 0.8, thenDragTo: bar.withOffset(CGVector(dx: -40, dy: 0)),
+                  withVelocity: .slow, thenHoldForDuration: 0.3)
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        print("AUDIODRAG timeline value: \(String(describing: element("timeline").value)) audio.1 frame: \(element("audio.1").frame) before: \(second)")
+        snapshot("21-after-drag")
         waitFor("track moved") { element("audio.1").frame.minX < second.minX - 15 }
         // And the toolbar can snap it to the playhead.
         XCTAssertTrue(element("tool.To Playhead").waitForExistence(timeout: 5))

@@ -313,8 +313,12 @@ final class TimelineUIView: UIView, UIScrollViewDelegate, UIGestureRecognizerDel
     @objc private func handleAudioDrag(_ g: UILongPressGestureRecognizer) {
         guard let bar = g.view as? AudioBarView, let id = bar.clipID else { return }
         let x = g.location(in: content).x
+        scrollView.accessibilityValue = "audioDrag state=\(g.state.rawValue) x=\(Int(x)) bar=\(Int(bar.frame.minX))"
         switch g.state {
         case .began:
+            scrollView.isDraggingItem = true
+            scrollView.panGestureRecognizer.isEnabled = false   // cancel any pan that already started
+            scrollView.panGestureRecognizer.isEnabled = true
             audioDragOrigin = x - bar.frame.minX
             onSelect?(.audio(id))
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -323,11 +327,13 @@ final class TimelineUIView: UIView, UIScrollViewDelegate, UIGestureRecognizerDel
         case .changed:
             bar.frame.origin.x = max(0, x - audioDragOrigin)
         case .ended:
+            scrollView.isDraggingItem = false
             bar.alpha = 1
             bar.transform = .identity
             let start = MediaTime(seconds: Double(max(0, bar.frame.minX) / pointsPerSecond))
             onAudioMove?(id, start.snappedToFrame(fps: 30))
         default:
+            scrollView.isDraggingItem = false
             bar.alpha = 1
             bar.transform = .identity
             rebuild()
@@ -639,8 +645,12 @@ struct TimelineRepresentable: UIViewRepresentable {
 
 /// Doesn't start scrolling when a drag begins on a trim handle, so the handle's own pan wins.
 final class TimelineScrollView: UIScrollView {
+    /// True while a music bar is being held / dragged: scrolling must not steal the finger.
+    var isDraggingItem = false
+
     override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
         if g === panGestureRecognizer {
+            if isDraggingItem { return false }
             let p = g.location(in: self)
             if let hit = hitTest(p, with: nil), hit is TrimHandle || hit.superview is TrimHandle { return false }
         }
