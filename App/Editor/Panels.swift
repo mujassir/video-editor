@@ -863,25 +863,20 @@ struct MusicSourceLabel: View {
 
 // MARK: - Audio editor (full screen)
 
-/// Full-screen audio editor: large waveform with trim handles, markers that split
-/// the music into sections (each with its own volume, deletable), a live timer
-/// while playing, Trim, Undo and ✓.
+/// Full-screen audio editor: the playing part of the song as a large waveform,
+/// a live timer, markers that split it into sections (each with its own volume,
+/// deletable to cut that part out), Undo and ✓.
 struct AudioEditorView: View {
     @Bindable var model: EditorModel
     let audioID: UUID
-    @State private var selStart: Double = 0
-    @State private var selEnd: Double = 1
     @State private var selectedSection: Int?
     @State private var preview = AudioPreview()
 
     private var clip: AudioClip? { model.project.audioClips.first { $0.id == audioID } }
     private var media: MediaItem? { clip.flatMap { model.project.mediaItem($0.mediaID) } }
-    private var songLength: Double { max(media?.duration.seconds ?? 1, 0.5) }
     private var sections: [AudioSection] { clip?.resolvedSections ?? [] }
-    private var trimChanged: Bool {
-        guard let clip else { return false }
-        return abs(clip.sourceRange.start.seconds - selStart) > 0.02 || abs(clip.sourceRange.end.seconds - selEnd) > 0.02
-    }
+    private var rangeStart: Double { clip?.sourceRange.start.seconds ?? 0 }
+    private var rangeEnd: Double { max(clip?.sourceRange.end.seconds ?? 1, rangeStart + 0.1) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -889,27 +884,28 @@ struct AudioEditorView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     timer
-                    AudioWaveEditor(peaks: media.flatMap { model.waveforms[$0.id] } ?? [], total: songLength,
-                                    start: $selStart, end: $selEnd, sections: sections, selected: selectedSection,
-                                    cursor: preview.position,
-                                    onScrubBegan: { preview.stop() },
+                    AudioWaveEditor(peaks: media.flatMap { model.waveforms[$0.id] } ?? [],
+                                    songLength: max(media?.duration.seconds ?? 1, 0.5),
+                                    rangeStart: rangeStart, rangeEnd: rangeEnd,
+                                    sections: sections, selected: selectedSection, cursor: preview.position,
                                     onTapTime: { t in
                                         preview.seekIdle(to: t)
                                         selectedSection = sections.firstIndex { t >= $0.start.seconds && t < $0.end.seconds }
                                     })
                         .frame(height: 150)
+                        .accessibilityIdentifier("audioEditor.wave")
                     HStack {
-                        Text(AudioEditorView.time(selStart)).accessibilityIdentifier("audioTrim.startTime")
+                        Text(Self.time(rangeStart))
                         Spacer()
-                        Text("\(AudioEditorView.time(selEnd - selStart)) selected").foregroundStyle(Theme.secondaryText)
+                        Text("\(Self.time(clip?.playedDuration.seconds ?? 0)) plays").foregroundStyle(Theme.secondaryText)
                         Spacer()
-                        Text(AudioEditorView.time(selEnd)).accessibilityIdentifier("audioTrim.endTime")
+                        Text(Self.time(rangeEnd))
                     }
                     .font(.caption.monospacedDigit())
                     controls
                     if let k = selectedSection, sections.indices.contains(k) { sectionPanel(k) }
                     overall
-                    Text(clip.map { "Plays \(Self.time($0.sourceRange.start.seconds)) – \(Self.time($0.sourceRange.end.seconds)) of the song · \(sections.count) section\(sections.count == 1 ? "" : "s")" } ?? "")
+                    Text(clip.map { "\(Self.time($0.playedDuration.seconds)) of music · \(sections.count) section\(sections.count == 1 ? "" : "s")\(sections.contains { $0.deleted } ? " · \(sections.filter(\.deleted).count) deleted" : "")" } ?? "")
                         .font(.caption2).foregroundStyle(Theme.secondaryText)
                         .accessibilityIdentifier("audioTrim.summary")
                 }
@@ -920,12 +916,13 @@ struct AudioEditorView: View {
         .preferredColorScheme(.dark)
         .onAppear {
             model.pause()
-            loadFromClip()
             if let media { preview.load(model.resolver.url(for: media)) }
-            preview.position = selStart
+            syncPreview()
+            preview.position = rangeStart
         }
         .onDisappear { preview.stop() }
-        .onChange(of: clip?.sections) { _, _ in preview.sections = clip?.resolvedSections ?? []; preview.baseVolume = clip?.volume ?? 1 }
+        .onChange(of: clip?.sections) { _, _ in syncPreview() }
+        .onChange(of: clip?.volume) { _, _ in syncPreview() }
     }
 
     // MARK: Parts
@@ -937,13 +934,13 @@ struct AudioEditorView: View {
                 Text(clip?.name.isEmpty == false ? clip!.name : "Music").font(.caption).foregroundStyle(Theme.secondaryText)
             }
             Spacer()
-            Button { preview.stop(); model.undo(); loadFromClip() } label: {
+            Button { preview.stop(); model.undo(); clampSelection() } label: {
                 Image(systemName: "arrow.uturn.backward").font(.system(size: 15, weight: .bold))
                     .frame(width: 36, height: 36).background(Theme.surfaceRaised, in: Circle())
             }
             .disabled(!model.session.canUndo)
             .accessibilityIdentifier("panel.undo")
-            Button(action: save) {
+            Button { preview.stop(); model.panel = nil } label: {
                 Image(systemName: "checkmark").font(.system(size: 15, weight: .bold))
                     .frame(width: 36, height: 36).background(Theme.accent, in: Circle())
             }
@@ -954,12 +951,12 @@ struct AudioEditorView: View {
         .background(Theme.surface)
     }
 
-    /// Live position: where in the song, and how far into the selected part.
+    /// Live position in the song while playing.
     private var timer: some View {
         VStack(spacing: 2) {
             Text(Self.time(preview.position)).font(.system(size: 34, weight: .semibold).monospacedDigit())
                 .accessibilityIdentifier("audioEditor.timer")
-            Text("\(Self.time(max(0, preview.position - selStart))) of \(Self.time(selEnd - selStart))")
+            Text("\(Self.time(max(0, preview.position - rangeStart))) of \(Self.time(rangeEnd - rangeStart))")
                 .font(.footnote.monospacedDigit()).foregroundStyle(Theme.secondaryText)
         }
     }
@@ -974,19 +971,11 @@ struct AudioEditorView: View {
             .accessibilityIdentifier("audioTrim.play")
             Button { addMarker() } label: {
                 Label("Add Marker", systemImage: "flag").font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity).padding(.vertical, 12)
+                    .frame(maxWidth: .infinity).padding(.vertical, 14)
                     .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("audioEditor.addMarker")
-            Button { applyTrim() } label: {
-                Label("Trim", systemImage: "scissors").font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity).padding(.vertical, 12)
-                    .background(trimChanged ? Theme.accent : Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
-            }
-            .buttonStyle(.plain)
-            .disabled(!trimChanged)
-            .accessibilityIdentifier("audioTrim.trim")
         }
         .foregroundStyle(.white)
     }
@@ -1003,11 +992,13 @@ struct AudioEditorView: View {
             }
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("audioEditor.section")
-            LabeledSlider(title: "Volume", value: Binding(get: { s.volume }, set: { v in
-                model.editCoalescing("Section volume", key: "secvol-\(audioID)-\(k)") { p in
-                    try? p.setAudioSectionVolume(audioID, index: k, v)
-                }
-            }), range: 0...2, format: { String(format: "%.0f%%", $0 * 100) })
+            if !s.deleted {
+                LabeledSlider(title: "Volume", value: Binding(get: { s.volume }, set: { v in
+                    model.editCoalescing("Section volume", key: "secvol-\(audioID)-\(k)") { p in
+                        try? p.setAudioSectionVolume(audioID, index: k, v)
+                    }
+                }), range: 0...2, format: { String(format: "%.0f%%", $0 * 100) })
+            }
             HStack(spacing: 10) {
                 Button(role: .destructive) {
                     preview.stop()
@@ -1024,6 +1015,7 @@ struct AudioEditorView: View {
                 if k + 1 < sections.count {
                     Button {
                         model.edit("Remove marker") { try $0.removeAudioMarker(audioID, after: k) }
+                        clampSelection()
                     } label: {
                         Label("Remove marker", systemImage: "flag.slash").font(.subheadline.weight(.semibold))
                             .padding(.horizontal, 14).padding(.vertical, 8)
@@ -1045,15 +1037,6 @@ struct AudioEditorView: View {
                 LabeledSlider(title: "Volume", value: Binding(get: { clip.volume }, set: { v in
                     model.editCoalescing("Music volume", key: "mv-\(audioID)") { $0.updateAudio(audioID) { $0.volume = v } }
                 }), range: 0...1.5, format: { String(format: "%.0f%%", $0 * 100) })
-                HStack {
-                    Toggle("Match video length", isOn: Binding(get: { clip.followsVideo }, set: { v in
-                        model.edit("Match video length") { p in p.updateAudio(audioID) { $0.fitsVideo = v } }
-                        loadFromClip()
-                    }))
-                    .tint(Theme.accent).font(.subheadline)
-                    .disabled(clip.hasSectionEdits)
-                    .accessibilityIdentifier("audioTrim.matchVideo")
-                }
                 if sections.count > 1 {
                     Button("Clear all markers") {
                         model.edit("Clear markers") { try $0.clearAudioMarkers(audioID) }
@@ -1070,51 +1053,36 @@ struct AudioEditorView: View {
 
     // MARK: Actions
 
-    private func loadFromClip() {
-        guard let clip else { return }
-        selStart = clip.sourceRange.start.seconds
-        selEnd = clip.sourceRange.end.seconds
-        preview.sections = clip.resolvedSections
-        preview.baseVolume = clip.volume
-        if let k = selectedSection, k >= clip.resolvedSections.count { selectedSection = nil }
+    private func syncPreview() {
+        preview.sections = clip?.resolvedSections ?? []
+        preview.baseVolume = clip?.volume ?? 1
+    }
+
+    private func clampSelection() {
+        if let k = selectedSection, k >= sections.count { selectedSection = nil }
     }
 
     private func togglePreview() {
         if preview.isPlaying {
             preview.pause()
         } else {
-            let from = preview.position >= selStart && preview.position < selEnd - 0.05 ? preview.position : selStart
-            preview.play(from: from, to: selEnd)
+            let from = preview.position >= rangeStart && preview.position < rangeEnd - 0.05 ? preview.position : rangeStart
+            preview.play(from: from, to: rangeEnd)
         }
     }
 
-    /// Marker at the current playback position (or the middle of the selected section).
+    /// Marker at the playback position (or the middle of the selected / whole part).
     private func addMarker() {
         var t = preview.position
-        if t <= selStart + 0.2 || t >= selEnd - 0.2 {
+        if t <= rangeStart + 0.2 || t >= rangeEnd - 0.2 {
             if let k = selectedSection, sections.indices.contains(k) {
                 t = (sections[k].start.seconds + sections[k].end.seconds) / 2
             } else {
-                t = (selStart + selEnd) / 2
+                t = (rangeStart + rangeEnd) / 2
             }
         }
-        if trimChanged { applyTrim() }
         model.edit("Add marker") { try $0.addAudioMarker(audioID, at: MediaTime(seconds: t)) }
         selectedSection = clip?.resolvedSections.firstIndex { t >= $0.start.seconds && t < $0.end.seconds }
-        model.showToast("Marker at \(Self.time(t))", systemImage: "flag")
-    }
-
-    private func applyTrim() {
-        preview.stop()
-        let range = MediaTimeRange(start: MediaTime(seconds: selStart), end: MediaTime(seconds: selEnd))
-        model.edit("Trim audio") { p in try p.setAudioSourceRange(audioID, range) }
-        loadFromClip()
-    }
-
-    private func save() {
-        if trimChanged { applyTrim() }
-        preview.stop()
-        model.panel = nil
     }
 
     static func time(_ v: Double) -> String {
@@ -1123,29 +1091,23 @@ struct AudioEditorView: View {
     }
 }
 
-/// Waveform over the whole song with trim handles, section shading, markers and a cursor.
+/// Waveform of the playing part of the song with section shading, markers and a cursor.
 struct AudioWaveEditor: View {
     let peaks: [Float]
-    let total: Double
-    @Binding var start: Double
-    @Binding var end: Double
+    let songLength: Double
+    let rangeStart: Double
+    let rangeEnd: Double
     let sections: [AudioSection]
     let selected: Int?
     var cursor: Double
-    var onScrubBegan: () -> Void = {}
     var onTapTime: (Double) -> Void = { _ in }
-    @State private var dragOrigin: (start: Double, end: Double)?
-    private let minGap = 0.5
-    private let handleWidth: CGFloat = 18
 
     var body: some View {
         GeometryReader { geo in
-            let w = max(geo.size.width - handleWidth * 2, 1)
-            let x = { (t: Double) -> CGFloat in handleWidth + CGFloat(t / max(total, 0.001)) * w }
-            let toTime = { (dx: CGFloat) -> Double in Double(dx / w) * total }
+            let span = max(rangeEnd - rangeStart, 0.001)
+            let x = { (t: Double) -> CGFloat in CGFloat((t - rangeStart) / span) * geo.size.width }
             ZStack(alignment: .topLeading) {
                 Canvas { ctx, size in
-                    // Section shading (deleted = red, selected = brighter).
                     for (k, s) in sections.enumerated() {
                         let r = CGRect(x: x(s.start.seconds), y: 0, width: max(1, x(s.end.seconds) - x(s.start.seconds)), height: size.height)
                         if s.deleted {
@@ -1154,69 +1116,41 @@ struct AudioWaveEditor: View {
                             ctx.fill(Path(r), with: .color(Theme.accent.opacity(0.22)))
                         }
                     }
-                    guard !peaks.isEmpty else { return }
-                    let barW = w / CGFloat(peaks.count)
-                    for (i, p) in peaks.enumerated() {
-                        let t = Double(i) / Double(peaks.count) * total
+                    guard !peaks.isEmpty, songLength > 0 else { return }
+                    // Only the bars inside the playing part, stretched across the width.
+                    let first = max(0, Int(rangeStart / songLength * Double(peaks.count)))
+                    let last = min(peaks.count, Int(ceil(rangeEnd / songLength * Double(peaks.count))))
+                    guard last > first else { return }
+                    let barW = size.width / CGFloat(last - first)
+                    for i in first..<last {
+                        let t = Double(i) / Double(peaks.count) * songLength
                         let sec = sections.first { t >= $0.start.seconds && t < $0.end.seconds }
                         let gain = CGFloat(sec.map { $0.deleted ? 0.15 : min(1.4, $0.volume) } ?? 1)
-                        let h = max(2, CGFloat(p) * (size.height - 16) * min(1, gain))
-                        let rect = CGRect(x: handleWidth + CGFloat(i) * barW, y: (size.height - h) / 2, width: max(1, barW - 0.5), height: h)
+                        let h = max(2, CGFloat(peaks[i]) * (size.height - 16) * min(1, gain))
+                        let rect = CGRect(x: CGFloat(i - first) * barW, y: (size.height - h) / 2, width: max(1, barW - 0.5), height: h)
                         ctx.fill(Path(rect), with: .color(Theme.clipAudio.opacity(sec?.deleted == true ? 0.3 : 0.9)))
                     }
                 }
                 .contentShape(Rectangle())
                 .onTapGesture { loc in
-                    let t = min(max(0, Double((loc.x - handleWidth) / w) * total), total)
-                    onTapTime(t)
+                    onTapTime(min(max(rangeStart, rangeStart + Double(loc.x / max(geo.size.width, 1)) * span), rangeEnd))
                 }
-                // Dim outside the trimmed part.
-                Rectangle().fill(Color.black.opacity(0.6))
-                    .frame(width: max(0, x(start) - handleWidth)).offset(x: handleWidth).allowsHitTesting(false)
-                Rectangle().fill(Color.black.opacity(0.6))
-                    .frame(width: max(0, handleWidth + w - x(end))).offset(x: x(end)).allowsHitTesting(false)
-                // Markers.
                 ForEach(Array(sections.dropFirst().enumerated()), id: \.offset) { _, s in
                     Rectangle().fill(Color.yellow).frame(width: 2).offset(x: x(s.start.seconds) - 1)
-                        .overlay(alignment: .top) {
+                        .overlay(alignment: .topLeading) {
                             Image(systemName: "flag.fill").font(.system(size: 10)).foregroundStyle(.yellow)
-                                .offset(x: x(s.start.seconds) + 5, y: 2)
+                                .offset(x: x(s.start.seconds) + 3, y: 2)
                         }
                         .allowsHitTesting(false)
-                }
-                .accessibilityIdentifier("audioEditor.marker")
-                RoundedRectangle(cornerRadius: 4).stroke(Color.white, lineWidth: 2.5)
-                    .frame(width: max(2, x(end) - x(start))).offset(x: x(start))
-                    .allowsHitTesting(false)
-                handle(at: x(start) - handleWidth, id: "audioTrim.startHandle") { dx in
-                    if dragOrigin == nil { dragOrigin = (start, end); onScrubBegan() }
-                    guard let o = dragOrigin else { return }
-                    start = min(max(0, o.start + toTime(dx)), end - minGap)
-                }
-                handle(at: x(end), id: "audioTrim.endHandle") { dx in
-                    if dragOrigin == nil { dragOrigin = (start, end); onScrubBegan() }
-                    guard let o = dragOrigin else { return }
-                    end = max(min(total, o.end + toTime(dx)), start + minGap)
                 }
                 Rectangle().fill(Color.white).frame(width: 2).offset(x: x(cursor) - 1)
                     .allowsHitTesting(false)
                     .accessibilityIdentifier("audioTrim.cursor")
             }
             .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
             .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 8))
         }
-    }
-
-    private func handle(at offset: CGFloat, id: String, onDrag: @escaping (CGFloat) -> Void) -> some View {
-        RoundedRectangle(cornerRadius: 4)
-            .fill(Color.white)
-            .overlay(Capsule().fill(Color.black.opacity(0.45)).frame(width: 2, height: 22))
-            .frame(width: handleWidth)
-            .offset(x: offset)
-            .gesture(DragGesture(minimumDistance: 1)
-                .onChanged { v in onDrag(v.translation.width) }
-                .onEnded { _ in dragOrigin = nil })
-            .accessibilityIdentifier(id)
     }
 }
 

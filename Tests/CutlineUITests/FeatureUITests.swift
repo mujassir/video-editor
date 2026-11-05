@@ -302,14 +302,13 @@ final class FeatureUITests: CutlineUITestCase {
         tap("music.use.sunrise")
         waitUntilIdle()
         waitFor("first track") { count(prefix: "audio.") == 1 }
-        // Shorten the first track so there is room for a second one.
+        // Shorten the first track: drop a marker mid-song and delete the part after it.
         element("audio.0").tap()
         tap("tool.Edit")
-        let endHandle = element("audioTrim.endHandle")
-        XCTAssertTrue(endHandle.waitForExistence(timeout: 5))
-        let from = endHandle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        from.press(forDuration: 0.1, thenDragTo: from.withOffset(CGVector(dx: -120, dy: 0)))
-        tap("audioTrim.trim")
+        tap("audioEditor.addMarker")
+        waitFor("two sections") { element("audioTrim.summary").label.contains("2 sections") }
+        tap("audioEditor.deleteSection")
+        waitFor("second part deleted") { element("audioTrim.summary").label.contains("1 deleted") }
         tap("panel.done")
         // Second track starts where the first ends, not on top of it at 0:00.
         element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.05)).tap()
@@ -351,21 +350,14 @@ final class FeatureUITests: CutlineUITestCase {
         tap("tool.Edit")
         let summary = element("audioTrim.summary")
         XCTAssertTrue(summary.waitForExistence(timeout: 5))
-        let before = summary.label
-        // Drag the start handle to the right, preview, then Trim.
-        let handle = element("audioTrim.startHandle")
-        let from = handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        from.press(forDuration: 0.1, thenDragTo: from.withOffset(CGVector(dx: 60, dy: 0)))
-        XCTAssertNotEqual(element("audioTrim.startTime").label, "0:00.0", "start handle should move")
+        // No trim handles, Trim button or Match video toggle any more.
+        for id in ["audioTrim.startHandle", "audioTrim.endHandle", "audioTrim.trim", "audioTrim.matchVideo"] {
+            XCTAssertFalse(element(id).exists, "\(id) should be gone")
+        }
         tap("audioTrim.play")
         RunLoop.current.run(until: Date().addingTimeInterval(1))
-        snapshot("18-audio-trim-preview")
+        snapshot("18-audio-editor-playing")
         tap("audioTrim.play")
-        tap("audioTrim.trim")
-        waitFor("trim applied") { element("audioTrim.summary").label != before }
-        // Undo inside the panel restores the previous section.
-        tap("panel.undo")
-        waitFor("undo restores") { element("audioTrim.summary").label == before }
         // Full-screen editor: timer, markers, per-section volume and delete.
         XCTAssertTrue(element("audioEditor.timer").exists)
         let timeline = element("timeline")
@@ -375,10 +367,12 @@ final class FeatureUITests: CutlineUITestCase {
         XCTAssertTrue(element("audioEditor.section").waitForExistence(timeout: 5))
         tap("audioEditor.deleteSection")
         waitFor("section deleted") { element("audioEditor.section").label.contains("Deleted") }
-        tap("audioEditor.deleteSection")   // Restore
+        // Undo inside the editor brings the section back.
+        tap("panel.undo")
+        waitFor("undo restores") { !element("audioTrim.summary").label.contains("deleted") }
         snapshot("18-audio-editor-sections")
         tap("panel.done")
-        // Music has no Split tool (trim with the Trim Audio slider instead).
+        // Music has no Split tool (shape it with markers in Edit instead).
         XCTAssertFalse(element("tool.Split").exists, "audio toolbar should not offer Split")
         tap("tool.Duplicate")
         waitFor("audio duplicated") { count(prefix: "audio.") == 2 }
