@@ -871,6 +871,7 @@ struct AudioEditorView: View {
     let audioID: UUID
     @State private var selectedSection: Int?
     @State private var preview = AudioPreview()
+    @State private var resumeAfterScrub = false
 
     private var clip: AudioClip? { model.project.audioClips.first { $0.id == audioID } }
     private var media: MediaItem? { clip.flatMap { model.project.mediaItem($0.mediaID) } }
@@ -894,15 +895,9 @@ struct AudioEditorView: View {
                                     })
                         .frame(height: 150)
                         .accessibilityIdentifier("audioEditor.wave")
-                    HStack {
-                        Text(Self.time(rangeStart))
-                        Spacer()
-                        Text("\(Self.time(clip?.playedDuration.seconds ?? 0)) plays").foregroundStyle(Theme.secondaryText)
-                        Spacer()
-                        Text(Self.time(rangeEnd))
-                    }
-                    .font(.caption.monospacedDigit())
+                    scrubBar
                     controls
+                    if sections.count > 1 { sectionChips }
                     if let k = selectedSection, sections.indices.contains(k) { sectionPanel(k) }
                     overall
                     Text(clip.map { "\(Self.time($0.playedDuration.seconds)) of music · \(sections.count) section\(sections.count == 1 ? "" : "s")\(sections.contains { $0.deleted } ? " · \(sections.filter(\.deleted).count) deleted" : "")" } ?? "")
@@ -954,9 +949,9 @@ struct AudioEditorView: View {
     /// Live position in the song while playing.
     private var timer: some View {
         VStack(spacing: 2) {
-            Text(Self.time(preview.position)).font(.system(size: 34, weight: .semibold).monospacedDigit())
+            Text(Self.time(rel(preview.position))).font(.system(size: 34, weight: .semibold).monospacedDigit())
                 .accessibilityIdentifier("audioEditor.timer")
-            Text("\(Self.time(max(0, preview.position - rangeStart))) of \(Self.time(rangeEnd - rangeStart))")
+            Text("of \(Self.time(rangeEnd - rangeStart))")
                 .font(.footnote.monospacedDigit()).foregroundStyle(Theme.secondaryText)
         }
     }
@@ -985,7 +980,7 @@ struct AudioEditorView: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Section \(k + 1) of \(sections.count)").font(.subheadline.weight(.semibold))
-                Text("\(Self.time(s.start.seconds)) – \(Self.time(s.end.seconds))").font(.caption.monospacedDigit())
+                Text("\(Self.time(rel(s.start.seconds))) – \(Self.time(rel(s.end.seconds)))").font(.caption.monospacedDigit())
                     .foregroundStyle(Theme.secondaryText)
                 Spacer()
                 if s.deleted { Text("Deleted").font(.caption.weight(.bold)).foregroundStyle(.red) }
@@ -1051,7 +1046,64 @@ struct AudioEditorView: View {
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
     }
 
+    /// Single-line play bar: drag the knob to move the playing position.
+    private var scrubBar: some View {
+        VStack(spacing: 4) {
+            Slider(value: Binding(get: { min(max(preview.position, rangeStart), rangeEnd) },
+                                  set: { v in
+                                      preview.seekIdle(to: v)
+                                      selectedSection = sections.firstIndex { v >= $0.start.seconds && v < $0.end.seconds }
+                                  }),
+                   in: rangeStart...rangeEnd) { editing in
+                if editing {
+                    resumeAfterScrub = preview.isPlaying
+                    preview.pause()
+                } else if resumeAfterScrub {
+                    resumeAfterScrub = false
+                    preview.play(from: preview.position, to: rangeEnd)
+                }
+            }
+            .tint(Theme.accent)
+            .accessibilityIdentifier("audioEditor.scrub")
+            HStack {
+                Text("0:00").accessibilityIdentifier("audioEditor.startLabel")
+                Spacer()
+                Text(Self.clock(rangeEnd - rangeStart)).accessibilityIdentifier("audioEditor.endLabel")
+            }
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(Theme.secondaryText)
+        }
+    }
+
+    /// One chip per section (0 → marker 1, marker 1 → marker 2, …); tap to select it.
+    private var sectionChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Array(sections.enumerated()), id: \.offset) { k, s in
+                    Button {
+                        selectedSection = k
+                        preview.seekIdle(to: s.start.seconds)
+                    } label: {
+                        VStack(spacing: 2) {
+                            Text("Section \(k + 1)").font(.caption.weight(.semibold))
+                            Text("\(Self.clock(rel(s.start.seconds)))–\(Self.clock(rel(s.end.seconds)))")
+                                .font(.caption2.monospacedDigit())
+                        }
+                        .strikethrough(s.deleted)
+                        .foregroundStyle(s.deleted ? Color.red : .white)
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(selectedSection == k ? Theme.accent : Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("audioEditor.sectionChip.\(k)")
+                }
+            }
+        }
+    }
+
     // MARK: Actions
+
+    private func rel(_ t: Double) -> Double { max(0, t - rangeStart) }
 
     private func syncPreview() {
         preview.sections = clip?.resolvedSections ?? []
@@ -1071,18 +1123,30 @@ struct AudioEditorView: View {
         }
     }
 
-    /// Marker at the playback position (or the middle of the selected / whole part).
+    /// Marker at the playback position. If a marker can't go there (at an edge or
+    /// right on another marker), it splits the selected section — or the longest one — in half.
     private func addMarker() {
+        let gap = 0.25   // engine minimum section (0.2 s) plus slack
         var t = preview.position
-        if t <= rangeStart + 0.2 || t >= rangeEnd - 0.2 {
-            if let k = selectedSection, sections.indices.contains(k) {
-                t = (sections[k].start.seconds + sections[k].end.seconds) / 2
-            } else {
-                t = (rangeStart + rangeEnd) / 2
+        if !sections.contains(where: { t > $0.start.seconds + gap && t < $0.end.seconds - gap }) {
+            let target = selectedSection.flatMap { sections.indices.contains($0) ? sections[$0] : nil }
+                .flatMap { $0.duration.seconds > gap * 2 ? $0 : nil }
+                ?? sections.max { $0.duration.seconds < $1.duration.seconds }
+            guard let target, target.duration.seconds > gap * 2 else {
+                model.showToast("Section too short for another marker")
+                return
             }
+            t = (target.start.seconds + target.end.seconds) / 2
         }
         model.edit("Add marker") { try $0.addAudioMarker(audioID, at: MediaTime(seconds: t)) }
         selectedSection = clip?.resolvedSections.firstIndex { t >= $0.start.seconds && t < $0.end.seconds }
+        if !preview.isPlaying { preview.seekIdle(to: t) }
+    }
+
+    /// m:ss for the play-bar labels.
+    static func clock(_ v: Double) -> String {
+        let t = Int(max(v, 0).rounded())
+        return String(format: "%d:%02d", t / 60, t % 60)
     }
 
     static func time(_ v: Double) -> String {

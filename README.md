@@ -57,7 +57,8 @@ A fast, private video editor for iPhone. It's built natively in Swift, SwiftUI, 
 - **Music toolbar:** Edit, Repeat (loops the track's section until the end of the video), Duplicate, Delete.
 - **Edit Audio:**
   - Full screen: the song's waveform with a live timer and moving cursor while it plays.
-  - Add markers to split the music into sections; each section has its own volume and can be deleted or restored.
+  - A play bar under the waveform (0:00 to the music's length): drag its knob to move the playing position.
+  - Add as many markers as you like: 0 → marker 1 → marker 2 … → end become sections. Tap a section (on the waveform or its chip) to set its own volume or delete/restore it.
   - Overall volume, Clear all markers, Undo, and ✓ to save.
 - Press and hold a music bar, then drag it, to move it.
 - Music follows the video's length as you add or remove content, until you edit its sections.

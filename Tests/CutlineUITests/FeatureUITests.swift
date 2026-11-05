@@ -362,9 +362,24 @@ final class FeatureUITests: CutlineUITestCase {
         XCTAssertTrue(element("audioEditor.timer").exists)
         let timeline = element("timeline")
         XCTAssertTrue(!timeline.exists || !timeline.isHittable, "timeline/layers are hidden while editing audio")
+        // Play bar labels: 0:00 on the left, the music's length on the right.
+        XCTAssertEqual(element("audioEditor.startLabel").label, "0:00")
+        XCTAssertNotEqual(element("audioEditor.endLabel").label, "0:00")
+        // Drag the play-bar knob to move the playing position.
+        let scrub = app.sliders["audioEditor.scrub"]
+        XCTAssertTrue(scrub.waitForExistence(timeout: 5))
+        scrub.adjust(toNormalizedSliderPosition: 0.25)
+        waitFor("scrub moves position") { element("audioEditor.timer").label != "0:00.0" }
+        // Several markers: 0 → marker 1 → marker 2 → marker 3 → end.
         tap("audioEditor.addMarker")
         waitFor("two sections") { element("audioTrim.summary").label.contains("2 sections") }
+        tap("audioEditor.addMarker")
+        tap("audioEditor.addMarker")
+        waitFor("four sections") { element("audioTrim.summary").label.contains("4 sections") }
+        for k in 0..<4 { XCTAssertTrue(element("audioEditor.sectionChip.\(k)").exists, "chip \(k) missing") }
+        tap("audioEditor.sectionChip.1")
         XCTAssertTrue(element("audioEditor.section").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("audioEditor.section").label.contains("Section 2"))
         tap("audioEditor.deleteSection")
         waitFor("section deleted") { element("audioEditor.section").label.contains("Deleted") }
         // Undo inside the editor brings the section back.
