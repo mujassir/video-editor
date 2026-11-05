@@ -330,13 +330,6 @@ final class EditorModel {
         return nil
     }
 
-    func splitSelectedAudio() {
-        guard let id = selectedAudioID else { return }
-        var newID: UUID?
-        edit("Split audio") { newID = try $0.splitAudio(id, at: currentTime) }
-        if let newID { session.selection = .audio(newID) }
-        loadWaveforms()
-    }
 
     func moveSelectedAudioToPlayhead() {
         guard let id = selectedAudioID else { return }

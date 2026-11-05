@@ -286,7 +286,6 @@ struct EditorView: View {
     @ViewBuilder private var audioTools: some View {
         ToolButton(title: "Trim", systemImage: "timeline.selection") { model.panel = .audioTrim }
         ToolButton(title: "To Playhead", systemImage: "arrow.right.to.line") { model.moveSelectedAudioToPlayhead() }
-        ToolButton(title: "Split", systemImage: "scissors") { model.splitSelectedAudio() }
         ToolButton(title: "Duplicate", systemImage: "plus.square.on.square") { model.duplicateSelectedAudio() }
         ToolButton(title: "Volume", systemImage: "speaker.wave.2") { model.panel = .music }
         ToolButton(title: "Beat Sync", systemImage: "metronome", badge: "AI") { model.beatSync() }

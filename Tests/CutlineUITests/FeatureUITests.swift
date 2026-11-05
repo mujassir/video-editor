@@ -365,11 +365,11 @@ final class FeatureUITests: CutlineUITestCase {
         tap("panel.undo")
         waitFor("undo restores") { element("audioTrim.summary").label == before }
         tap("panel.done")
-        tap("tool.Split")
-        waitFor("audio split") { count(prefix: "audio.") == 2 }
+        // Music has no Split tool (trim with the Trim Audio slider instead).
+        XCTAssertFalse(element("tool.Split").exists, "audio toolbar should not offer Split")
         tap("tool.Duplicate")
-        waitFor("audio duplicated") { count(prefix: "audio.") == 3 }
-        snapshot("18-audio-split-duplicate")
+        waitFor("audio duplicated") { count(prefix: "audio.") == 2 }
+        snapshot("18-audio-duplicate")
     }
 
     func test17_FilterPreviewShowsCleanFrame() {

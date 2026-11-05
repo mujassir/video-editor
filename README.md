@@ -58,7 +58,7 @@ A fast, private video editor for iPhone. It's built natively in Swift, SwiftUI, 
   - One range slider over the song's waveform.
   - Play the selected section, with a moving cursor.
   - Trim, Undo, and ✓ to save.
-- Split, duplicate, and **To Playhead**. Press and hold a music bar, then drag it, to move it.
+- Duplicate and **To Playhead**. Press and hold a music bar, then drag it, to move it.
 - Music follows the video's length as you add or remove content. Choosing an End yourself switches this off, and **Match video** switches it back on.
 - Fade-out, and automatic ducking of music under speech.
 
