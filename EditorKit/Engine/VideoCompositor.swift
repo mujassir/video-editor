@@ -75,6 +75,8 @@ public final class VideoCompositor: NSObject, AVVideoCompositing, @unchecked Sen
             var mask: MTLTexture?
             var blurred: MTLTexture?
             var keepAlive: [Any]
+            var blendTexture: MTLTexture? = nil
+            var blendWeight: Float = 0
         }
         var layers: [Layer] = []
         for index in instruction.clipIndices {
@@ -140,8 +142,18 @@ public final class VideoCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                     blurred = scratch
                 }
             }
-            layers.append(Layer(info: info, texture: texture, sourceTurns: turns, animation: animation,
-                                reframe: reframe, mask: mask, blurred: blurred, keepAlive: keepAlive))
+            var layer = Layer(info: info, texture: texture, sourceTurns: turns, animation: animation,
+                              reframe: reframe, mask: mask, blurred: blurred, keepAlive: keepAlive)
+            if let blendID = info.blendTrackID, let next = request.sourceFrame(byTrackID: blendID),
+               let (btex, bref) = renderer.texture(from: next) {
+                let fileTime = info.blendFileStart + local.seconds * info.clip.speed
+                layer.blendWeight = Float(LayerGeometry.blendWeight(fileTime: fileTime, fps: info.blendFPS))
+                if layer.blendWeight > 0.02 {
+                    layer.blendTexture = btex
+                    layer.keepAlive.append(bref)
+                }
+            }
+            layers.append(layer)
         }
 
         // Blurred canvas background from the bottom layer.
@@ -225,6 +237,13 @@ public final class VideoCompositor: NSObject, AVVideoCompositing, @unchecked Sen
             }
             renderer.drawLayer(encoder, vertices: quad, source: layer.texture, uniforms: u,
                                lut: lut, mask: layer.mask, blurred: layer.blurred)
+            if let next = layer.blendTexture {
+                // Same layer, next source frame, at the phase weight → smooth slow motion.
+                var bu = u
+                bu.opacity = u.opacity * layer.blendWeight
+                renderer.drawLayer(encoder, vertices: quad, source: next, uniforms: bu,
+                                   lut: lut, mask: layer.mask, blurred: layer.blurred)
+            }
         }
 
         drawOverlays(scene: scene, time: time, canvas: canvas, renderer: renderer, encoder: encoder)

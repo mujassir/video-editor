@@ -64,6 +64,8 @@ public final class CompositionBuilder: @unchecked Sendable {
 
         let videoTracks = [composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
                            composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)]
+        // Created on demand for slowed clips (A/B like the main tracks).
+        var blendTracks: [AVMutableCompositionTrack?] = [nil, nil]
         let audioTracks = [composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid),
                            composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)]
         var audioParams: [CMPersistentTrackID: AVMutableAudioMixInputParameters] = [:]
@@ -84,6 +86,9 @@ public final class CompositionBuilder: @unchecked Sendable {
             let timelineStart = entry.range.start.cmTime
             let timelineDuration = entry.range.duration.cmTime
             var trackID: CMPersistentTrackID?
+            var blendTrackID: CMPersistentTrackID?
+            var blendFileStart = 0.0
+            var blendFPS = 30.0
 
             if clip.isStill {
                 let url = resolver.url(for: media)
@@ -127,6 +132,24 @@ public final class CompositionBuilder: @unchecked Sendable {
                 }
                 trackID = track.trackID
 
+                // Smooth slow motion: the same footage one source frame ahead on a blend track.
+                let fps = media.frameRate > 1 ? media.frameRate : 30
+                let frame = CMTime(seconds: 1 / fps, preferredTimescale: 60_000)
+                if clip.speed < 0.95, sourceRange.duration > frame + frame {
+                    if blendTracks[lane] == nil {
+                        blendTracks[lane] = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
+                    }
+                    if let blend = blendTracks[lane] {
+                        let ahead = CMTimeRange(start: sourceRange.start + frame, duration: sourceRange.duration - frame)
+                        try blend.insertTimeRange(ahead, of: srcVideo, at: timelineStart)
+                        blend.scaleTimeRange(CMTimeRange(start: timelineStart, duration: ahead.duration),
+                                             toDuration: CMTimeMultiplyByFloat64(ahead.duration, multiplier: 1 / clip.speed))
+                        blendTrackID = blend.trackID
+                        blendFileStart = sourceRange.start.seconds
+                        blendFPS = fps
+                    }
+                }
+
                 if !clip.isReversed, !clip.isMuted, clip.volume > 0, media.hasAudio,
                    let srcAudio = try await a.loadTracks(withMediaType: .audio).first,
                    let audio = audioTracks[lane] {
@@ -154,10 +177,14 @@ public final class CompositionBuilder: @unchecked Sendable {
             }
 
             let previous = entry.index > 0 ? project.clips[entry.index - 1] : nil
-            infos.append(ClipRenderInfo(clip: clip, media: media, trackID: trackID,
-                                        timelineRange: entry.range, overlapIn: entry.overlapIn, overlapOut: entry.overlapOut,
-                                        transitionIn: entry.overlapIn > .zero ? previous?.transitionOut : nil,
-                                        transitionOut: entry.overlapOut > .zero ? clip.transitionOut : nil))
+            var info = ClipRenderInfo(clip: clip, media: media, trackID: trackID,
+                                      timelineRange: entry.range, overlapIn: entry.overlapIn, overlapOut: entry.overlapOut,
+                                      transitionIn: entry.overlapIn > .zero ? previous?.transitionOut : nil,
+                                      transitionOut: entry.overlapOut > .zero ? clip.transitionOut : nil)
+            info.blendTrackID = blendTrackID
+            info.blendFileStart = blendFileStart
+            info.blendFPS = blendFPS
+            infos.append(info)
         }
 
         // Free audio clips each get their own track so volume envelopes stay independent.

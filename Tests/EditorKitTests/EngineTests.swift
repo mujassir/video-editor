@@ -715,3 +715,32 @@ struct AudioSectionRenderTests {
         #expect(abs(musicEnd - 4) < 0.1, "4 s of music after cutting 2 s out, got \(musicEnd)")
     }
 }
+
+@Suite("Smooth slow motion")
+struct SlowMotionBlendTests {
+    @Test func phaseWeight() {
+        #expect(LayerGeometry.blendWeight(fileTime: 1.0, fps: 30) < 0.001)
+        #expect(abs(LayerGeometry.blendWeight(fileTime: 1.0 + 0.5 / 30, fps: 30) - 0.5) < 1e-6)
+    }
+
+    /// Alternating black / white frames at 30 fps, played at 0.5×: half-way between
+    /// two source frames the blended picture is grey instead of jumping.
+    @Test func slowClipBlendsNeighbouringFrames() async throws {
+        var fx = try Fixture()
+        defer { fx.cleanup() }
+        try await fx.addVideo("flicker", duration: 2, size: CGSize(width: 64, height: 64)) { ctx, size, t in
+            let frame = Int((t * 30).rounded())
+            ctx.setFillColor(CGColor(gray: frame % 2 == 0 ? 0 : 1, alpha: 1))
+            ctx.fill(CGRect(origin: .zero, size: size))
+        }
+        try fx.project.setSpeed(0.5, clipID: fx.project.clips[0].id)
+        try fx.project.updateClip(fx.project.clips[0].id) { $0.transform.fit = .fill }
+        let built = try await CompositionBuilder().build(project: fx.project, resolver: fx.resolver,
+                                                         renderSize: CGSize(width: 64, height: 64))
+        let videoTracks = try await built.composition.loadTracks(withMediaType: .video)
+        #expect(videoTracks.count >= 4, "base + A/B + a blend track for the slow clip")
+        // Timeline 1/30 s at 0.5× = source 1/60 s: exactly between frame 0 (black) and 1 (white).
+        let mid = averageColor(try await renderFrame(built, at: 1.0 / 30)).x
+        #expect(mid > 0.3 && mid < 0.7, "blended frame should be grey, got \(mid)")
+    }
+}
