@@ -316,10 +316,14 @@ final class FeatureUITests: CutlineUITestCase {
         tap("music.use.night")
         waitUntilIdle()
         waitFor("second track") { count(prefix: "audio.") == 2 }
-        let first = element("audio.0").frame, second = element("audio.1").frame
-        XCTAssertGreaterThan(second.minX, first.minX + 20, "second track should start later")
-        // Hold and drag the second track left on the timeline.
-        let bar = element("audio.1").coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5))
+        let first = element("audio.0").frame, startFrame = element("audio.1").frame
+        XCTAssertGreaterThan(startFrame.minX, first.minX + 20, "second track should start later")
+        // Scroll the second track on screen (it starts beyond the right edge), then hold and drag it left.
+        revealAndTap("audio.1")
+        RunLoop.current.run(until: Date().addingTimeInterval(0.8))
+        let second = element("audio.1").frame
+        XCTAssertLessThan(second.minX + 20, app.windows.firstMatch.frame.maxX, "second track should be visible before dragging")
+        let bar = element("audio.1").coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5))
         bar.press(forDuration: 0.8, thenDragTo: bar.withOffset(CGVector(dx: -40, dy: 0)),
                   withVelocity: .slow, thenHoldForDuration: 0.3)
         RunLoop.current.run(until: Date().addingTimeInterval(1))
