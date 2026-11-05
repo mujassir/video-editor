@@ -527,6 +527,42 @@ public extension Project {
         return right.id
     }
 
+    /// Repeats an audio clip's section back to back until the end of the video.
+    /// The last copy is cut at the video's end and carries the original fade-out.
+    /// Returns how many copies were added (0 when it already reaches the end).
+    @discardableResult
+    mutating func repeatAudio(_ id: UUID) throws -> Int {
+        let (i, _) = try audioIndex(id)
+        let videoEnd = layout.duration
+        var original = audioClips[i]
+        let length = original.sourceRange.duration
+        guard length >= Self.minimumAudioDuration, original.timelineRange.end < videoEnd - Self.minimumAudioDuration else {
+            return 0
+        }
+        let fadeOut = original.fadeOut
+        original.fitsVideo = false
+        original.fadeOut = .zero
+        audioClips[i] = original
+        var cursor = original.timelineRange.end
+        var copies: [AudioClip] = []
+        while videoEnd - cursor >= Self.minimumAudioDuration {
+            var copy = original
+            copy.id = UUID()
+            copy.start = cursor
+            copy.fadeIn = .zero
+            copy.sourceRange.duration = min(length, videoEnd - cursor)
+            copies.append(copy)
+            cursor = copy.timelineRange.end
+        }
+        guard !copies.isEmpty else { return 0 }
+        copies[copies.count - 1].fadeOut = fadeOut
+        for copy in copies {
+            let collides = audioClips.contains { $0.lane == copy.lane && $0.timelineRange.intersection(copy.timelineRange) != nil }
+            if collides { addAudio(copy) } else { audioClips.append(copy) }
+        }
+        return copies.count
+    }
+
     /// Copies an audio clip and places it right after the original (same lane when free).
     @discardableResult
     mutating func duplicateAudio(_ id: UUID) throws -> UUID {

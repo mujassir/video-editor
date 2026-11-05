@@ -54,7 +54,7 @@ A fast, private video editor for iPhone. It's built natively in Swift, SwiftUI, 
 ### Music and audio
 - 4 built-in royalty-free tracks, synthesized on the device.
 - Your own music from **Files**, or the soundtrack of a video (**From Video**).
-- **Music toolbar:** Edit, Duplicate, Delete.
+- **Music toolbar:** Edit, Repeat (loops the track's section until the end of the video), Duplicate, Delete.
 - **Edit Audio:**
   - One range slider over the song's waveform.
   - Play the selected section, with a moving cursor.

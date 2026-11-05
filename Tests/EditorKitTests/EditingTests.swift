@@ -461,3 +461,26 @@ struct MusicFollowsVideoTests {
         #expect(session.project.audioClips[0].sourceRange.duration == s(90))
     }
 }
+
+@Suite("Repeat audio")
+struct RepeatAudioTests {
+    @Test func fillsToTheVideoEnd() throws {
+        var p = Project(name: "P")
+        p.appendClip(for: MediaItem(kind: .video, fileName: "v.mov", naturalSize: CGSize(width: 10, height: 10), duration: s(25), hasAudio: false))
+        let song = MediaItem(kind: .audio, fileName: "s.m4a", naturalSize: .zero, duration: s(60), hasAudio: true)
+        p.media.append(song)
+        var clip = AudioClip(mediaID: song.id, role: .music, sourceRange: MediaTimeRange(start: s(5), duration: s(8)), start: .zero)
+        clip.fadeOut = s(1.5)
+        clip.fitsVideo = false
+        p.addAudio(clip)
+        let added = try p.repeatAudio(clip.id)
+        // 0–8, 8–16, 16–24, 24–25 (last cut at the end).
+        #expect(added == 3)
+        let sorted = p.audioClips.sorted { $0.start < $1.start }
+        #expect(sorted.map(\.start) == [s(0), s(8), s(16), s(24)])
+        #expect(sorted.last?.sourceRange == MediaTimeRange(start: s(5), duration: s(1)))
+        #expect(sorted.allSatisfy { $0.sourceRange.start == s(5) && $0.lane == 0 })
+        #expect(sorted.dropLast().allSatisfy { $0.fadeOut == .zero } && sorted.last?.fadeOut == s(1.5))
+        #expect(try p.repeatAudio(clip.id) == 0, "already reaches the end")
+    }
+}

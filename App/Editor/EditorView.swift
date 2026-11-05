@@ -283,6 +283,7 @@ struct EditorView: View {
 
     @ViewBuilder private var audioTools: some View {
         ToolButton(title: "Edit", systemImage: "slider.horizontal.below.rectangle") { model.panel = .audioTrim }
+        ToolButton(title: "Repeat", systemImage: "repeat") { model.repeatSelectedAudio() }
         ToolButton(title: "Duplicate", systemImage: "plus.square.on.square") { model.duplicateSelectedAudio() }
         ToolButton(title: "Delete", systemImage: "trash") { model.deleteSelection() }
     }

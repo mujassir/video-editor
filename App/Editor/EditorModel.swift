@@ -332,6 +332,15 @@ final class EditorModel {
 
 
 
+    func repeatSelectedAudio() {
+        guard let id = selectedAudioID else { return }
+        var added = 0
+        edit("Repeat audio") { added = try $0.repeatAudio(id) }
+        showToast(added > 0 ? "Repeated \(added + 1)× to the end" : "Already plays to the end",
+                  systemImage: "repeat")
+        loadWaveforms()
+    }
+
     func duplicateSelectedAudio() {
         guard let id = selectedAudioID else { return }
         var newID: UUID?

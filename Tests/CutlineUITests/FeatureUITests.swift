@@ -336,7 +336,7 @@ final class FeatureUITests: CutlineUITestCase {
         snapshot("21-after-drag")
         waitFor("track moved") { element("audio.1").frame.minX < second.minX - 15 }
         // Music toolbar is just Edit / Duplicate / Delete.
-        for id in ["tool.Edit", "tool.Duplicate", "tool.Delete"] { XCTAssertTrue(element(id).exists, "\(id) missing") }
+        for id in ["tool.Edit", "tool.Repeat", "tool.Duplicate", "tool.Delete"] { XCTAssertTrue(element(id).exists, "\(id) missing") }
         XCTAssertFalse(element("tool.To Playhead").exists)
         snapshot("21-two-tracks")
     }
