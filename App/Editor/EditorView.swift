@@ -132,17 +132,14 @@ struct EditorView: View {
                 Text(model.trimDebug).font(.system(size: 1)).opacity(0.01).accessibilityIdentifier("debug.trim")
             }
             Spacer()
+        }
+        // Play stays centred under the preview.
+        .overlay {
             Button { model.togglePlay() } label: {
                 Image(systemName: model.isPlaying ? "pause.fill" : "play.fill")
                     .font(.system(size: 22)).frame(width: 44, height: 36)
             }
             .accessibilityIdentifier("editor.play")
-            Spacer()
-            Button { model.split() } label: {
-                Image(systemName: "scissors").frame(width: 44, height: 36)
-            }
-            .disabled(model.project.clips.isEmpty)
-            .accessibilityIdentifier("editor.splitQuick")
         }
         .font(.system(size: 13, weight: .medium))
         .foregroundStyle(.white)
