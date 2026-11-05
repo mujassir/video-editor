@@ -29,7 +29,7 @@ A fast, private video editor for iPhone. It's built natively in Swift, SwiftUI, 
 - Animations play only during playback. Paused or scrubbing, the preview shows clips at rest, so edits are easy to judge.
 
 ### Video clips
-- Split, trim (drag the handles or use precise sliders), duplicate, reorder and delete.
+- Split, trim (drag the clip's handles on the timeline), duplicate, reorder and delete.
 - Speed from 0.1× to 10×, reverse, freeze frame, volume, extract audio.
 - 20 filters (3D lookup tables), plus adjustments: exposure, contrast, saturation, warmth, highlights, shadows, vignette, sharpen.
 - Crop, rotate, flip, zoom; Fit, Fill or Stretch per clip.

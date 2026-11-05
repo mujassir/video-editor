@@ -250,7 +250,6 @@ struct EditorView: View {
 
     @ViewBuilder private var videoTools: some View {
         ToolButton(title: "Split", systemImage: "scissors") { model.split() }
-        ToolButton(title: "Trim", systemImage: "timeline.selection") { model.panel = .trim }
         ToolButton(title: "Speed", systemImage: "speedometer") { model.panel = .speed }
         ToolButton(title: "Animate", systemImage: "camera.metering.center.weighted",
                    isActive: !(model.selectedClip?.animation?.isEmpty ?? true)) { model.panel = .motion }

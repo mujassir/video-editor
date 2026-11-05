@@ -66,15 +66,11 @@ final class FeatureUITests: CutlineUITestCase {
         print("TRIM handle frame: \(handle.frame)")
         start.press(forDuration: 0.3, thenDragTo: start.withOffset(CGVector(dx: 90, dy: 0)))
         RunLoop.current.run(until: Date().addingTimeInterval(1))
-        print("TRIM debug: '\(element("debug.trim").label)' total \(totalSeconds)")
+        print("TRIM debug: '\(element("debug.trim").label)' total \(totalSeconds) before \(before)")
         snapshot("04-trim-handle")
-        // Precise trim panel.
-        tap("tool.Trim")
-        let end = element("slider.End")
-        XCTAssertTrue(end.waitForExistence(timeout: 5))
-        end.adjust(toNormalizedSliderPosition: 0.5)
-        waitFor("trim shortens the edit") { totalSeconds < before - 1 }
-        snapshot("04-trimmed")
+        // Video clips are trimmed with the timeline handles only (no Trim tool).
+        XCTAssertFalse(element("tool.Trim").exists, "video toolbar should not offer Trim")
+        waitFor("trim shortens the edit") { totalSeconds < before - 0.5 }
     }
 
     func test05_SpeedReverseFreezeDuplicate() {
