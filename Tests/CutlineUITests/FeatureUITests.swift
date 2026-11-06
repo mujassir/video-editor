@@ -67,7 +67,6 @@ final class FeatureUITests: CutlineUITestCase {
         print("TRIM handle frame: \(handle.frame)")
         start.press(forDuration: 0.3, thenDragTo: start.withOffset(CGVector(dx: 90, dy: 0)))
         RunLoop.current.run(until: Date().addingTimeInterval(1))
-        print("TRIM diag: \(String(describing: element("trim.leading").value)) offset frame \(element("trim.leading").frame)")
         print("TRIM debug: '\(element("debug.trim").label)' total \(totalSeconds) before \(before)")
         snapshot("04-trim-handle")
         // Video clips are trimmed with the timeline handles only (no Trim tool).
