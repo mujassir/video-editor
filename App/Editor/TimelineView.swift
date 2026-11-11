@@ -25,6 +25,8 @@ final class TimelineUIView: UIView, UIScrollViewDelegate, UIGestureRecognizerDel
     var onAddMedia: (() -> Void)?
     /// A music / audio bar was dragged to a new timeline start.
     var onAudioMove: ((UUID, MediaTime) -> Void)?
+    /// The scissors on a music bar was tapped: cut that clip at the playhead.
+    var onAudioCut: ((UUID, MediaTime) -> Void)?
     private var audioDragOrigin: CGFloat = 0
 
     private let scrollView = TimelineScrollView()
@@ -32,6 +34,9 @@ final class TimelineUIView: UIView, UIScrollViewDelegate, UIGestureRecognizerDel
     private let ruler = RulerView()
     private let playhead = UIView()
     private let addButton = UIButton(type: .system)
+    /// Scissors that sits on the music bar under the playhead.
+    private let cutButton = UIButton(type: .custom)
+    private var cutTarget: (id: UUID, time: MediaTime)?
     private var clipViews: [UUID: ClipStripView] = [:]
     private var overlayViews: [UIView] = []
     private let selectionView = SelectionFrameView()
@@ -77,6 +82,24 @@ final class TimelineUIView: UIView, UIScrollViewDelegate, UIGestureRecognizerDel
         addButton.addAction(UIAction { [weak self] _ in self?.onAddMedia?() }, for: .touchUpInside)
         content.addSubview(addButton)
 
+        cutButton.setImage(UIImage(systemName: "scissors", withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .bold)), for: .normal)
+        cutButton.tintColor = .black
+        cutButton.backgroundColor = .white
+        cutButton.layer.cornerRadius = 13
+        cutButton.layer.shadowColor = UIColor.black.cgColor
+        cutButton.layer.shadowOpacity = 0.5
+        cutButton.layer.shadowRadius = 2
+        cutButton.layer.shadowOffset = .zero
+        cutButton.isHidden = true
+        cutButton.accessibilityIdentifier = "timeline.cut"
+        cutButton.accessibilityLabel = "Cut music here"
+        cutButton.addAction(UIAction { [weak self] _ in
+            guard let self, let target = self.cutTarget else { return }
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            self.onAudioCut?(target.id, target.time)
+        }, for: .touchUpInside)
+        content.addSubview(cutButton)
+
         selectionView.isHidden = true
         content.addSubview(selectionView)
         selectionView.onTrim = { [weak self] edge, translation, state in
@@ -116,6 +139,7 @@ final class TimelineUIView: UIView, UIScrollViewDelegate, UIGestureRecognizerDel
             updateHighlights()
         }
         if followPlayhead { scroll(to: time) }
+        layoutCutButton(at: followPlayhead ? time : timeAtPlayhead)
     }
 
     override func layoutSubviews() {
@@ -144,16 +168,18 @@ final class TimelineUIView: UIView, UIScrollViewDelegate, UIGestureRecognizerDel
 
     private func rebuild() {
         guard let project, let layout else { return }
-        let width = max(x(for: layout.duration), 1)
+        // Music longer than the video is shown in full; the part past the video end is dimmed.
+        let videoEnd = project.duration
+        let width = max(x(for: project.timelineDuration), 1)
         let audioLanes = (project.audioClips.map(\.lane).max() ?? -1) + 1
         let height = max(bounds.height, Layout.audioTop + CGFloat(max(audioLanes, 1)) * (Layout.audioHeight + 4) + 8)
         content.frame = CGRect(x: 0, y: 0, width: width + 80, height: height)
         scrollView.contentSize = CGSize(width: width, height: bounds.height)
         ruler.frame = CGRect(x: 0, y: 0, width: width, height: Layout.rulerHeight)
         ruler.pointsPerSecond = pointsPerSecond
-        ruler.duration = layout.duration.seconds
+        ruler.duration = project.timelineDuration.seconds
         ruler.setNeedsDisplay()
-        addButton.frame = CGRect(x: width + 12, y: Layout.mainTop + 13, width: 32, height: 32)
+        addButton.frame = CGRect(x: max(x(for: layout.duration), 1) + 12, y: Layout.mainTop + 13, width: 32, height: 32)
 
         // Main-track clips (reuse views by id).
         var seen = Set<UUID>()
@@ -222,7 +248,8 @@ final class TimelineUIView: UIView, UIScrollViewDelegate, UIGestureRecognizerDel
             let v = AudioBarView()
             let peaks = waveforms[audio.mediaID] ?? []
             let mediaDuration = project.mediaItem(audio.mediaID)?.duration.seconds ?? audio.sourceRange.duration.seconds
-            v.configure(clip: audio, peaks: peaks, mediaDuration: mediaDuration, pointsPerSecond: pointsPerSecond)
+            v.configure(clip: audio, peaks: peaks, mediaDuration: mediaDuration, pointsPerSecond: pointsPerSecond,
+                        exportedSeconds: max(0, (videoEnd - audio.start).seconds))
             v.frame = CGRect(x: x(for: audio.start), y: Layout.audioTop + CGFloat(audio.lane) * (Layout.audioHeight + 4),
                              width: max(8, x(for: audio.sourceRange.duration)), height: Layout.audioHeight)
             v.accessibilityIdentifier = "audio.\(i)"
@@ -236,8 +263,33 @@ final class TimelineUIView: UIView, UIScrollViewDelegate, UIGestureRecognizerDel
             overlayViews.append(v)
         }
         content.bringSubviewToFront(selectionView)
+        content.bringSubviewToFront(cutButton)
         layoutSelection()
         updateHighlights()
+        layoutCutButton(at: timeAtPlayhead)
+    }
+
+    /// Puts the scissors on the music clip under the playhead: the selected one if it
+    /// is there, otherwise the first one. Hidden when the playhead is too close to an edge.
+    private func layoutCutButton(at time: MediaTime) {
+        guard let project, !scrollView.isDraggingItem else { cutButton.isHidden = true; cutTarget = nil; return }
+        let margin = Project.minimumAudioDuration
+        let under = project.audioClips.filter {
+            time >= $0.start + margin && time <= $0.timelineRange.end - margin
+        }
+        var selectedID: UUID?
+        if case .audio(let id) = selection { selectedID = id }
+        guard let clip = under.first(where: { $0.id == selectedID }) ?? under.min(by: { $0.lane < $1.lane }) else {
+            cutButton.isHidden = true
+            cutTarget = nil
+            return
+        }
+        let t = time.snappedToFrame(fps: 30)
+        cutTarget = (clip.id, t)
+        let size: CGFloat = 26
+        let laneY = Layout.audioTop + CGFloat(clip.lane) * (Layout.audioHeight + 4)
+        cutButton.frame = CGRect(x: x(for: time) - size / 2, y: laneY + (Layout.audioHeight - size) / 2, width: size, height: size)
+        cutButton.isHidden = false
     }
 
     private func layoutSelection() {
@@ -276,6 +328,7 @@ final class TimelineUIView: UIView, UIScrollViewDelegate, UIGestureRecognizerDel
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         guard !isProgrammaticScroll, scrollView.isTracking || scrollView.isDecelerating || scrollView.isDragging else { return }
         onScrub?(timeAtPlayhead)
+        layoutCutButton(at: timeAtPlayhead)
     }
 
     func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) { onScrubEnded?() }
@@ -321,6 +374,7 @@ final class TimelineUIView: UIView, UIScrollViewDelegate, UIGestureRecognizerDel
             scrollView.panGestureRecognizer.isEnabled = true
             audioDragOrigin = x - bar.frame.minX
             onSelect?(.audio(id))
+            cutButton.isHidden = true
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             bar.alpha = 0.85
             bar.transform = CGAffineTransform(scaleX: 1, y: 1.08)
@@ -557,6 +611,8 @@ final class AudioBarView: UIView {
     private var visibleRange: ClosedRange<Double> = 0...1
     private var title = ""
     private var beats: [Double] = []
+    /// Seconds of this clip that end up in the export (the rest runs past the video).
+    private var exportedSeconds: Double = .infinity
     var isSelectedBar = false { didSet { layer.borderWidth = isSelectedBar ? 2 : 0 } }
 
     override init(frame: CGRect) {
@@ -570,8 +626,10 @@ final class AudioBarView: UIView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    func configure(clip: AudioClip, peaks: [Float], mediaDuration: Double, pointsPerSecond: CGFloat) {
+    func configure(clip: AudioClip, peaks: [Float], mediaDuration: Double, pointsPerSecond: CGFloat,
+                   exportedSeconds: Double = .infinity) {
         self.peaks = peaks
+        self.exportedSeconds = exportedSeconds
         let d = max(mediaDuration, 0.001)
         visibleRange = (clip.sourceRange.start.seconds / d)...(clip.sourceRange.end.seconds / d)
         title = clip.name.isEmpty ? clip.role.rawValue.capitalized : clip.name
@@ -598,6 +656,16 @@ final class AudioBarView: UIView {
         UIColor.white.withAlphaComponent(0.55).setFill()
         for b in beats {
             UIRectFill(CGRect(x: CGFloat(b) * pps, y: bounds.height - 4, width: 1.5, height: 4))
+        }
+        // Past the end of the video: dimmed, since export stops there.
+        let endX = CGFloat(exportedSeconds) * pps
+        if endX < bounds.width {
+            UIColor.black.withAlphaComponent(0.55).setFill()
+            UIRectFill(CGRect(x: max(0, endX), y: 0, width: bounds.width - max(0, endX), height: bounds.height))
+            if endX > 0 {
+                UIColor.white.withAlphaComponent(0.7).setFill()
+                UIRectFill(CGRect(x: endX - 0.5, y: 0, width: 1, height: bounds.height))
+            }
         }
         let attrs: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: 10, weight: .semibold), .foregroundColor: UIColor.white]
         ("♪ " + title as NSString).draw(at: CGPoint(x: 6, y: 2), withAttributes: attrs)
@@ -628,6 +696,7 @@ struct TimelineRepresentable: UIViewRepresentable {
         view.onAudioMove = { [weak model] id, start in
             model?.edit("Move audio") { try $0.moveAudio(id, toTimelineStart: start) }
         }
+        view.onAudioCut = { [weak model] id, time in model?.cutAudio(id, at: time) }
         view.onTransitionTap = { [weak model] id in
             model?.select(.clip(id))
             model?.panel = .transition(id)

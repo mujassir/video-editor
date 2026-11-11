@@ -392,7 +392,8 @@ public struct AudioClip: Codable, Hashable, Identifiable, Sendable {
     /// Beat times detected in the source (source time), if analysed.
     public var beats: [MediaTime] = []
     public var name: String = ""
-    /// Music keeps its end at the end of the video as the edit grows or shrinks.
+    /// Music shows the whole song (from its source start to the end of the file)
+    /// until it is cut; the part past the end of the video isn't exported.
     /// nil (older projects) means "yes" for music, "no" for other roles.
     public var fitsVideo: Bool?
     public var followsVideo: Bool { fitsVideo ?? (role == .music) }

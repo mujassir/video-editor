@@ -4,7 +4,7 @@ import CoreImage
 import EditorKit
 
 enum EditorPanel: Equatable {
-    case canvas, trim, audioTrim, duration, motion, filters, adjust, speed, volume, transition(UUID), text(UUID?), music, captions, crop, background, export
+    case canvas, trim, duration, motion, filters, adjust, speed, volume, transition(UUID), text(UUID?), music, captions, crop, background, export
     case textDuration(UUID), textAnimate(UUID), textPosition(UUID), watermark, titleCard(TitleCard.Placement)
 }
 
@@ -202,10 +202,13 @@ final class EditorModel {
     }
 
     func seek(to time: MediaTime, exact: Bool = true) {
-        let t = time.clamped(to: .zero...max(duration, .zero))
+        // The playhead can go past the video over music that runs longer (to cut it there);
+        // the preview stays on the last frame.
+        let t = time.clamped(to: .zero...max(project.timelineDuration, .zero))
         currentTime = t
         let tolerance = exact ? CMTime.zero : CMTime(value: 1, timescale: 30)
-        player.seek(to: t.cmTime, toleranceBefore: tolerance, toleranceAfter: tolerance)
+        let playable = min(t, max(duration, .zero))
+        player.seek(to: playable.cmTime, toleranceBefore: tolerance, toleranceAfter: tolerance)
     }
 
     // MARK: Editing
@@ -332,9 +335,18 @@ final class EditorModel {
 
     func splitSelectedAudio() {
         guard let id = selectedAudioID else { return }
+        cutAudio(id, at: currentTime)
+    }
+
+    /// Cuts a music clip in two at `time` (the scissors on the timeline / toolbar).
+    /// Each piece is its own clip: select, move, duplicate or delete it separately.
+    func cutAudio(_ id: UUID, at time: MediaTime) {
         var newID: UUID?
-        edit("Split audio") { newID = try $0.splitAudio(id, at: currentTime) }
-        if let newID { session.selection = .audio(newID) }
+        edit("Cut audio") { newID = try $0.splitAudio(id, at: time) }
+        if let newID {
+            session.selection = .audio(newID)
+            showToast("Cut at \(time.timecode)", systemImage: "scissors")
+        }
         loadWaveforms()
     }
 
@@ -515,7 +527,8 @@ final class EditorModel {
         let beats = (try? await BeatDetector.detect(url: url))?.beats ?? []
         edit("Add music") { p in
             p.media.append(item)
-            let length = p.layout.duration > .zero ? min(item.duration, p.layout.duration) : item.duration
+            // The whole song goes on the timeline; export stops at the end of the video.
+            let length = item.duration
             // Another track starts where the existing music ends (if that's inside the video).
             let musicEnd = p.audioClips.filter { $0.role == .music }.map(\.timelineRange.end).max() ?? .zero
             let start = musicEnd < p.layout.duration ? musicEnd : .zero

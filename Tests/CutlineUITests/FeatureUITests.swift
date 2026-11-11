@@ -301,15 +301,14 @@ final class FeatureUITests: CutlineUITestCase {
         tap("music.use.sunrise")
         waitUntilIdle()
         waitFor("first track") { count(prefix: "audio.") == 1 }
-        // Shorten the first track so there is room for a second one.
-        element("audio.0").tap()
-        tap("tool.Trim")
-        let endHandle = element("audioTrim.endHandle")
-        XCTAssertTrue(endHandle.waitForExistence(timeout: 5))
-        let from = endHandle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        from.press(forDuration: 0.1, thenDragTo: from.withOffset(CGVector(dx: -120, dy: 0)))
-        tap("audioTrim.trim")
-        tap("panel.done")
+        // Cut the first track with the scissors on the timeline and delete the rest,
+        // so there is room for a second one.
+        let tl = element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.2))
+        tl.press(forDuration: 0.05, thenDragTo: tl.withOffset(CGVector(dx: -120, dy: 0)))
+        tap("timeline.cut")
+        waitFor("track cut") { count(prefix: "audio.") == 2 }
+        tap("tool.Delete")
+        waitFor("rest deleted") { count(prefix: "audio.") == 1 }
         // Second track starts where the first ends, not on top of it at 0:00.
         element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.05)).tap()
         tap("tool.Music")
@@ -335,41 +334,28 @@ final class FeatureUITests: CutlineUITestCase {
         snapshot("21-two-tracks")
     }
 
-    func test18_AudioTrimSplitDuplicate() {
+    func test18_AudioCutSelectDuplicate() {
         openProjectWithSamples()
         tap("tool.Music")
         tap("music.use.sunrise")
         waitUntilIdle()
         waitFor("music lane") { count(prefix: "audio.") == 1 }
-        // Playhead a little into the song, then select the music clip.
+        // Playhead a little into the song: the scissors appears on the music bar.
         let tl = element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.2))
         tl.press(forDuration: 0.05, thenDragTo: tl.withOffset(CGVector(dx: -120, dy: 0)))
+        XCTAssertTrue(element("timeline.cut").waitForExistence(timeout: 5))
+        snapshot("18-audio-scissors")
+        tap("timeline.cut")
+        waitFor("audio cut") { count(prefix: "audio.") == 2 }
+        // The right-hand piece is selected; music has no Trim / editor panel any more.
+        XCTAssertTrue(element("tool.Cut").waitForExistence(timeout: 5))
+        XCTAssertFalse(element("tool.Trim").exists)
+        // Each piece is its own clip: select the first one and duplicate it.
         element("audio.0").tap()
-        XCTAssertTrue(element("tool.Trim").waitForExistence(timeout: 5))
-        tap("tool.Trim")
-        let summary = element("audioTrim.summary")
-        XCTAssertTrue(summary.waitForExistence(timeout: 5))
-        let before = summary.label
-        // Drag the start handle to the right, preview, then Trim.
-        let handle = element("audioTrim.startHandle")
-        let from = handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        from.press(forDuration: 0.1, thenDragTo: from.withOffset(CGVector(dx: 60, dy: 0)))
-        XCTAssertNotEqual(element("audioTrim.startTime").label, "0:00.0", "start handle should move")
-        tap("audioTrim.play")
-        RunLoop.current.run(until: Date().addingTimeInterval(1))
-        snapshot("18-audio-trim-preview")
-        tap("audioTrim.play")
-        tap("audioTrim.trim")
-        waitFor("trim applied") { element("audioTrim.summary").label != before }
-        // Undo inside the panel restores the previous section.
-        tap("panel.undo")
-        waitFor("undo restores") { element("audioTrim.summary").label == before }
-        tap("panel.done")
-        tap("tool.Split")
-        waitFor("audio split") { count(prefix: "audio.") == 2 }
+        XCTAssertTrue(element("tool.Cut").waitForExistence(timeout: 5))
         tap("tool.Duplicate")
         waitFor("audio duplicated") { count(prefix: "audio.") == 3 }
-        snapshot("18-audio-split-duplicate")
+        snapshot("18-audio-cut-duplicate")
     }
 
     func test17_FilterPreviewShowsCleanFrame() {

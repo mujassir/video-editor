@@ -165,8 +165,6 @@ struct EditorView: View {
         switch panel {
         case .canvas: CanvasPanel(model: model)
         case .music: MusicPanel(model: model)
-        case .audioTrim:
-            if case .audio(let id) = model.session.selection { AudioTrimPanel(model: model, audioID: id) } else { toolbar }
         case .captions: CaptionsPanel(model: model)
         case .text(let id):
             if let id { TextPanel(model: model, textID: id) } else { toolbar }
@@ -284,9 +282,8 @@ struct EditorView: View {
     }
 
     @ViewBuilder private var audioTools: some View {
-        ToolButton(title: "Trim", systemImage: "timeline.selection") { model.panel = .audioTrim }
+        ToolButton(title: "Cut", systemImage: "scissors") { model.splitSelectedAudio() }
         ToolButton(title: "To Playhead", systemImage: "arrow.right.to.line") { model.moveSelectedAudioToPlayhead() }
-        ToolButton(title: "Split", systemImage: "scissors") { model.splitSelectedAudio() }
         ToolButton(title: "Duplicate", systemImage: "plus.square.on.square") { model.duplicateSelectedAudio() }
         ToolButton(title: "Volume", systemImage: "speaker.wave.2") { model.panel = .music }
         ToolButton(title: "Beat Sync", systemImage: "metronome", badge: "AI") { model.beatSync() }
