@@ -457,17 +457,14 @@ public extension Project {
 
     // MARK: Audio clip editing
 
-    /// Re-fits music that follows the video so it ends with the video (or with the
-    /// song, if the song is shorter). Called after every edit.
+    /// Music that hasn't been cut runs to the end of the song, however long the
+    /// video is: the timeline shows all of it, and preview / export stop at the end
+    /// of the video. Called after every edit (older projects stored music trimmed to the video).
     mutating func refitMusic() {
-        let videoEnd = layout.duration
-        guard videoEnd > .zero else { return }
         for i in audioClips.indices where audioClips[i].followsVideo && !audioClips[i].hasSectionEdits {
             guard let item = mediaItem(audioClips[i].mediaID) else { continue }
             let clip = audioClips[i]
-            let available = item.duration - clip.sourceRange.start
-            let wanted = videoEnd - clip.start
-            let length = max(Self.minimumAudioDuration, min(available, wanted))
+            let length = max(Self.minimumAudioDuration, item.duration - clip.sourceRange.start)
             if length != clip.sourceRange.duration { audioClips[i].sourceRange.duration = length }
         }
     }
@@ -510,16 +507,25 @@ public extension Project {
         let (i, _) = try audioIndex(id)
         let clip = audioClips[i]
         let local = time - clip.start
-        guard local >= Self.minimumAudioDuration, clip.sourceRange.duration - local >= Self.minimumAudioDuration else {
+        guard local >= Self.minimumAudioDuration, clip.playedDuration - local >= Self.minimumAudioDuration else {
             throw EditError.tooShort
+        }
+        // Played time → song time (older clips can have deleted sections cut out).
+        var cut = clip.sourceRange.start + local
+        if clip.hasSectionEdits {
+            var played = MediaTime.zero
+            for s in clip.resolvedSections where !s.deleted {
+                if local <= played + s.duration { cut = s.start + (local - played); break }
+                played += s.duration
+            }
         }
         var left = clip, right = clip
         right.id = UUID()
         left.fitsVideo = false
         right.fitsVideo = false
-        left.sourceRange.duration = local
+        left.sourceRange = MediaTimeRange(start: clip.sourceRange.start, end: cut)
         left.fadeOut = .zero
-        right.sourceRange = MediaTimeRange(start: clip.sourceRange.start + local, end: clip.sourceRange.end)
+        right.sourceRange = MediaTimeRange(start: cut, end: clip.sourceRange.end)
         right.start = time
         right.fadeIn = .zero
         audioClips[i] = left

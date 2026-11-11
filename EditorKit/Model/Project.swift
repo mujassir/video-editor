@@ -394,6 +394,8 @@ public struct AudioClip: Codable, Hashable, Identifiable, Sendable {
     public var name: String = ""
     /// Music keeps its end at the end of the video as the edit grows or shrinks.
     /// nil (older projects) means "yes" for music, "no" for other roles.
+    /// Music now always shows the whole song (from its source start to the end of the
+    /// file) until it is cut; the part past the end of the video isn't exported.
     public var fitsVideo: Bool?
     public var followsVideo: Bool { fitsVideo ?? (role == .music) }
 
