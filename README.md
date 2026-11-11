@@ -54,15 +54,10 @@ A fast, private video editor for iPhone. It's built natively in Swift, SwiftUI, 
 ### Music and audio
 - 4 built-in royalty-free tracks, synthesized on the device.
 - Your own music from **Files**, or the soundtrack of a video (**From Video**).
-- **Music toolbar:** Edit, Repeat (loops the track's section until the end of the video), Duplicate, Delete.
-- **Edit Audio:**
-  - Full screen: the song's waveform with a live timer and moving cursor while it plays.
-  - A play bar under the waveform (0:00 to the music's length): drag its knob to move the playing position.
-  - Add as many markers as you like: 0 → marker 1 → marker 2 … → end become sections. Tap a section on the waveform to select it, then set its own volume or delete it.
-  - Deleting a section cuts that part out: the rest closes up on the waveform, the play bar and the timer (Undo brings it back).
-  - Overall volume, Clear all markers, Undo, and ✓ to save.
+- **Music toolbar:** Cut, Volume (volume, fade-out, auto-duck), Repeat (loops the track until the end of the video), Duplicate, Delete.
+- **Whole song on the timeline:** a 3-minute song on a 1-minute video shows all 3 minutes. The part past the end of the video is dimmed; preview and export stop at the end of the video.
+- **Cut:** a ✂︎ sits on the music bar under the playhead; tap it (or **Cut** in the toolbar) to cut the music there. Each piece is its own clip that you can select, move, repeat, duplicate or delete.
 - Press and hold a music bar, then drag it, to move it.
-- Music follows the video's length as you add or remove content, until you edit its sections.
 - Fade-out, and automatic ducking of music under speech.
 
 ### Canvas

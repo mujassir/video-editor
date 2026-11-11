@@ -70,4 +70,10 @@ public extension Project {
         for a in audioClips where a.role == .voiceover { d = max(d, a.timelineRange.end) }
         return d
     }
+
+    /// Length the timeline shows: the edit plus any music that runs past its end
+    /// (shown in full, but cut off at `duration` in the preview and the export).
+    var timelineDuration: MediaTime {
+        audioClips.map(\.timelineRange.end).reduce(duration, max)
+    }
 }

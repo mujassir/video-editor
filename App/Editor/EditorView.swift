@@ -70,10 +70,6 @@ struct EditorView: View {
         .fullScreenCover(isPresented: $showExport) {
             ExportView(model: model)
         }
-        .fullScreenCover(isPresented: Binding(get: { model.panel == .audioTrim && model.selectedAudioID != nil },
-                                              set: { if !$0, model.panel == .audioTrim { model.panel = nil } })) {
-            if let id = model.selectedAudioID { AudioEditorView(model: model, audioID: id) }
-        }
         .preferredColorScheme(.dark)
         .statusBarHidden(false)
     }
@@ -166,8 +162,6 @@ struct EditorView: View {
         switch panel {
         case .canvas: CanvasPanel(model: model)
         case .music: MusicPanel(model: model)
-        case .audioTrim:
-            toolbar   // the audio editor is presented full screen (see fullScreenCover)
         case .captions: CaptionsPanel(model: model)
         case .text(let id):
             if let id { TextPanel(model: model, textID: id) } else { toolbar }
@@ -282,7 +276,8 @@ struct EditorView: View {
     }
 
     @ViewBuilder private var audioTools: some View {
-        ToolButton(title: "Edit", systemImage: "slider.horizontal.below.rectangle") { model.panel = .audioTrim }
+        ToolButton(title: "Cut", systemImage: "scissors") { model.cutSelectedAudio() }
+        ToolButton(title: "Volume", systemImage: "speaker.wave.2") { model.panel = .music }
         ToolButton(title: "Repeat", systemImage: "repeat") { model.repeatSelectedAudio() }
         ToolButton(title: "Duplicate", systemImage: "plus.square.on.square") { model.duplicateSelectedAudio() }
         ToolButton(title: "Delete", systemImage: "trash") { model.deleteSelection() }

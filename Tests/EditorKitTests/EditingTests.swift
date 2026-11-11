@@ -412,53 +412,69 @@ struct EmptyProjectTests {
     }
 }
 
-@Suite("Music follows video length")
-struct MusicFollowsVideoTests {
-    private func project(video: Double, song: Double) -> Project {
+@Suite("Music shows the whole song")
+struct MusicFullLengthTests {
+    private func project(video: Double, song: Double, stored: Double? = nil) -> Project {
         var p = Project(name: "P")
         p.appendClip(for: MediaItem(kind: .video, fileName: "v.mov", naturalSize: CGSize(width: 10, height: 10), duration: s(video), hasAudio: false))
         let item = MediaItem(kind: .audio, fileName: "song.m4a", naturalSize: .zero, duration: s(song), hasAudio: true)
         p.media.append(item)
-        var clip = AudioClip(mediaID: item.id, role: .music, sourceRange: MediaTimeRange(start: .zero, duration: s(video)), start: .zero)
+        var clip = AudioClip(mediaID: item.id, role: .music, sourceRange: MediaTimeRange(start: .zero, duration: s(stored ?? song)), start: .zero)
         clip.fitsVideo = true
         p.addAudio(clip)
         return p
     }
 
-    @Test func growsAndShrinksWithTheVideo() {
-        var p = project(video: 90, song: 180)
-        p.appendClip(for: MediaItem(kind: .photo, fileName: "a.jpg", naturalSize: CGSize(width: 10, height: 10), duration: .zero, hasAudio: false), photoDuration: s(15))
+    @Test func longSongKeepsItsFullLengthOnTheTimeline() {
+        var p = project(video: 60, song: 180)
         p.refitMusic()
-        #expect(p.audioClips[0].sourceRange.duration == s(105), "music extends to the new 105 s end")
-        p.clips.removeLast()
-        p.refitMusic()
-        #expect(p.audioClips[0].sourceRange.duration == s(90))
+        #expect(p.audioClips[0].sourceRange.duration == s(180))
+        #expect(p.timelineDuration == s(180), "timeline shows the whole song")
+        #expect(p.duration == s(60), "preview and export stop at the end of the video")
     }
 
-    @Test func stopsAtTheEndOfAShortSong() {
-        var p = project(video: 90, song: 100)
-        p.appendClip(for: MediaItem(kind: .photo, fileName: "a.jpg", naturalSize: CGSize(width: 10, height: 10), duration: .zero, hasAudio: false), photoDuration: s(30))
+    @Test func olderProjectsTrimmedToTheVideoGetTheWholeSongBack() {
+        var p = project(video: 60, song: 180, stored: 60)
         p.refitMusic()
-        #expect(p.audioClips[0].sourceRange.duration == s(100))
+        #expect(p.audioClips[0].sourceRange.duration == s(180))
     }
 
-    @Test func manualEndStopsFollowing() throws {
-        var p = project(video: 90, song: 180)
+    @Test func cutPiecesAreSeparateClips() throws {
+        var p = project(video: 60, song: 180)
         let id = p.audioClips[0].id
-        try p.setAudioSourceRange(id, MediaTimeRange(start: .zero, end: s(60)))
-        p.appendClip(for: MediaItem(kind: .photo, fileName: "a.jpg", naturalSize: CGSize(width: 10, height: 10), duration: .zero, hasAudio: false), photoDuration: s(15))
+        let right = try p.splitAudio(id, at: s(40))
         p.refitMusic()
-        #expect(p.audioClips[0].sourceRange.duration == s(60), "user-chosen end is kept")
+        #expect(p.audioClips.count == 2)
+        #expect(p.audioClips[0].sourceRange == MediaTimeRange(start: .zero, end: s(40)))
+        let piece = try #require(p.audioClips.first { $0.id == right })
+        #expect(piece.start == s(40))
+        #expect(piece.sourceRange == MediaTimeRange(start: s(40), end: s(180)))
+        // Cuts can be made past the end of the video too.
+        _ = try p.splitAudio(right, at: s(120))
+        #expect(p.audioClips.count == 3)
     }
 
-    @Test @MainActor func everyEditRefits() throws {
-        let session = EditSession(project: project(video: 90, song: 180))
+    @Test func cuttingSectionedMusicMapsPlayedTimeToTheSong() throws {
+        var p = project(video: 60, song: 30)
+        let id = p.audioClips[0].id
+        try p.addAudioMarker(id, at: s(10))
+        try p.addAudioMarker(id, at: s(20))
+        try p.setAudioSectionDeleted(id, index: 1, true)   // plays 0–10, then 20–30
+        let right = try p.splitAudio(id, at: s(15))          // 5 s into the 20–30 part
+        #expect(p.audioClips[0].sourceRange.end == s(25))
+        #expect(p.audioClips[0].playedDuration == s(15))
+        let piece = try #require(p.audioClips.first { $0.id == right })
+        #expect(piece.sourceRange == MediaTimeRange(start: s(25), end: s(30)))
+        #expect(piece.playedDuration == s(5))
+    }
+
+    @Test @MainActor func editsDoNotTrimMusicToTheVideo() throws {
+        let session = EditSession(project: project(video: 60, song: 180))
         try session.apply("Add photo") { p in
             p.appendClip(for: MediaItem(kind: .photo, fileName: "a.jpg", naturalSize: CGSize(width: 10, height: 10), duration: .zero, hasAudio: false), photoDuration: s(10))
         }
-        #expect(session.project.audioClips[0].sourceRange.duration == s(100))
-        session.undo()
-        #expect(session.project.audioClips[0].sourceRange.duration == s(90))
+        #expect(session.project.audioClips[0].sourceRange.duration == s(180))
+        #expect(session.project.duration == s(70))
     }
 }
 

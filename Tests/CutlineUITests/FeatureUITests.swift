@@ -167,7 +167,7 @@ final class FeatureUITests: CutlineUITestCase {
         // Beat Sync has been removed everywhere, including the music toolbar.
         XCTAssertFalse(element("tool.Beat Sync").exists)
         element("audio.0").tap()
-        XCTAssertTrue(element("tool.Edit").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("tool.Cut").waitForExistence(timeout: 5))
         XCTAssertFalse(element("tool.Beat Sync").exists, "music toolbar should not offer Beat Sync")
     }
 
@@ -302,14 +302,13 @@ final class FeatureUITests: CutlineUITestCase {
         tap("music.use.sunrise")
         waitUntilIdle()
         waitFor("first track") { count(prefix: "audio.") == 1 }
-        // Shorten the first track: drop a marker mid-song and delete the part after it.
-        element("audio.0").tap()
-        tap("tool.Edit")
-        tap("audioEditor.addMarker")
-        waitFor("two sections") { element("audioTrim.summary").label.contains("2 sections") }
-        tap("audioEditor.deleteSection")
-        waitFor("second part deleted") { element("audioTrim.summary").label.contains("1 deleted") }
-        tap("panel.done")
+        // Shorten the first track: cut it with the scissors on the timeline and delete the rest.
+        let tl = element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.2))
+        tl.press(forDuration: 0.05, thenDragTo: tl.withOffset(CGVector(dx: -120, dy: 0)))
+        tap("timeline.cut")
+        waitFor("track cut") { count(prefix: "audio.") == 2 }
+        tap("tool.Delete")
+        waitFor("rest deleted") { count(prefix: "audio.") == 1 }
         // Second track starts where the first ends, not on top of it at 0:00.
         element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.05)).tap()
         tap("tool.Music")
@@ -330,84 +329,34 @@ final class FeatureUITests: CutlineUITestCase {
         print("AUDIODRAG timeline value: \(String(describing: element("timeline").value)) audio.1 frame: \(element("audio.1").frame) before: \(second)")
         snapshot("21-after-drag")
         waitFor("track moved") { element("audio.1").frame.minX < second.minX - 15 }
-        // Music toolbar is just Edit / Duplicate / Delete.
-        for id in ["tool.Edit", "tool.Repeat", "tool.Duplicate", "tool.Delete"] { XCTAssertTrue(element(id).exists, "\(id) missing") }
+        // Music toolbar: Cut / Repeat / Duplicate / Delete (no Edit any more).
+        XCTAssertFalse(element("tool.Edit").exists)
+        for id in ["tool.Cut", "tool.Repeat", "tool.Duplicate", "tool.Delete"] { XCTAssertTrue(element(id).exists, "\(id) missing") }
         XCTAssertFalse(element("tool.To Playhead").exists)
         snapshot("21-two-tracks")
     }
 
-    func test18_AudioTrimSplitDuplicate() {
+    func test18_AudioCutSelectDuplicate() {
         openProjectWithSamples()
         tap("tool.Music")
         tap("music.use.sunrise")
         waitUntilIdle()
         waitFor("music lane") { count(prefix: "audio.") == 1 }
-        // Playhead a little into the song, then select the music clip.
+        // Playhead a little into the song: the scissors appears on the music bar.
         let tl = element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.2))
         tl.press(forDuration: 0.05, thenDragTo: tl.withOffset(CGVector(dx: -120, dy: 0)))
+        XCTAssertTrue(element("timeline.cut").waitForExistence(timeout: 5))
+        snapshot("18-audio-scissors")
+        tap("timeline.cut")
+        waitFor("audio cut") { count(prefix: "audio.") == 2 }
+        // The right-hand piece is selected; there is no Edit / editor panel any more.
+        XCTAssertTrue(element("tool.Cut").waitForExistence(timeout: 5))
+        XCTAssertFalse(element("tool.Edit").exists)
+        // Each piece is its own clip: select the first one and duplicate it.
         element("audio.0").tap()
-        XCTAssertTrue(element("tool.Edit").waitForExistence(timeout: 5))
-        tap("tool.Edit")
-        let summary = element("audioTrim.summary")
-        XCTAssertTrue(summary.waitForExistence(timeout: 5))
-        // No trim handles, Trim button or Match video toggle any more.
-        for id in ["audioTrim.startHandle", "audioTrim.endHandle", "audioTrim.trim", "audioTrim.matchVideo"] {
-            XCTAssertFalse(element(id).exists, "\(id) should be gone")
-        }
-        tap("audioTrim.play")
-        RunLoop.current.run(until: Date().addingTimeInterval(1))
-        snapshot("18-audio-editor-playing")
-        tap("audioTrim.play")
-        // Full-screen editor: timer, markers, per-section volume and delete.
-        XCTAssertTrue(element("audioEditor.timer").exists)
-        let timeline = element("timeline")
-        XCTAssertTrue(!timeline.exists || !timeline.isHittable, "timeline/layers are hidden while editing audio")
-        // Play bar labels: 0:00 on the left, the music's length on the right.
-        XCTAssertEqual(element("audioEditor.startLabel").label, "0:00")
-        XCTAssertNotEqual(element("audioEditor.endLabel").label, "0:00")
-        // Drag the play-bar knob to move the playing position.
-        let scrub = app.sliders["audioEditor.scrub"]
-        XCTAssertTrue(scrub.waitForExistence(timeout: 5))
-        scrub.adjust(toNormalizedSliderPosition: 0.25)
-        waitFor("scrub moves position") { element("audioEditor.timer").label != "0:00.0" }
-        // Several markers: 0 → marker 1 → marker 2 → marker 3 → end.
-        tap("audioEditor.addMarker")
-        waitFor("two sections") { element("audioTrim.summary").label.contains("2 sections") }
-        tap("audioEditor.addMarker")
-        tap("audioEditor.addMarker")
-        waitFor("four sections") { element("audioTrim.summary").label.contains("4 sections") }
-        // Tapping the waveform selects a section; it does not move the play position.
-        let timeBefore = element("audioEditor.timer").label
-        element("audioEditor.wave").coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.5)).tap()
-        XCTAssertTrue(element("audioEditor.section").waitForExistence(timeout: 5))
-        XCTAssertTrue(element("audioEditor.section").label.contains("Section 2"), element("audioEditor.section").label)
-        XCTAssertEqual(element("audioEditor.timer").label, timeBefore, "tapping the waveform must not seek")
-        XCTAssertFalse(element("audioEditor.sectionChip.0").exists, "no section buttons")
-        // Deleting cuts that part out: the music gets shorter and the rest closes up.
-        let lengthBefore = element("audioEditor.endLabel").label
-        tap("audioEditor.deleteSection")
-        waitFor("section deleted") { element("audioTrim.summary").label.contains("1 deleted") }
-        XCTAssertNotEqual(element("audioEditor.endLabel").label, lengthBefore, "play bar should shrink")
-        // Delete the first section too, then Play must start (from the first kept part).
-        element("audioEditor.wave").coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.5)).tap()
-        XCTAssertTrue(element("audioEditor.section").label.contains("Section 1"))
-        tap("audioEditor.deleteSection")
-        waitFor("first section deleted") { element("audioTrim.summary").label.contains("2 deleted") }
-        tap("audioTrim.play")
-        let t0 = element("audioEditor.timer").label
-        waitFor("plays after deleting the first section") { element("audioEditor.timer").label != t0 }
-        tap("audioTrim.play")
-        // Undo inside the editor brings the sections back.
-        tap("panel.undo")
-        tap("panel.undo")
-        waitFor("undo restores") { !element("audioTrim.summary").label.contains("deleted") }
-        snapshot("18-audio-editor-sections")
-        tap("panel.done")
-        // Music has no Split tool (shape it with markers in Edit instead).
-        XCTAssertFalse(element("tool.Split").exists, "audio toolbar should not offer Split")
         tap("tool.Duplicate")
-        waitFor("audio duplicated") { count(prefix: "audio.") == 2 }
-        snapshot("18-audio-duplicate")
+        waitFor("audio duplicated") { count(prefix: "audio.") == 3 }
+        snapshot("18-audio-cut-duplicate")
     }
 
     func test17_FilterPreviewShowsCleanFrame() {
