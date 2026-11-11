@@ -4,7 +4,7 @@ import CoreImage
 import EditorKit
 
 enum EditorPanel: Equatable {
-    case canvas, trim, duration, motion, filters, adjust, speed, volume, transition(UUID), text(UUID?), music, captions, crop, background, export
+    case canvas, trim, duration, motion, filters, adjust, speed, duck, denoise, transition(UUID), text(UUID?), music, captions, captionText, crop, background, export
     case textDuration(UUID), textAnimate(UUID), textPosition(UUID), watermark, titleCard(TitleCard.Placement)
 }
 
@@ -39,7 +39,7 @@ final class EditorModel {
         didSet {
             guard let panel, panel != oldValue else { return }
             switch panel {
-            case .filters, .adjust, .crop, .background, .volume, .speed, .duration:
+            case .filters, .adjust, .crop, .background, .speed, .duration:
                 showCleanFrameOfSelection()
             case .textPosition(let id), .text(.some(let id)):
                 // Text panels: pause on a frame where that text is visible.
@@ -322,15 +322,60 @@ final class EditorModel {
         }
     }
 
-    func extractAudio() {
-        guard let id = selectedClipID else { return }
-        edit("Extract audio") { try $0.extractAudio(from: id) }
-        loadWaveforms()
+    /// Turns noise reduction on (at `level`) or off for the selected clip. The cleaned sound is
+    /// made once per video and strength, then reused (also by split pieces of the same video).
+    func setNoiseReduction(_ level: NoiseReduction?) {
+        guard let clip = selectedClip, let media = project.mediaItem(clip.mediaID) else { return }
+        guard let level else {
+            edit("Noise reduction") { try $0.updateClip(clip.id) { $0.noiseReduction = nil } }
+            return
+        }
+        guard media.hasAudio else { showToast("This clip has no sound", systemImage: "speaker.slash"); return }
+        if resolver.denoisedURL(for: media, level: level) != nil {
+            edit("Noise reduction") { try $0.updateClip(clip.id) { $0.noiseReduction = level } }
+            showToast("Noise reduced (\(level.title))", systemImage: "waveform")
+            return
+        }
+        runBusy("Reducing noise…") { model in
+            let base = media.fileName.split(separator: ".").first.map(String.init) ?? "clip"
+            let name = "nr-\(level.rawValue)-\(base).m4a"
+            let destination = model.resolver.mediaDirectory.appendingPathComponent(name)
+            try await NoiseReducer.process(source: model.resolver.url(for: media), destination: destination, level: level) { p in
+                Task { @MainActor in model.busyProgress = p }
+            }
+            model.edit("Noise reduction") { project in
+                if let i = project.media.firstIndex(where: { $0.id == media.id }) {
+                    var names = project.media[i].denoisedFileNames ?? [:]
+                    names[level] = name
+                    project.media[i].denoisedFileNames = names
+                }
+                try project.updateClip(clip.id) { $0.noiseReduction = level }
+            }
+            model.showToast("Noise reduced (\(level.title))", systemImage: "waveform")
+        }
+    }
+
+    /// Removes um, uh, ah… from the captions (text only; the video is not cut).
+    func removeCaptionFillers() {
+        var track = project.captions
+        let removed = track.removeFillers()
+        guard removed > 0 else {
+            showToast("No filler words found", systemImage: "checkmark.circle")
+            return
+        }
+        edit("Remove fillers") { $0.captions = track }
+        if project.captions.segments.isEmpty { select(.none) }
+        showToast("Removed \(removed) filler word\(removed == 1 ? "" : "s")", systemImage: "text.badge.minus")
     }
 
     var selectedAudioID: UUID? {
         if case .audio(let id) = session.selection { return id }
         return nil
+    }
+
+    var selectedAudio: AudioClip? {
+        guard let id = selectedAudioID else { return nil }
+        return project.audioClips.first { $0.id == id }
     }
 
     /// Cuts a music clip in two at `time` (the scissors on the timeline / toolbar).

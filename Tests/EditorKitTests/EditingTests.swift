@@ -576,3 +576,44 @@ struct AudioSectionTests {
         #expect(p.audioClips[0].playedDuration == s(20))
     }
 }
+
+
+@Suite("Caption styles")
+struct CaptionPresetTests {
+    @Test func onlyClassicKaraokeAndBold() {
+        #expect(CaptionPreset.allCases == [.classic, .karaoke, .bold])
+    }
+
+    @Test func removedStylesOpenAsTheClosestOneLeft() throws {
+        func decode(_ raw: String) throws -> CaptionPreset {
+            try JSONDecoder().decode(CaptionPreset.self, from: Data("\"\(raw)\"".utf8))
+        }
+        #expect(try decode("minimal") == .classic)
+        #expect(try decode("neon") == .karaoke)
+        #expect(try decode("bold") == .bold)
+    }
+}
+
+
+@Suite("Remove caption fillers")
+struct CaptionFillerTests {
+    private func segment(_ text: String, at start: Double) -> CaptionSegment {
+        CaptionSegment(words: text.split(separator: " ").enumerated().map { i, w in
+            CaptionWord(text: String(w), range: MediaTimeRange(start: s(start + Double(i) * 0.5), duration: s(0.5)))
+        })
+    }
+
+    @Test func removesFillersAndKeepsTiming() {
+        var track = CaptionTrack()
+        track.segments = [segment("Um, so we went uh home", at: 0),
+                          segment("Thanks for watching, ah", at: 5),
+                          segment("Umm...", at: 9),
+                          segment("Uh-huh, the umbrella is here", at: 10)]
+        let removed = track.removeFillers()
+        #expect(removed == 4)
+        #expect(track.segments.map(\.text) == ["So we went home", "Thanks for watching", "Uh-huh, the umbrella is here"])
+        // Words that stay keep their original times.
+        #expect(track.segments[0].words.map(\.range.start) == [s(0.5), s(1), s(1.5), s(2.5)])
+        #expect(track.removeFillers() == 0, "nothing left to remove")
+    }
+}

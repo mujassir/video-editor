@@ -7,6 +7,13 @@ public enum MediaKind: String, Codable, Sendable {
     case video, photo, audio
 }
 
+/// How strongly background noise (hiss, hum, wind, room tone) is removed from a clip's sound.
+public enum NoiseReduction: String, Codable, CaseIterable, Sendable, Identifiable, CodingKeyRepresentable {
+    case low, medium, high
+    public var id: String { rawValue }
+    public var title: String { rawValue.capitalized }
+}
+
 /// A source file copied into the project's media folder.
 public struct MediaItem: Codable, Hashable, Identifiable, Sendable {
     public var id: UUID
@@ -20,6 +27,8 @@ public struct MediaItem: Codable, Hashable, Identifiable, Sendable {
     public var displayName: String
     /// Reversed copy of a video, generated on demand for reversed clips.
     public var reversedFileName: String?
+    /// Noise-reduced copies of the audio, by strength (generated on demand).
+    public var denoisedFileNames: [NoiseReduction: String]?
     /// Clockwise quarter turns needed to display the raw video frames upright
     /// (from the track's preferredTransform). `naturalSize` is the upright size.
     public var sourceQuarterTurns: Int = 0
@@ -330,6 +339,8 @@ public struct VideoClip: Codable, Hashable, Identifiable, Sendable {
     public var freezeAt: MediaTime?
     public var volume: Double = 1
     public var isMuted = false
+    /// Noise reduction on the clip's own sound. nil = off (also older projects).
+    public var noiseReduction: NoiseReduction?
     public var transform = ClipTransform()
     public var filter: FilterSetting?
     public var adjustments = ColorAdjustments()
@@ -389,6 +400,9 @@ public struct AudioClip: Codable, Hashable, Identifiable, Sendable {
     public var lane: Int = 0
     /// Lower this clip while someone is speaking on the main track.
     public var autoDuck = false
+    /// Music level while someone speaks when auto-duck is on (0…1). nil = 25% (older projects).
+    public var duckLevel: Double?
+    public var resolvedDuckLevel: Double { min(max(duckLevel ?? 0.25, 0), 1) }
     /// Beat times detected in the source (source time), if analysed.
     public var beats: [MediaTime] = []
     public var name: String = ""
@@ -653,10 +667,60 @@ public struct CaptionSegment: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
+// MARK: Filler words
+
+public extension CaptionTrack {
+    /// Hesitation sounds removed by "Remove Fillers" (compared without case or punctuation).
+    static let fillerWords: Set<String> = ["um", "umm", "ummm", "uh", "uhh", "uhhh", "ah", "ahh", "ahhh",
+                                           "er", "err", "erm", "hmm", "hm", "mm", "mmm"]
+
+    static func isFiller(_ word: String) -> Bool {
+        fillerWords.contains(word.lowercased().trimmingCharacters(in: .punctuationCharacters.union(.whitespaces)))
+    }
+
+    /// Removes filler words (um, uh, ah…) from every caption; captions left empty are dropped.
+    /// The remaining words keep their timing. Returns how many words were removed.
+    @discardableResult
+    mutating func removeFillers() -> Int {
+        var removed = 0
+        for s in segments.indices {
+            let words = segments[s].words
+            var kept = words.filter { !Self.isFiller($0.text) }
+            removed += words.count - kept.count
+            guard kept.count != words.count, !kept.isEmpty else {
+                if kept.isEmpty { segments[s].words = [] }
+                continue
+            }
+            // "Um, so we…" → "So we…": keep the sentence capitalised.
+            if Self.isFiller(words[0].text), let first = kept[0].text.first, first.isLowercase,
+               words[0].text.first?.isUppercase == true {
+                kept[0].text = first.uppercased() + kept[0].text.dropFirst()
+            }
+            // "…watching, um" → "…watching": no dangling comma at the end.
+            if let last = words.last, Self.isFiller(last.text), kept[kept.count - 1].text.hasSuffix(",") {
+                kept[kept.count - 1].text.removeLast()
+            }
+            segments[s].words = kept
+        }
+        segments.removeAll { $0.words.isEmpty }
+        return removed
+    }
+}
+
 public enum CaptionPreset: String, Codable, CaseIterable, Sendable, Identifiable {
-    case classic, karaoke, bold, minimal, neon
+    case classic, karaoke, bold
     public var id: String { rawValue }
     public var displayName: String { rawValue.capitalized }
+
+    /// Projects saved with the removed Minimal / Neon styles open with the closest one left.
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        switch raw {
+        case "minimal": self = .classic
+        case "neon": self = .karaoke
+        default: self = CaptionPreset(rawValue: raw) ?? .karaoke
+        }
+    }
 }
 
 public struct CaptionTrack: Codable, Hashable, Sendable {

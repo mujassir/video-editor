@@ -273,23 +273,52 @@ struct SpeedPanel: View {
     }
 }
 
-struct VolumePanel: View {
+/// Noise reduction for a video clip's own sound: Off / Low / Medium / High.
+struct NoiseReductionPanel: View {
     @Bindable var model: EditorModel
     let clipID: UUID
-    private var clip: VideoClip? { model.project.clipIndex(clipID).map { model.project.clips[$0] } }
+    private var level: NoiseReduction? { model.project.clipIndex(clipID).flatMap { model.project.clips[$0].noiseReduction } }
 
     var body: some View {
-        PanelContainer(title: "Volume", onDone: { model.panel = nil }) {
-            VStack(spacing: 12) {
-                LabeledSlider(title: "Volume", value: Binding(get: { clip?.volume ?? 1 }, set: { v in
-                    model.editCoalescing("Volume", key: "vol-\(clipID)") { p in try? p.updateClip(clipID) { $0.volume = v } }
-                }), range: 0...2, format: { String(format: "%.0f%%", $0 * 100) })
-                HStack {
-                    ChipButton(title: clip?.isMuted == true ? "Unmute" : "Mute", isSelected: clip?.isMuted == true) {
-                        model.edit("Mute") { p in try p.updateClip(clipID) { $0.isMuted.toggle() } }
+        PanelContainer(title: "Noise Reduction", onDone: { model.panel = nil }) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Removes background hiss, hum, wind and room noise from this clip's sound.")
+                    .font(.caption).foregroundStyle(Theme.secondaryText)
+                HStack(spacing: 8) {
+                    ChipButton(title: "Off", isSelected: level == nil) { model.setNoiseReduction(nil) }
+                    ForEach(NoiseReduction.allCases) { l in
+                        ChipButton(title: l.title, isSelected: level == l) { model.setNoiseReduction(l) }
                     }
-                    ChipButton(title: "Extract Audio") { model.extractAudio() }
                     Spacer()
+                }
+                Text("Stronger settings remove more noise but can make voices sound thinner.")
+                    .font(.caption2).foregroundStyle(Theme.secondaryText)
+            }
+        }
+    }
+}
+
+/// How far the music drops while someone speaks (auto-duck). Speech comes from captions.
+struct DuckPanel: View {
+    @Bindable var model: EditorModel
+    let audioID: UUID
+    private var audio: AudioClip? { model.project.audioClips.first { $0.id == audioID } }
+
+    var body: some View {
+        PanelContainer(title: "Duck", onDone: { model.panel = nil }) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Music volume while someone is speaking")
+                    .font(.caption).foregroundStyle(Theme.secondaryText)
+                LabeledSlider(title: "Music", value: Binding(get: { audio?.resolvedDuckLevel ?? 0.25 }, set: { v in
+                    let level = (v * 20).rounded() / 20   // 5% steps
+                    model.editCoalescing("Duck level", key: "duck-\(audioID)") { p in
+                        p.updateAudio(audioID) { $0.duckLevel = level; if $0.role == .music { $0.autoDuck = true } }
+                    }
+                }), range: 0...1, format: { String(format: "%.0f%%", $0 * 100) })
+                if model.project.captions.segments.isEmpty {
+                    Label("Ducking finds speech from captions. Add captions to hear it.", systemImage: "info.circle")
+                        .font(.caption).foregroundStyle(Theme.secondaryText)
+                        .accessibilityIdentifier("duck.needsCaptions")
                 }
             }
         }
@@ -573,24 +602,6 @@ struct CaptionsPanel: View {
                     LabeledSlider(title: "Position", value: Binding(get: { track.positionY }, set: { v in
                         model.editCoalescing("Caption position", key: "cp") { $0.captions.positionY = v }
                     }), range: 0.1...0.92, format: { String(format: "%.0f%%", $0 * 100) })
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 6) {
-                            ForEach(Array(track.segments.enumerated()), id: \.element.id) { i, seg in
-                                HStack(alignment: .top) {
-                                    Text(seg.range.start.timecode).font(.caption.monospacedDigit()).foregroundStyle(Theme.secondaryText)
-                                        .frame(width: 48, alignment: .leading)
-                                    TextField("", text: Binding(get: { seg.text }, set: { v in
-                                        model.editCoalescing("Edit caption", key: "cap-\(seg.id)") { p in
-                                            guard i < p.captions.segments.count else { return }
-                                            p.captions.segments[i].words = Self.retime(v, like: p.captions.segments[i])
-                                        }
-                                    }))
-                                    .font(.subheadline)
-                                    .accessibilityIdentifier("caption.field.\(i)")
-                                }
-                            }
-                        }
-                    }.frame(maxHeight: 110)
                 }
             }
         }
@@ -606,6 +617,112 @@ struct CaptionsPanel: View {
             CaptionWord(text: w, range: MediaTimeRange(start: range.start + MediaTime(seconds: Double(i) * each),
                                                        duration: MediaTime(seconds: each)))
         }
+    }
+}
+
+/// Full-screen caption text editor. Typing only changes a draft; Done saves every change at
+/// once (one undo step), Cancel throws the draft away. Opens on the caption under the playhead.
+struct CaptionTextEditor: View {
+    @Bindable var model: EditorModel
+    @State private var drafts: [UUID: String] = [:]
+    @FocusState private var focused: UUID?
+    @State private var segments: [CaptionSegment] = []
+
+    var body: some View {
+        NavigationStack {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 10) {
+                        ForEach(Array(segments.enumerated()), id: \.element.id) { i, seg in
+                            row(i, seg).id(seg.id)
+                        }
+                    }
+                    .padding(16)
+                }
+                .scrollDismissesKeyboard(.never)
+                .onAppear {
+                    segments = model.project.captions.segments
+                    drafts = Dictionary(uniqueKeysWithValues: segments.map { ($0.id, $0.text) })
+                    guard let current = currentSegmentID else { return }
+                    proxy.scrollTo(current, anchor: .center)
+                    // Focus once the cover has finished sliding in, so the keyboard comes up with it.
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(450))
+                        focused = current
+                    }
+                }
+                .onChange(of: focused) { _, id in
+                    // Keep the line being typed in visible above the keyboard.
+                    guard let id else { return }
+                    withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(id, anchor: .center) }
+                }
+            }
+            .background(Theme.background.ignoresSafeArea())
+            .navigationTitle("Edit Captions")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { model.panel = nil }
+                        .accessibilityIdentifier("captionEditor.cancel")
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { save() }
+                        .fontWeight(.semibold)
+                        .accessibilityIdentifier("captionEditor.done")
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private func row(_ i: Int, _ seg: CaptionSegment) -> some View {
+        let isFocused = focused == seg.id
+        return VStack(alignment: .leading, spacing: 6) {
+            Button {
+                focused = seg.id
+                model.seek(to: seg.range.start)
+            } label: {
+                Text("\(seg.range.start.timecode) – \(seg.range.end.timecode)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(isFocused ? Theme.accent : Theme.secondaryText)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("caption.time.\(i)")
+            TextField("Caption", text: Binding(get: { drafts[seg.id] ?? seg.text }, set: { drafts[seg.id] = $0 }),
+                      axis: .vertical)
+                .font(.body)
+                .focused($focused, equals: seg.id)
+                .submitLabel(.next)
+                .onSubmit { focusNext(after: i) }
+                .padding(12)
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(isFocused ? Theme.accent : .clear, lineWidth: 1.5))
+                .accessibilityIdentifier("caption.field.\(i)")
+        }
+    }
+
+    /// The caption showing at the playhead, else the last one before it, else the first.
+    private var currentSegmentID: UUID? {
+        let t = model.currentTime
+        return (segments.first { $0.range.contains(t) } ?? segments.last { $0.range.start <= t } ?? segments.first)?.id
+    }
+
+    private func focusNext(after i: Int) {
+        focused = i + 1 < segments.count ? segments[i + 1].id : nil
+    }
+
+    private func save() {
+        focused = nil
+        let changed = segments.filter { (drafts[$0.id] ?? $0.text) != $0.text }
+        if !changed.isEmpty {
+            model.edit("Edit captions") { p in
+                for seg in changed {
+                    guard let k = p.captions.segments.firstIndex(where: { $0.id == seg.id }), let text = drafts[seg.id] else { continue }
+                    p.captions.segments[k].words = CaptionsPanel.retime(text, like: p.captions.segments[k])
+                }
+            }
+        }
+        model.panel = nil
     }
 }
 

@@ -122,6 +122,7 @@ struct ChipButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("chip.\(title)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

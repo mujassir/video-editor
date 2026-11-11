@@ -11,6 +11,12 @@ public struct MediaResolver: Sendable {
     public func reversedURL(for item: MediaItem) -> URL? {
         item.reversedFileName.map { mediaDirectory.appendingPathComponent($0) }
     }
+    /// The noise-reduced audio for `item` at `level`, if it has been made.
+    public func denoisedURL(for item: MediaItem, level: NoiseReduction) -> URL? {
+        guard let name = item.denoisedFileNames?[level] else { return nil }
+        let url = mediaDirectory.appendingPathComponent(name)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
 }
 
 /// The playable / exportable result of building a project.
@@ -150,8 +156,10 @@ public final class CompositionBuilder: @unchecked Sendable {
                     }
                 }
 
+                // Noise reduction plays the cleaned copy of the sound (same timing as the original).
+                let audioAsset = clip.noiseReduction.flatMap { resolver.denoisedURL(for: media, level: $0) }.map { asset($0) } ?? a
                 if !clip.isReversed, !clip.isMuted, clip.volume > 0, media.hasAudio,
-                   let srcAudio = try await a.loadTracks(withMediaType: .audio).first,
+                   let srcAudio = try await audioAsset.loadTracks(withMediaType: .audio).first,
                    let audio = audioTracks[lane] {
                     try audio.insertTimeRange(sourceRange, of: srcAudio, at: timelineStart)
                     if clip.speed != 1 {
@@ -215,7 +223,8 @@ public final class CompositionBuilder: @unchecked Sendable {
                 guard available > .zero else { continue }
                 let range = MediaTimeRange(start: clip.sourceRange.start, duration: available)
                 try track.insertTimeRange(range.cmTimeRange, of: src, at: clip.start.cmTime)
-                Self.applyEnvelope(to: p, clip: clip, playedDuration: available, speech: clip.autoDuck ? speech : [])
+                Self.applyEnvelope(to: p, clip: clip, playedDuration: available, speech: clip.autoDuck ? speech : [],
+                                   duckLevel: clip.resolvedDuckLevel)
             }
             audioParams[track.trackID] = p
         }

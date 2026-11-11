@@ -744,3 +744,113 @@ struct SlowMotionBlendTests {
         #expect(mid > 0.3 && mid < 0.7, "blended frame should be grey, got \(mid)")
     }
 }
+
+
+@Suite("Auto-duck level")
+struct DuckLevelTests {
+    private func t(_ x: Double) -> MediaTime { MediaTime(seconds: x) }
+
+    @Test func defaultsTo25PercentAndOldClipsLoad() throws {
+        let clip = AudioClip(mediaID: UUID(), role: .music, sourceRange: MediaTimeRange(start: .zero, duration: t(10)), start: .zero)
+        #expect(clip.duckLevel == nil && clip.resolvedDuckLevel == 0.25)
+        let decoded = try JSONDecoder().decode(AudioClip.self, from: JSONEncoder().encode(clip))
+        #expect(decoded.resolvedDuckLevel == 0.25)
+    }
+
+    @Test func musicDropsToTheChosenLevelUnderSpeech() {
+        var clip = AudioClip(mediaID: UUID(), role: .music, sourceRange: MediaTimeRange(start: .zero, duration: t(10)), start: .zero)
+        clip.volume = 0.8
+        clip.duckLevel = 0.5
+        let p = AVMutableAudioMixInputParameters()
+        CompositionBuilder.applyEnvelope(to: p, clip: clip, playedDuration: t(10),
+                                         speech: [MediaTimeRange(start: t(3), end: t(6))], duckLevel: clip.resolvedDuckLevel)
+        var start: Float = 0, end: Float = 0
+        var range = CMTimeRange()
+        #expect(p.getVolumeRamp(for: t(4.5).cmTime, startVolume: &start, endVolume: &end, timeRange: &range))
+        #expect(abs(start - 0.4) < 1e-6 && abs(end - 0.4) < 1e-6, "80% music ducked to half = 40%")
+    }
+}
+
+
+@Suite("Noise reduction")
+struct NoiseReductionTests {
+    /// Speech-like test signal: 0.5 s of steady hiss, then 0.5 s of a 300 Hz tone over the same hiss, repeated.
+    private func signal(seconds: Double, sampleRate: Double = 48_000) -> (mix: [Float], hissOnly: Range<Int>, toneRange: Range<Int>) {
+        var seed: UInt32 = 12345
+        func noise() -> Float { seed = seed &* 1_664_525 &+ 1_013_904_223; return Float(seed) / Float(UInt32.max) * 2 - 1 }
+        let count = Int(seconds * sampleRate)
+        var out = [Float](repeating: 0, count: count)
+        let block = Int(0.5 * sampleRate)
+        for i in 0..<count {
+            let hiss = 0.03 * noise()
+            let toneOn = (i / block) % 2 == 1
+            let tone: Float = toneOn ? 0.3 * sin(2 * .pi * 300 * Float(i) / Float(sampleRate)) : 0
+            out[i] = hiss + tone
+        }
+        // Middle of the 3rd hiss block and the 4th tone block (away from edges).
+        return (out, (2 * block + block / 4)..<(2 * block + 3 * block / 4), (3 * block + block / 4)..<(3 * block + 3 * block / 4))
+    }
+
+    private func rmsDB(_ x: ArraySlice<Float>) -> Float {
+        let rms = (x.reduce(0) { $0 + $1 * $1 } / Float(x.count)).squareRoot()
+        return 20 * log10(max(rms, 1e-9))
+    }
+
+    @Test(arguments: NoiseReduction.allCases)
+    func hissDropsAndTheToneStays(level: NoiseReduction) {
+        let (mix, hiss, tone) = signal(seconds: 4)
+        let out = NoiseReducer.reduce(channels: [mix], level: level)[0]
+        #expect(out.count == mix.count)
+        let hissDrop = rmsDB(mix[hiss]) - rmsDB(out[hiss])
+        let toneChange = abs(rmsDB(mix[tone]) - rmsDB(out[tone]))
+        #expect(hissDrop > 8, "hiss reduced by \(hissDrop) dB at \(level)")
+        #expect(toneChange < 1.5, "tone changed by \(toneChange) dB at \(level)")
+    }
+
+    @Test func strongerLevelsRemoveMore() {
+        let (mix, hiss, _) = signal(seconds: 4)
+        let drops = NoiseReduction.allCases.map { level -> Float in
+            let out = NoiseReducer.reduce(channels: [mix], level: level)[0]
+            return rmsDB(mix[hiss]) - rmsDB(out[hiss])
+        }
+        print("NOISE hiss reduction dB (low, medium, high): \(drops)")
+        #expect(drops[0] < drops[1] && drops[1] < drops[2], "\(drops)")
+    }
+
+    @Test func fileKeepsChannelsLengthAndTiming() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let (mix, _, _) = signal(seconds: 3)
+        let source = dir.appendingPathComponent("in.caf")
+        let format = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2)!
+        do {
+            let file = try AVAudioFile(forWriting: source, settings: format.settings)
+            let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(mix.count))!
+            buffer.frameLength = AVAudioFrameCount(mix.count)
+            for c in 0..<2 { for i in mix.indices { buffer.floatChannelData![c][i] = mix[i] } }
+            try file.write(from: buffer)
+        }
+        let destination = dir.appendingPathComponent("out.m4a")
+        try await NoiseReducer.process(source: source, destination: destination, level: .medium)
+        let out = try AVAudioFile(forReading: destination)
+        #expect(out.processingFormat.channelCount == 2)
+        #expect(abs(Int(out.length) - mix.count) < 100, "length \(out.length) vs \(mix.count)")
+        // The tone starts at 0.5 s in the original; it must start there in the cleaned copy too.
+        let buffer = AVAudioPCMBuffer(pcmFormat: out.processingFormat, frameCapacity: AVAudioFrameCount(out.length))!
+        try out.read(into: buffer)
+        let ch = Array(UnsafeBufferPointer(start: buffer.floatChannelData![0], count: Int(buffer.frameLength)))
+        let onset = ch.indices.first { i in i > 12_000 && abs(ch[i]) > 0.15 } ?? 0
+        #expect(abs(Double(onset) / 48_000 - 0.5) < 0.02, "tone starts at \(Double(onset) / 48_000) s")
+    }
+
+    @Test func clipsSavedWithoutTheFieldLoadWithNoiseReductionOff() throws {
+        let c = VideoClip(mediaID: UUID(), kind: .video, sourceRange: MediaTimeRange(start: .zero, duration: MediaTime(seconds: 2)))
+        let decoded = try JSONDecoder().decode(VideoClip.self, from: JSONEncoder().encode(c))
+        #expect(decoded.noiseReduction == nil)
+        var item = MediaItem(kind: .video, fileName: "v.mov", naturalSize: .zero, duration: MediaTime(seconds: 2), hasAudio: true)
+        item.denoisedFileNames = [.medium: "nr-medium-v.m4a"]
+        let back = try JSONDecoder().decode(MediaItem.self, from: JSONEncoder().encode(item))
+        #expect(back.denoisedFileNames?[.medium] == "nr-medium-v.m4a")
+    }
+}

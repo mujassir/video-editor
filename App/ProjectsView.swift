@@ -116,16 +116,20 @@ struct ProjectCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ZStack {
-                Theme.surfaceRaised
-                if let image = UIImage(contentsOfFile: thumbnail.path) {
-                    Image(uiImage: image).resizable().scaledToFill()
-                } else {
-                    Image(systemName: "film").font(.title).foregroundStyle(Theme.secondaryText)
+            // The column decides the size; the thumbnail (any aspect ratio) fills it and is cropped,
+            // so a wide 16:9 cover can't push past the card into its neighbour.
+            Theme.surfaceRaised
+                .frame(maxWidth: .infinity)
+                .frame(height: 150)
+                .overlay {
+                    if let image = UIImage(contentsOfFile: thumbnail.path) {
+                        Image(uiImage: image).resizable().scaledToFill()
+                    } else {
+                        Image(systemName: "film").font(.title).foregroundStyle(Theme.secondaryText)
+                    }
                 }
-            }
-            .frame(height: 150)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .contentShape(RoundedRectangle(cornerRadius: 14))
             .overlay(alignment: .bottomTrailing) {
                 Text(project.duration.timecode)
                     .font(.caption2.monospacedDigit().weight(.semibold))
@@ -167,5 +171,16 @@ enum SampleImport {
             }
         }
         await model.importMedia(urls: urls)
+        if LaunchOptions.sampleCaptions {
+            model.edit("Sample captions") { p in
+                p.captions.segments = [("Um hello there", 0.5), ("This is a caption", 3.0), ("Thanks for watching, uh", 6.0), ("Ah", 8.0)].map { text, start in
+                    let words = text.split(separator: " ").enumerated().map { i, w in
+                        CaptionWord(text: String(w), range: MediaTimeRange(start: MediaTime(seconds: start + Double(i) * 0.4),
+                                                                           duration: MediaTime(seconds: 0.4)))
+                    }
+                    return CaptionSegment(words: words)
+                }
+            }
+        }
     }
 }

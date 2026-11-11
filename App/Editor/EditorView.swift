@@ -70,6 +70,10 @@ struct EditorView: View {
         .fullScreenCover(isPresented: $showExport) {
             ExportView(model: model)
         }
+        .fullScreenCover(isPresented: Binding(get: { model.panel == .captionText },
+                                              set: { if !$0, model.panel == .captionText { model.panel = nil } })) {
+            CaptionTextEditor(model: model)
+        }
         .preferredColorScheme(.dark)
         .statusBarHidden(false)
     }
@@ -163,6 +167,9 @@ struct EditorView: View {
         case .canvas: CanvasPanel(model: model)
         case .music: MusicPanel(model: model)
         case .captions: CaptionsPanel(model: model)
+        case .captionText: toolbar   // shown full screen (see .fullScreenCover)
+        case .duck:
+            if let id = model.selectedAudioID { DuckPanel(model: model, audioID: id) } else { toolbar }
         case .text(let id):
             if let id { TextPanel(model: model, textID: id) } else { toolbar }
         case .transition(let id): TransitionPanel(model: model, clipID: id)
@@ -171,7 +178,7 @@ struct EditorView: View {
         case .textPosition(let id): TextPositionPanel(model: model, textID: id)
         case .watermark: WatermarkPanel(model: model)
         case .titleCard(let placement): TitleCardPanel(model: model, placement: placement)
-        case .trim, .duration, .motion, .filters, .adjust, .speed, .volume, .crop, .background:
+        case .trim, .duration, .motion, .filters, .adjust, .speed, .denoise, .crop, .background:
             if let id = model.selectedClipID {
                 switch panel {
                 case .trim: TrimPanel(model: model, clipID: id)
@@ -180,7 +187,7 @@ struct EditorView: View {
                 case .filters: FiltersPanel(model: model, clipID: id)
                 case .adjust: AdjustPanel(model: model, clipID: id)
                 case .speed: SpeedPanel(model: model, clipID: id)
-                case .volume: VolumePanel(model: model, clipID: id)
+                case .denoise: NoiseReductionPanel(model: model, clipID: id)
                 case .crop: CropPanel(model: model, clipID: id)
                 default: BackgroundPanel(model: model, clipID: id)
                 }
@@ -247,7 +254,7 @@ struct EditorView: View {
         ToolButton(title: "Speed", systemImage: "speedometer") { model.panel = .speed }
         ToolButton(title: "Animate", systemImage: "camera.metering.center.weighted",
                    isActive: !(model.selectedClip?.animation?.isEmpty ?? true)) { model.panel = .motion }
-        ToolButton(title: "Volume", systemImage: "speaker.wave.2") { model.panel = .volume }
+        ToolButton(title: "Denoise", systemImage: "waveform", isActive: model.selectedClip?.noiseReduction != nil) { model.panel = .denoise }
         ToolButton(title: "Filters", systemImage: "camera.filters") { model.panel = .filters }
         ToolButton(title: "Adjust", systemImage: "slider.horizontal.3") { model.panel = .adjust }
         ToolButton(title: "Enhance", systemImage: "wand.and.stars", badge: "AI") { model.autoEnhance() }
@@ -277,6 +284,9 @@ struct EditorView: View {
 
     @ViewBuilder private var audioTools: some View {
         ToolButton(title: "Cut", systemImage: "scissors") { model.cutSelectedAudio() }
+        if model.selectedAudio?.role == .music {
+            ToolButton(title: "Duck", systemImage: "waveform.badge.minus") { model.panel = .duck }
+        }
         if model.canMoveSelectedAudioToStart {
             ToolButton(title: "Move to Start", systemImage: "arrow.left.to.line") { model.moveSelectedAudioToStart() }
         }
@@ -287,7 +297,9 @@ struct EditorView: View {
     }
 
     @ViewBuilder private var captionTools: some View {
+        ToolButton(title: "Edit", systemImage: "character.cursor.ibeam") { model.panel = .captionText }
         ToolButton(title: "Style", systemImage: "paintbrush") { model.panel = .captions }
+        ToolButton(title: "Fillers", systemImage: "text.badge.minus") { model.removeCaptionFillers() }
         ToolButton(title: "Delete", systemImage: "trash") { model.deleteSelection() }
     }
 }

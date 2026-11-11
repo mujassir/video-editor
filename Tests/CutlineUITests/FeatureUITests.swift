@@ -24,6 +24,30 @@ final class FeatureUITests: CutlineUITestCase {
         waitFor("project reopened") { count(prefix: "clip.") == 3 }
     }
 
+    func test01b_RecentCardsWithMixedRatiosDontOverlap() {
+        // One 16:9 project and one 3:4 project side by side in Recent.
+        for ratio in ["16:9", "3:4"] {
+            openProjectWithSamples()
+            tap("editor.aspect")
+            tap("chip.\(ratio)")
+            tap("panel.done")
+            tap("editor.close")
+            XCTAssertTrue(element("projects.new").waitForExistence(timeout: 10))
+        }
+        waitFor("two cards") { app.descendants(matching: .any).matching(identifier: "project.card").count == 2 }
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        snapshot("01b-recent-mixed-ratios")
+        let cards = app.descendants(matching: .any).matching(identifier: "project.card")
+        let a = cards.element(boundBy: 0).frame, b = cards.element(boundBy: 1).frame
+        let screen = app.windows.firstMatch.frame
+        XCTAssertFalse(a.intersects(b), "cards overlap: \(a) vs \(b)")
+        for f in [a, b] {
+            XCTAssertLessThan(f.width, screen.width / 2, "a card is wider than its column: \(f)")
+            XCTAssertGreaterThanOrEqual(f.minX, screen.minX)
+            XCTAssertLessThanOrEqual(f.maxX, screen.maxX)
+        }
+    }
+
     func test02_PlaybackAndScrub() {
         openProjectWithSamples()
         tap("editor.play")
@@ -236,6 +260,20 @@ final class FeatureUITests: CutlineUITestCase {
         tap("export.close")
     }
 
+    func test13b_ExportAndShare() {
+        openProjectWithSamples()
+        tap("editor.export")
+        tap("chip.720p")
+        XCTAssertTrue(element("export.startShare").waitForExistence(timeout: 5))
+        snapshot("13b-export-options")
+        tap("export.startShare")
+        XCTAssertTrue(element("export.done").waitForExistence(timeout: 300), "export did not finish")
+        // The system share sheet opens by itself with the video (WhatsApp etc. appear there on a device).
+        let sheet = app.otherElements["ActivityListView"]
+        XCTAssertTrue(sheet.waitForExistence(timeout: 10), "share sheet did not open")
+        snapshot("13b-share-sheet")
+    }
+
     func test19_TextDurationAnimatePosition() {
         openProjectWithSamples()
         tap("tool.Text")
@@ -366,6 +404,55 @@ final class FeatureUITests: CutlineUITestCase {
         snapshot("18-audio-cut-repeat")
     }
 
+    func test24_VideoNoiseReduction() {
+        openProjectWithSamples()
+        selectClip(0)
+        tap("tool.Denoise")
+        XCTAssertTrue(element("chip.Off").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("chip.Off").isSelected)
+        tap("chip.Medium")
+        waitUntilIdle()
+        XCTAssertEqual(toastText, "Noise reduced (Medium)")
+        XCTAssertTrue(element("chip.Medium").isSelected)
+        snapshot("24-noise-reduction")
+        // Switching off and back on reuses the cleaned sound (no second pass).
+        tap("chip.Off")
+        waitFor("off") { element("chip.Off").isSelected }
+        tap("chip.Medium")
+        waitFor("medium again") { element("chip.Medium").isSelected }
+        XCTAssertFalse(element("busy").exists)
+        tap("panel.done")
+        // Undo restores the previous setting.
+        tap("editor.undo")
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        if !element("tool.Denoise").exists { selectClip(0) }   // still selected after undo
+        tap("tool.Denoise")
+        waitFor("undone to off") { element("chip.Off").isSelected }
+    }
+
+    func test23_MusicDuckLevel() {
+        openProjectWithSamples()
+        // Video clips no longer have a Volume tool.
+        selectClip(0)
+        XCTAssertTrue(element("tool.Speed").waitForExistence(timeout: 5))
+        XCTAssertFalse(element("tool.Volume").exists)
+        element("clip.0").tap()   // tap again to deselect, back to the main tools
+        tap("tool.Music")
+        tap("music.use.sunrise")
+        waitUntilIdle()
+        waitFor("music lane") { count(prefix: "audio.") == 1 }
+        element("audio.0").tap()
+        tap("tool.Duck")
+        let slider = app.sliders["slider.Music"]
+        XCTAssertTrue(slider.waitForExistence(timeout: 5))
+        XCTAssertEqual(slider.value as? String, "25%")
+        XCTAssertTrue(element("duck.needsCaptions").exists, "no captions yet, so the panel says ducking needs them")
+        slider.adjust(toNormalizedSliderPosition: 0.6)
+        waitFor("duck level changed") { (slider.value as? String) != "25%" }
+        snapshot("23-duck-level")
+        tap("panel.done")
+    }
+
     func test22_MusicMoveToStartClosesTheGap() {
         openProjectWithSamples()
         tap("tool.Music")
@@ -448,6 +535,78 @@ final class FeatureUITests: CutlineUITestCase {
         waitFor("photo lasts 5 s") { abs(totalSeconds - (before + 3.5)) < 0.2 }
         snapshot("15-duration")
         tap("panel.done")
+    }
+}
+
+/// Caption editing with ready-made captions (the simulator can't transcribe speech).
+final class CaptionEditUITests: CutlineUITestCase {
+    override var extraLaunchArguments: [String] { ["-sampleCaptions"] }
+
+    func test25_CaptionStyleAndEditAreSeparate() {
+        openProjectWithSamples()
+        waitFor("captions on the timeline") { count(prefix: "caption.") >= 4 }
+        element("caption.0").tap()
+        XCTAssertTrue(element("tool.Edit").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("tool.Style").exists)
+        // Style: look only, no text fields.
+        tap("tool.Style")
+        XCTAssertTrue(element("chip.Bold").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("chip.Classic").exists && element("chip.Karaoke").exists)
+        XCTAssertFalse(element("chip.Minimal").exists)
+        XCTAssertFalse(element("chip.Neon").exists)
+        XCTAssertFalse(element("caption.field.0").exists)
+        snapshot("25-caption-style")
+        tap("panel.done")
+        // Fillers: "Um" / "uh" are dropped, and the "Ah"-only caption goes away.
+        if !element("tool.Fillers").exists { element("caption.0").tap() }
+        tap("tool.Fillers")
+        XCTAssertEqual(toastText, "Removed 3 filler words")
+        waitFor("filler-only caption removed") { count(prefix: "caption.") == 3 }
+        if !element("tool.Fillers").exists { element("caption.0").tap() }
+        tap("tool.Fillers")
+        XCTAssertEqual(toastText, "No filler words found")
+        tap("tool.Style")
+        tap("panel.done")
+        // Edit: full screen, on the caption under the playhead (0:03.0 → "This is a caption").
+        let tl = element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
+        tl.press(forDuration: 0.05, thenDragTo: tl.withOffset(CGVector(dx: -200, dy: 0)))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        print("PLAYHEAD at \(element("time.current").label)")
+        if !element("tool.Edit").exists { element("caption.1").tap() }
+        tap("tool.Edit")
+        let field = element("caption.field.1")
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        XCTAssertTrue(element("captionEditor.done").exists)
+        XCTAssertFalse(element("chip.Bold").exists)
+        XCTAssertEqual(field.value as? String, "This is a caption")
+        // The keyboard comes up on that caption by itself; typing goes into it.
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        app.typeText(" today")
+        waitFor("text edited") { (field.value as? String ?? "").contains("today") }
+        // The line being typed in sits above the keyboard.
+        XCTAssertLessThan(field.frame.maxY, app.keyboards.firstMatch.frame.minY)
+        snapshot("25-caption-edit")
+        // Done saves and closes promptly.
+        let start = Date()
+        tap("captionEditor.done")
+        waitFor("editor closed") { !element("captionEditor.done").exists }
+        let doneTime = Date().timeIntervalSince(start)
+        print("CLOSE took \(doneTime) s")
+        // Saved: reopening shows the new text; one undo brings the old text back.
+        tap("tool.Edit")
+        XCTAssertTrue((element("caption.field.1").value as? String ?? "").contains("today"))
+        // Saving must not make closing slower than closing without saving (Cancel).
+        let cancelStart = Date()
+        tap("captionEditor.cancel")
+        waitFor("closed") { !element("captionEditor.cancel").exists }
+        let cancelTime = Date().timeIntervalSince(cancelStart)
+        print("CANCEL took \(cancelTime) s")
+        XCTAssertLessThan(doneTime, cancelTime + 0.75, "Done \(doneTime) s vs Cancel \(cancelTime) s")
+        tap("editor.undo")
+        if !element("tool.Edit").exists { element("caption.1").tap() }
+        tap("tool.Edit")
+        waitFor("undone") { (element("caption.field.1").value as? String) == "This is a caption" }
+        tap("captionEditor.cancel")
     }
 }
 
