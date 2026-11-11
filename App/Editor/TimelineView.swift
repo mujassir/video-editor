@@ -269,17 +269,15 @@ final class TimelineUIView: UIView, UIScrollViewDelegate, UIGestureRecognizerDel
         layoutCutButton(at: timeAtPlayhead)
     }
 
-    /// Puts the scissors on the music clip under the playhead: the selected one if it
-    /// is there, otherwise the one on the top lane. Hidden near a clip's edges.
+    /// Puts the scissors on the selected music clip when the playhead is over it.
+    /// Hidden when no music is selected, and near the clip's edges.
     private func layoutCutButton(at time: MediaTime) {
-        guard let project, !scrollView.isDraggingItem else { cutButton.isHidden = true; cutTarget = nil; return }
-        let margin = Project.minimumAudioDuration
-        let under = project.audioClips.filter {
-            time >= $0.start + margin && time <= $0.timelineRange.end - margin
+        guard let project, !scrollView.isDraggingItem, case .audio(let selectedID) = selection else {
+            cutButton.isHidden = true; cutTarget = nil; return
         }
-        var selectedID: UUID?
-        if case .audio(let id) = selection { selectedID = id }
-        guard let clip = under.first(where: { $0.id == selectedID }) ?? under.min(by: { $0.lane < $1.lane }) else {
+        let margin = Project.minimumAudioDuration
+        guard let clip = project.audioClips.first(where: { $0.id == selectedID }),
+              time >= clip.start + margin, time <= clip.timelineRange.end - margin else {
             cutButton.isHidden = true
             cutTarget = nil
             return

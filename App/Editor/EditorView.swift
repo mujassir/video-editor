@@ -277,9 +277,12 @@ struct EditorView: View {
 
     @ViewBuilder private var audioTools: some View {
         ToolButton(title: "Cut", systemImage: "scissors") { model.cutSelectedAudio() }
-        ToolButton(title: "Volume", systemImage: "speaker.wave.2") { model.panel = .music }
-        ToolButton(title: "Repeat", systemImage: "repeat") { model.repeatSelectedAudio() }
-        ToolButton(title: "Duplicate", systemImage: "plus.square.on.square") { model.duplicateSelectedAudio() }
+        if model.canMoveSelectedAudioToStart {
+            ToolButton(title: "Move to Start", systemImage: "arrow.left.to.line") { model.moveSelectedAudioToStart() }
+        }
+        if model.canRepeatSelectedAudio {
+            ToolButton(title: "Repeat", systemImage: "repeat") { model.repeatSelectedAudio() }
+        }
         ToolButton(title: "Delete", systemImage: "trash") { model.deleteSelection() }
     }
 

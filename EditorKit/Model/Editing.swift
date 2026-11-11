@@ -501,6 +501,26 @@ public extension Project {
         audioClips[i].start = max(.zero, start)
     }
 
+    /// Where the blank space before an audio clip begins on its lane: the end of the
+    /// previous clip there, or 0:00. nil when the clip already sits right after it.
+    func audioGapStart(_ id: UUID) -> MediaTime? {
+        guard let clip = audioClips.first(where: { $0.id == id }) else { return nil }
+        let before = audioClips
+            .filter { $0.id != id && $0.lane == clip.lane && $0.timelineRange.end <= clip.start }
+            .map(\.timelineRange.end).max() ?? .zero
+        return clip.start - before >= Self.minimumAudioDuration ? before : nil
+    }
+
+    /// Moves an audio clip back so it starts where the blank space before it begins.
+    /// Returns false when there is no gap to close.
+    @discardableResult
+    mutating func moveAudioToGapStart(_ id: UUID) throws -> Bool {
+        let (i, _) = try audioIndex(id)
+        guard let start = audioGapStart(id) else { return false }
+        audioClips[i].start = start
+        return true
+    }
+
     /// Splits an audio clip at a timeline time. Returns the new right-hand clip's id.
     @discardableResult
     mutating func splitAudio(_ id: UUID, at time: MediaTime) throws -> UUID {

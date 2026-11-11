@@ -478,6 +478,31 @@ struct MusicFullLengthTests {
     }
 }
 
+@Suite("Move audio to start")
+struct MoveAudioToStartTests {
+    @Test func closesTheGapBeforeTheClip() throws {
+        var p = Project(name: "P")
+        let song = MediaItem(kind: .audio, fileName: "s.m4a", naturalSize: .zero, duration: s(60), hasAudio: true)
+        p.media.append(song)
+        let first = AudioClip(mediaID: song.id, role: .music, sourceRange: MediaTimeRange(start: .zero, duration: s(5)), start: .zero)
+        let late = AudioClip(mediaID: song.id, role: .music, sourceRange: MediaTimeRange(start: .zero, duration: s(5)), start: s(20))
+        p.addAudio(first)
+        p.addAudio(late)
+        // Nothing before the first clip; the late one can move back to where the first ends.
+        #expect(p.audioGapStart(first.id) == nil)
+        #expect(p.audioGapStart(late.id) == s(5))
+        #expect(try p.moveAudioToGapStart(late.id))
+        #expect(p.audioClips.first { $0.id == late.id }?.start == s(5))
+        #expect(p.audioGapStart(late.id) == nil)
+        #expect(try p.moveAudioToGapStart(late.id) == false)
+        // With the first clip gone, the blank runs from 0:00.
+        p.deleteAudio(first.id)
+        #expect(p.audioGapStart(late.id) == .zero)
+        try p.moveAudioToGapStart(late.id)
+        #expect(p.audioClips.first { $0.id == late.id }?.start == .zero)
+    }
+}
+
 @Suite("Repeat audio")
 struct RepeatAudioTests {
     @Test func fillsToTheVideoEnd() throws {

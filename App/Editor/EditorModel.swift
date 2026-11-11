@@ -352,6 +352,24 @@ final class EditorModel {
 
 
 
+    /// "Move to Start" is offered when there is blank space before the selected music on its lane.
+    var canMoveSelectedAudioToStart: Bool {
+        guard let id = selectedAudioID else { return false }
+        return project.audioGapStart(id) != nil
+    }
+
+    func moveSelectedAudioToStart() {
+        guard let id = selectedAudioID, let start = project.audioGapStart(id) else { return }
+        edit("Move to start") { try $0.moveAudioToGapStart(id) }
+        showToast("Moved to \(start.timecode)", systemImage: "arrow.left.to.line")
+    }
+
+    /// Repeat is offered only while the selected music stops before the video ends.
+    var canRepeatSelectedAudio: Bool {
+        guard let id = selectedAudioID, let clip = project.audioClips.first(where: { $0.id == id }) else { return false }
+        return clip.timelineRange.end < project.layout.duration - MediaTime(seconds: 0.2)
+    }
+
     func repeatSelectedAudio() {
         guard let id = selectedAudioID else { return }
         var added = 0
@@ -359,16 +377,6 @@ final class EditorModel {
         showToast(added > 0 ? "Repeated \(added + 1)× to the end" : "Already plays to the end",
                   systemImage: "repeat")
         loadWaveforms()
-    }
-
-    func duplicateSelectedAudio() {
-        guard let id = selectedAudioID else { return }
-        var newID: UUID?
-        edit("Duplicate audio") { newID = try $0.duplicateAudio(id) }
-        if let newID {
-            session.selection = .audio(newID)
-            showToast("Audio duplicated", systemImage: "plus.square.on.square")
-        }
     }
 
     // MARK: Watermark & title cards

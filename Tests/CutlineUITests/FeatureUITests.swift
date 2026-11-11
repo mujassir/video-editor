@@ -305,6 +305,7 @@ final class FeatureUITests: CutlineUITestCase {
         // Shorten the first track: cut it with the scissors on the timeline and delete the rest.
         let tl = element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.2))
         tl.press(forDuration: 0.05, thenDragTo: tl.withOffset(CGVector(dx: -120, dy: 0)))
+        element("audio.0").tap()
         tap("timeline.cut")
         waitFor("track cut") { count(prefix: "audio.") == 2 }
         tap("tool.Delete")
@@ -329,22 +330,27 @@ final class FeatureUITests: CutlineUITestCase {
         print("AUDIODRAG timeline value: \(String(describing: element("timeline").value)) audio.1 frame: \(element("audio.1").frame) before: \(second)")
         snapshot("21-after-drag")
         waitFor("track moved") { element("audio.1").frame.minX < second.minX - 15 }
-        // Music toolbar: Cut / Repeat / Duplicate / Delete (no Edit any more).
+        // Music toolbar: Cut / Delete (+ Repeat for music shorter than the video); no Edit, Duplicate or Auto-duck.
         XCTAssertFalse(element("tool.Edit").exists)
-        for id in ["tool.Cut", "tool.Repeat", "tool.Duplicate", "tool.Delete"] { XCTAssertTrue(element(id).exists, "\(id) missing") }
+        XCTAssertFalse(element("tool.Duplicate").exists)
+        XCTAssertFalse(element("tool.Auto-duck").exists)
+        for id in ["tool.Cut", "tool.Delete"] { XCTAssertTrue(element(id).exists, "\(id) missing") }
         XCTAssertFalse(element("tool.To Playhead").exists)
         snapshot("21-two-tracks")
     }
 
-    func test18_AudioCutSelectDuplicate() {
+    func test18_AudioCutSelectRepeat() {
         openProjectWithSamples()
         tap("tool.Music")
         tap("music.use.sunrise")
         waitUntilIdle()
         waitFor("music lane") { count(prefix: "audio.") == 1 }
-        // Playhead a little into the song: the scissors appears on the music bar.
+        // Playhead a little into the song: the scissors appears on the music bar once it is selected.
         let tl = element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.2))
         tl.press(forDuration: 0.05, thenDragTo: tl.withOffset(CGVector(dx: -120, dy: 0)))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertFalse(element("timeline.cut").exists, "scissors should be hidden until the music is selected")
+        element("audio.0").tap()
         XCTAssertTrue(element("timeline.cut").waitForExistence(timeout: 5))
         snapshot("18-audio-scissors")
         tap("timeline.cut")
@@ -352,11 +358,40 @@ final class FeatureUITests: CutlineUITestCase {
         // The right-hand piece is selected; there is no Edit / editor panel any more.
         XCTAssertTrue(element("tool.Cut").waitForExistence(timeout: 5))
         XCTAssertFalse(element("tool.Edit").exists)
-        // Each piece is its own clip: select the first one and duplicate it.
+        // Each piece is its own clip: the first one stops before the video ends, so it can be repeated.
         element("audio.0").tap()
-        tap("tool.Duplicate")
-        waitFor("audio duplicated") { count(prefix: "audio.") == 3 }
-        snapshot("18-audio-cut-duplicate")
+        XCTAssertFalse(element("tool.Duplicate").exists)
+        tap("tool.Repeat")
+        waitFor("audio repeated") { count(prefix: "audio.") > 2 }
+        snapshot("18-audio-cut-repeat")
+    }
+
+    func test22_MusicMoveToStartClosesTheGap() {
+        openProjectWithSamples()
+        tap("tool.Music")
+        tap("music.use.sunrise")
+        waitUntilIdle()
+        waitFor("music lane") { count(prefix: "audio.") == 1 }
+        // Music starting at 0:00 has nothing to move.
+        element("audio.0").tap()
+        XCTAssertTrue(element("tool.Cut").waitForExistence(timeout: 5))
+        XCTAssertFalse(element("tool.Move to Start").exists)
+        // Cut it and delete the first piece: the rest now has a blank start.
+        let tl = element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.2))
+        tl.press(forDuration: 0.05, thenDragTo: tl.withOffset(CGVector(dx: -120, dy: 0)))
+        element("audio.0").tap()
+        tap("timeline.cut")
+        waitFor("audio cut") { count(prefix: "audio.") == 2 }
+        element("audio.0").tap()
+        tap("tool.Delete")
+        waitFor("first piece deleted") { count(prefix: "audio.") == 1 }
+        element("audio.0").tap()
+        XCTAssertTrue(element("tool.Move to Start").waitForExistence(timeout: 5))
+        snapshot("22-move-to-start")
+        let before = element("audio.0").frame.minX
+        tap("tool.Move to Start")
+        waitFor("music moved to the start") { element("audio.0").frame.minX < before - 15 }
+        XCTAssertFalse(element("tool.Move to Start").exists)
     }
 
     func test17_FilterPreviewShowsCleanFrame() {

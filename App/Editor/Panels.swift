@@ -487,54 +487,38 @@ struct TextPanel: View {
 struct MusicPanel: View {
     @Bindable var model: EditorModel
     @State private var videoItem: PhotosPickerItem?
-    var selectedAudio: AudioClip? {
-        if case .audio(let id) = model.session.selection { return model.project.audioClips.first { $0.id == id } }
-        return nil
-    }
 
     var body: some View {
         PanelContainer(title: "Music", onDone: { model.panel = nil }) {
             VStack(spacing: 10) {
-                if let audio = selectedAudio {
-                    LabeledSlider(title: "Volume", value: Binding(get: { audio.volume }, set: { v in
-                        model.editCoalescing("Music volume", key: "mv-\(audio.id)") { $0.updateAudio(audio.id) { $0.volume = v } }
-                    }), range: 0...1.5, format: { String(format: "%.0f%%", $0 * 100) })
-                    LabeledSlider(title: "Fade out", value: Binding(get: { audio.fadeOut.seconds }, set: { v in
-                        model.editCoalescing("Fade", key: "fo-\(audio.id)") { $0.updateAudio(audio.id) { $0.fadeOut = MediaTime(seconds: v) } }
-                    }), range: 0...5, format: { String(format: "%.1fs", $0) })
-                    Toggle("Auto-duck under speech", isOn: Binding(get: { audio.autoDuck }, set: { v in
-                        model.edit("Auto duck") { $0.updateAudio(audio.id) { $0.autoDuck = v } }
-                    })).tint(Theme.accent).font(.subheadline)
-                } else {
-                    HStack(spacing: 8) {
-                        sourceButton("Files", "folder") { model.openFiles(for: .music) }
-                        PhotosPicker(selection: $videoItem, matching: .videos) {
-                            MusicSourceLabel(title: "From Video", icon: "film")
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("music.source.video")
+                HStack(spacing: 8) {
+                    sourceButton("Files", "folder") { model.openFiles(for: .music) }
+                    PhotosPicker(selection: $videoItem, matching: .videos) {
+                        MusicSourceLabel(title: "From Video", icon: "film")
                     }
-                    Text("Built-in tracks").font(.caption).foregroundStyle(Theme.secondaryText)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    ForEach(SampleMedia.library) { track in
-                        HStack {
-                            Image(systemName: "music.note").frame(width: 36, height: 36)
-                                .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: 8))
-                            VStack(alignment: .leading) {
-                                Text(track.name).font(.subheadline.weight(.semibold))
-                                Text("\(track.mood) · \(Int(track.bpm)) BPM").font(.caption).foregroundStyle(Theme.secondaryText)
-                            }
-                            Spacer()
-                            Button("Use") { model.addMusic(track); model.panel = nil }
-                                .font(.subheadline.weight(.semibold))
-                                .padding(.horizontal, 14).padding(.vertical, 6)
-                                .background(Theme.accent, in: Capsule())
-                                .buttonStyle(.plain)
-                                .accessibilityIdentifier("music.use.\(track.id)")
-                        }
-                    }
-                    Text("Royalty-free · generated on device").font(.caption2).foregroundStyle(Theme.secondaryText)
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("music.source.video")
                 }
+                Text("Built-in tracks").font(.caption).foregroundStyle(Theme.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                ForEach(SampleMedia.library) { track in
+                    HStack {
+                        Image(systemName: "music.note").frame(width: 36, height: 36)
+                            .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: 8))
+                        VStack(alignment: .leading) {
+                            Text(track.name).font(.subheadline.weight(.semibold))
+                            Text("\(track.mood) · \(Int(track.bpm)) BPM").font(.caption).foregroundStyle(Theme.secondaryText)
+                        }
+                        Spacer()
+                        Button("Use") { model.addMusic(track); model.panel = nil }
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 14).padding(.vertical, 6)
+                            .background(Theme.accent, in: Capsule())
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("music.use.\(track.id)")
+                    }
+                }
+                Text("Royalty-free · generated on device").font(.caption2).foregroundStyle(Theme.secondaryText)
             }
         }
         .onChange(of: videoItem) { _, item in
