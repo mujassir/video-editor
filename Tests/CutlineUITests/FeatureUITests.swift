@@ -243,6 +243,28 @@ final class FeatureUITests: CutlineUITestCase {
         }
     }
 
+    func test28_PRV7_EmptyPreviewAddsMedia() {
+        openProjectWithSamples()
+        // Delete every clip: the editor is back to its start state.
+        while count(prefix: "clip.") > 0 {
+            let before = count(prefix: "clip.")
+            selectClip(0)
+            tap("tool.Delete")
+            waitFor("clip deleted") { count(prefix: "clip.") < before }
+        }
+        let empty = element("preview.addMedia")
+        XCTAssertTrue(empty.waitForExistence(timeout: 5), "empty preview should show")
+        XCTAssertFalse(element("editor.export").exists)
+        snapshot("28-empty-again")
+        // Tapping the film icon / label adds media (test runs get the Sample Clips menu).
+        empty.tap()
+        let sample = app.buttons["Sample Clips"]
+        XCTAssertTrue(sample.waitForExistence(timeout: 5))
+        sample.tap()
+        waitFor("clips added from the empty preview", timeout: 60) { count(prefix: "clip.") >= 3 }
+        XCTAssertFalse(element("preview.addMedia").exists)
+    }
+
     func test11_CanvasAndBackground() {
         openProjectWithSamples()
         tap("editor.aspect")

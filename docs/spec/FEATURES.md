@@ -57,7 +57,7 @@ These apply to every feature on every platform.
 
 ### LIB: Project library (home)
 
-- **LIB-1 New Project:** a large card at the top, "New Project / Edit videos and photos with on-device AI". Tapping it creates a project named `Project N` (N = number of projects + 1), opens the editor and **immediately opens the Photos library** (the same picker as `IMP-1`: videos and photos, up to `20`). The picked media goes on the main track and the user can start editing. Cancelling the picker leaves the empty editor open (Media and the timeline "+" still work), and closing an empty editor deletes the project (`LIB-4`). Opening an existing project never opens the picker.
+- **LIB-1 New Project:** a large card at the top, "New Project / Edit videos and photos with on-device AI". Tapping it creates a project named `Project N` (N = number of projects + 1), opens the editor and **immediately opens the Photos library** (the same picker as `IMP-1`: videos and photos, up to `20`). The picked media goes on the main track and the user can start editing. Cancelling the picker leaves the empty editor open (the empty preview and the timeline "+" still work, `PRV-7`), and closing an empty editor deletes the project (`LIB-4`). Opening an existing project never opens the picker.
 - **LIB-2 Recent:** a 2-column grid of project cards, most recently modified first. Each card shows:
   - **Thumbnail:** the first clip's first frame, cropped to fill a fixed `150 pt` high box, rounded corners. A placeholder film icon when there's no thumbnail. Cards must never overlap, whatever the project's aspect ratio.
   - **Duration badge:** in the bottom-right corner, `m:ss.f`.
@@ -122,6 +122,7 @@ A full-screen sheet; see `EXP-*`.
 ## 5. Preview and playback (PRV)
 
 - **PRV-1 Play/pause:** tap the preview or the play button. Pressing play at the end starts again from 0.
+- **PRV-7 Empty preview:** while the main track has no clips (a new project, or after deleting every clip), the preview shows a film icon and "Add videos or photos to start". Tapping the icon or the text opens the Photos library, the same as the timeline "+" (`IMP-1`).
 - **PRV-2 No black flash:** after an edit, the last frame stays on screen until the updated preview is ready.
 - **PRV-3 Animations only while playing:** animations play only during playback and export. This covers In/Out/Combo, photo motion and text animations. Paused or scrubbing, clips and text are shown at rest, so edits can be judged. Transitions always show.
 - **PRV-4 Clean frame:** opening Filters, Adjust, Crop, Cutout, Speed or Duration moves the playhead to a frame of the selected clip where no animation, transition or fade is active. It stays put if it's already on such a frame.
@@ -153,7 +154,7 @@ Deleting closes any open panel and clears the selection.
 
 ## 7. Import (IMP)
 
-- **IMP-1 Add media:** the timeline "+" at the end of the main track opens the **Photos library** directly: videos and photos, up to `20` at once. (A new project opens it straight away too, `LIB-1`.) Audio is added from Music (`MUS-1`).
+- **IMP-1 Add media:** the timeline "+" at the end of the main track, or the empty preview (`PRV-7`), opens the **Photos library** directly: videos and photos, up to `20` at once. (A new project opens it straight away too, `LIB-1`.) Audio is added from Music (`MUS-1`).
 - **IMP-2 Copy in:** each file is copied into the project's media folder under a new unique name. The original isn't needed afterwards.
 - **IMP-3 Placement:** videos and photos go to the end of the main track, in the order picked. Photos last `3 s`. Audio files go on the first free audio lane as music.
 - **IMP-4 Orientation:** video recorded in portrait (rotated in the file) is shown upright. Photos are shown upright using their orientation tag.

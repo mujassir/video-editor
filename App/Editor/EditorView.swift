@@ -17,7 +17,7 @@ struct EditorView: View {
     var body: some View {
         VStack(spacing: 0) {
             topBar
-            PreviewView(model: model)
+            PreviewView(model: model, onAddMedia: addMedia)
                 .padding(.horizontal, 8)
                 .frame(minHeight: 150, maxHeight: .infinity)
             transport
@@ -93,7 +93,7 @@ struct EditorView: View {
         return min(250, 150 + CGFloat(lanes) * 34)
     }
 
-    /// The timeline "+" opens the Photos library directly (IMP-1). UI tests and demos
+    /// The timeline "+" and the empty preview open the Photos library directly (IMP-1, PRV-7). UI tests and demos
     /// (-sampleMedia / -demoMedia) get the Add menu instead, to pick the bundled Sample Clips.
     private func addMedia() {
         if LaunchOptions.useSampleMedia || LaunchOptions.demoMediaFolder != nil {
