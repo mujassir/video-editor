@@ -264,11 +264,9 @@ public final class CompositionBuilder: @unchecked Sendable {
                                 audioMix: mix, scene: scene, duration: total)
     }
 
-    /// Timeline ranges where someone is speaking (from captions), used for ducking.
+    /// Timeline ranges where someone is speaking, used for ducking (see `Project.duckingSpeechRanges`).
     static func speechRanges(_ project: Project) -> [MediaTimeRange] {
-        Project.merge(project.captions.segments.map { seg in
-            MediaTimeRange(start: seg.range.start - MediaTime(seconds: 0.15), end: seg.range.end + MediaTime(seconds: 0.25))
-        })
+        project.duckingSpeechRanges
     }
 
     /// Volume envelope: fades in/out plus optional ducking under speech.

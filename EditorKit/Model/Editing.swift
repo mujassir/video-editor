@@ -307,6 +307,43 @@ public extension Project {
         }
     }
 
+    /// Where music ducks: each caption segment widened to `[start − 0.15 s, end + 0.25 s]`
+    /// and merged, minus the parts over main-track clips whose own sound is off (Voice off,
+    /// CLP-5), so music isn't lowered over a muted clip. Where a voiceover or extracted
+    /// audio clip plays, or another clip's sound plays (transition overlap), ducking stays.
+    var duckingSpeechRanges: [MediaTimeRange] {
+        let speech = Self.merge(captions.segments.map { seg in
+            MediaTimeRange(start: seg.range.start - MediaTime(seconds: 0.15), end: seg.range.end + MediaTime(seconds: 0.25))
+        })
+        guard !speech.isEmpty else { return [] }
+        var silent: [MediaTimeRange] = [], voiced: [MediaTimeRange] = []
+        for entry in layout.entries {
+            let clip = clips[entry.index]
+            let hasSound = mediaItem(clip.mediaID)?.hasAudio ?? false
+            let plays = clip.hasAudio && hasSound && !clip.isMuted && !clip.isReversed && clip.volume > 0
+            if plays { voiced.append(entry.range) } else if clip.isMuted { silent.append(entry.range) }
+        }
+        for a in audioClips where a.role == .voiceover || a.role == .extracted { voiced.append(a.timelineRange) }
+        let quiet = Self.subtract(Self.merge(silent), Self.merge(voiced))
+        return Self.subtract(speech, quiet)
+    }
+
+    /// `ranges` with every part covered by `cuts` removed (both sorted, non-overlapping or not).
+    static func subtract(_ ranges: [MediaTimeRange], _ cuts: [MediaTimeRange]) -> [MediaTimeRange] {
+        guard !cuts.isEmpty else { return ranges }
+        let cuts = merge(cuts)
+        var result: [MediaTimeRange] = []
+        for r in ranges {
+            var start = r.start
+            for c in cuts where c.end > start && c.start < r.end {
+                if c.start > start { result.append(MediaTimeRange(start: start, end: c.start)) }
+                start = max(start, c.end)
+            }
+            if start < r.end { result.append(MediaTimeRange(start: start, end: r.end)) }
+        }
+        return result
+    }
+
     static func merge(_ ranges: [MediaTimeRange]) -> [MediaTimeRange] {
         let sorted = ranges.sorted { $0.start < $1.start }
         var result: [MediaTimeRange] = []

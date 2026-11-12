@@ -726,3 +726,46 @@ struct ProjectFileContractTests {
         #expect(decoded == sample, "docs/spec/project.sample.json no longer matches the model")
     }
 }
+
+@Suite("CLP-5 Voice off: no ducking over muted clips")
+struct MutedClipDuckingTests {
+    /// Two 10 s clips with sound (0–10, 10–20) and one caption spanning 5–15 s.
+    private func project() -> Project {
+        var p = Project(name: "P")
+        for name in ["a.mov", "b.mov"] {
+            p.appendClip(for: MediaItem(kind: .video, fileName: name, naturalSize: CGSize(width: 10, height: 10), duration: s(10), hasAudio: true))
+        }
+        p.captions.segments = [CaptionSegment(words: [
+            CaptionWord(text: "hello", range: MediaTimeRange(start: s(5.15), end: s(10))),
+            CaptionWord(text: "there", range: MediaTimeRange(start: s(10), end: s(14.75))),
+        ])]
+        return p
+    }
+
+    @Test func ducksOverSpeechWhenVoiceIsOn() {
+        #expect(project().duckingSpeechRanges == [MediaTimeRange(start: s(5), end: s(15))])
+    }
+
+    @Test func noDuckingOverAMutedClip() throws {
+        var p = project()
+        try p.updateClip(p.clips[1].id) { $0.isMuted = true }
+        #expect(p.duckingSpeechRanges == [MediaTimeRange(start: s(5), end: s(10))])
+        try p.updateClip(p.clips[0].id) { $0.isMuted = true }
+        #expect(p.duckingSpeechRanges.isEmpty, "both clips muted: music stays at full volume")
+    }
+
+    @Test func voiceoverOverAMutedClipStillDucks() throws {
+        var p = project()
+        try p.updateClip(p.clips[1].id) { $0.isMuted = true }
+        let vo = MediaItem(kind: .audio, fileName: "vo.m4a", naturalSize: .zero, duration: s(3), hasAudio: true)
+        p.media.append(vo)
+        p.addAudio(AudioClip(mediaID: vo.id, role: .voiceover, sourceRange: MediaTimeRange(start: .zero, duration: s(3)), start: s(11)))
+        #expect(p.duckingSpeechRanges == [MediaTimeRange(start: s(5), end: s(10)), MediaTimeRange(start: s(11), end: s(14))])
+    }
+
+    @Test func subtractRemovesCoveredParts() {
+        let r = Project.subtract([MediaTimeRange(start: s(0), end: s(10))],
+                                 [MediaTimeRange(start: s(2), end: s(3)), MediaTimeRange(start: s(8), end: s(12))])
+        #expect(r == [MediaTimeRange(start: s(0), end: s(2)), MediaTimeRange(start: s(3), end: s(8))])
+    }
+}

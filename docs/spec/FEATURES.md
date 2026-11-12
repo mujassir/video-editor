@@ -171,7 +171,7 @@ Deleting closes any open panel and clears the selection.
 - **CLP-2 Duplicate:** inserts a copy right after the clip.
 - **CLP-3 Delete:** removes the clip, and the following clips move up. Deleting the last clip also removes the transition on the new last clip.
 - **CLP-4 Reorder:** *(engine only; there's no interface yet.)* When clips are reordered, the clip that ends up last never keeps a transition.
-- **CLP-5 Voice:** toggles the clip's own sound off and on (`isMuted`). The button shows a mic, or a slashed mic and is drawn active while the sound is off. Toast: "Voice off" / "Voice on". A clip whose media has no sound isn't changed (toast: "This clip has no sound"). The clip shows a 🔇 badge on the timeline while its voice is off.
+- **CLP-5 Voice:** toggles the clip's own sound off and on (`isMuted`). The button shows a mic, or a slashed mic and is drawn active while the sound is off. Toast: "Voice off" / "Voice on". A clip whose media has no sound isn't changed (toast: "This clip has no sound"). The clip shows a 🔇 badge on the timeline while its voice is off. Music isn't ducked over a clip whose voice is off (IMPLEMENTATION §9.3).
 
 ### SPD: Speed
 
