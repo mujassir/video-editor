@@ -363,7 +363,7 @@ The total length is the last entry's end. `entry(at: t)` returns the **last** en
 
 ## 7. Composition (what plays when)
 
-- **Length:** the composition lasts `project.duration`. Audio past that point, such as music longer than the video, is cut off.
+- **Length:** the composition lasts `project.duration`. Audio past that point, such as music longer than the video, is cut off. **Preview only:** the preview composition lasts `max(project.duration, timelineDuration)` (`timelineDuration` = the end of the last audio clip), so music past the video can be heard (`PRV-8`); there's no video there, only the background. The player pauses at `project.duration` unless an audio clip is selected.
 - **Main track:** two video lanes (A and B) alternate so clips that overlap during a transition sit on different tracks. For each clip:
   - **Video:** insert `sourceRange` from the media file and time-scale it to `timelineDuration` when `speed ≠ 1`.
   - **Reversed:** use the reversed file, with source range `[media.duration − src.end, + src.duration)`.

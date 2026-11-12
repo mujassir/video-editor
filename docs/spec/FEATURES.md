@@ -121,7 +121,8 @@ A full-screen sheet; see `EXP-*`.
 
 ## 5. Preview and playback (PRV)
 
-- **PRV-1 Play/pause:** tap the preview or the play button. Pressing play at the end starts again from 0.
+- **PRV-1 Play/pause:** tap the preview or the play button. Playback stops at the end of the video, and pressing play at the end starts again from 0. **Exception:** while an audio clip is selected, see `PRV-8`.
+- **PRV-8 Listen past the video:** while an audio clip is selected, Play continues past the end of the video to the end of the music (the end of the timeline), so the whole song can be heard and cut there (`MUS-4`, `MUS-11`). Pressing play with the playhead after the end of the video plays from there; only at the end of the music does play start again from 0. Past the end of the video the preview is dimmed with "Music only · not in export". Deselecting while playing past the end pauses where it is. Export is unchanged: it still stops at the end of the video.
 - **PRV-7 Empty preview:** while the main track has no clips (a new project, or after deleting every clip), the preview shows a film icon and "Add videos or photos to start". Tapping the icon or the text opens the Photos library, the same as the timeline "+" (`IMP-1`).
 - **PRV-2 No black flash:** after an edit, the last frame stays on screen until the updated preview is ready.
 - **PRV-3 Animations only while playing:** animations play only during playback and export. This covers In/Out/Combo, photo motion and text animations. Paused or scrubbing, clips and text are shown at rest, so edits can be judged. Transitions always show.

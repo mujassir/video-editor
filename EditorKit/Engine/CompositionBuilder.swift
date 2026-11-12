@@ -52,10 +52,13 @@ public final class CompositionBuilder: @unchecked Sendable {
 
     public func build(project: Project, resolver: MediaResolver, renderSize: CGSize,
                       quality: RenderQuality = .preview,
-                      toggles: RenderToggles = RenderToggles()) async throws -> BuiltComposition {
+                      toggles: RenderToggles = RenderToggles(),
+                      minimumLength: MediaTime = .zero) async throws -> BuiltComposition {
         let composition = AVMutableComposition()
         let layout = project.layout
-        let total = project.duration
+        // The edit's length. The preview passes `minimumLength` = the timeline length so
+        // music past the end of the video can be heard (PRV-8); export never does.
+        let total = max(project.duration, minimumLength)
         guard total > .zero else { throw CompositionError.empty }
 
         // Base track: a black clip stretched over the whole edit keeps the compositor fed.

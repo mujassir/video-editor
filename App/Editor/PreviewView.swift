@@ -61,6 +61,7 @@ struct PreviewView: View {
                             }
                         }
                         .clipShape(RoundedRectangle(cornerRadius: 4))
+                        .overlay { if model.isPastVideoEnd { pastEndOverlay } }
                         .overlay(textHandles(canvas: fitted).coordinateSpace(.named("canvas")))
                         .contentShape(Rectangle())
                         .onTapGesture { model.togglePlay() }
@@ -68,6 +69,21 @@ struct PreviewView: View {
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
+    }
+
+    /// PRV-8: past the end of the video only the music plays, and it isn't exported.
+    private var pastEndOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.55)
+            Label("Music only · not in export", systemImage: "music.note")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(.black.opacity(0.5), in: Capsule())
+        }
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("preview.pastEnd")
     }
 
     /// Shown whenever the main track is empty: at the start and after every clip is deleted.

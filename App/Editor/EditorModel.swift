@@ -121,6 +121,14 @@ final class EditorModel {
                 self.currentTime = MediaTime(time)
                 let playing = self.player.rate != 0
                 if self.isPlaying != playing { self.isPlaying = playing }
+                // PRV-8: past the end of the video, playback only continues while music is selected.
+                if playing, !self.isAuditioningMusic, self.currentTime >= self.duration {
+                    self.player.pause()
+                    self.isPlaying = false
+                    // Just reached the end: land exactly on it. Already further (music was
+                    // deselected while playing past it): stay where the playhead is.
+                    if self.currentTime - self.duration < MediaTime(seconds: 0.25) { self.seek(to: self.duration) }
+                }
             }
         }
         scheduleRebuild(immediate: true)
@@ -129,6 +137,16 @@ final class EditorModel {
 
     var project: Project { session.project }
     var duration: MediaTime { project.duration }
+
+    /// PRV-8: with an audio clip selected, Play goes on past the end of the video to the end
+    /// of the music, so the whole song can be heard (and cut with Start Here / ✂︎).
+    var isAuditioningMusic: Bool { selectedAudioID != nil }
+
+    /// Where Play stops: the end of the video, or the end of the music while auditioning.
+    var playbackEnd: MediaTime { isAuditioningMusic ? project.timelineDuration : duration }
+
+    /// The playhead is past the end of the video (over music only); not exported.
+    var isPastVideoEnd: Bool { duration > .zero && currentTime > duration + MediaTime(seconds: 0.02) }
 
     // MARK: Preview
 
@@ -153,8 +171,9 @@ final class EditorModel {
         }
         let size = project.aspectRatio.renderSize(shortEdge: 720)
         do {
+            // The preview runs to the end of the music too (PRV-8); export stays at the video's length.
             let built = try await CompositionBuilder().build(project: project, resolver: resolver, renderSize: size,
-                                                             toggles: renderToggles)
+                                                             toggles: renderToggles, minimumLength: project.timelineDuration)
             guard !Task.isCancelled else { return }
             // Grab what's on screen now so the swap is seamless.
             if let output = frameOutput, let pb = output.copyPixelBuffer(forItemTime: player.currentTime(), itemTimeForDisplay: nil) {
@@ -187,7 +206,9 @@ final class EditorModel {
             player.pause()
             isPlaying = false
         } else {
-            if currentTime >= duration - MediaTime(seconds: 0.05) { seek(to: .zero) }
+            // At (or past) the end, Play starts again from 0:00. With music selected the end is the
+            // end of the music, so Play from a point after the video keeps playing from there.
+            if currentTime >= playbackEnd - MediaTime(seconds: 0.05) { seek(to: .zero) }
             isPlaying = true          // enable animations before the first frame plays
             player.play()
         }
@@ -210,8 +231,8 @@ final class EditorModel {
         let t = time.clamped(to: .zero...max(project.timelineDuration, .zero))
         currentTime = t
         let tolerance = exact ? CMTime.zero : CMTime(value: 1, timescale: 30)
-        let playable = min(t, max(duration, .zero))
-        player.seek(to: playable.cmTime, toleranceBefore: tolerance, toleranceAfter: tolerance)
+        // The preview composition runs to the end of the music (PRV-8), so seek there directly.
+        player.seek(to: t.cmTime, toleranceBefore: tolerance, toleranceAfter: tolerance)
     }
 
     // MARK: Editing
