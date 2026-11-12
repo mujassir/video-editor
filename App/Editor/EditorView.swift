@@ -104,16 +104,18 @@ struct EditorView: View {
                 .disabled(!model.session.canUndo).accessibilityIdentifier("editor.undo")
             Button { model.redo() } label: { Image(systemName: "arrow.uturn.forward") }
                 .disabled(!model.session.canRedo).accessibilityIdentifier("editor.redo")
-            Button {
-                model.pause()
-                showExport = true
-            } label: {
-                Text("Export").font(.subheadline.weight(.bold))
-                    .padding(.horizontal, 16).frame(height: 34)
-                    .background(Theme.accent, in: Capsule())
+            // Hidden while there's nothing to export (the edit has no length yet).
+            if model.duration > .zero {
+                Button {
+                    model.pause()
+                    showExport = true
+                } label: {
+                    Text("Export").font(.subheadline.weight(.bold))
+                        .padding(.horizontal, 16).frame(height: 34)
+                        .background(Theme.accent, in: Capsule())
+                }
+                .accessibilityIdentifier("editor.export")
             }
-            .disabled(model.project.clips.isEmpty)
-            .accessibilityIdentifier("editor.export")
         }
         .font(.system(size: 17, weight: .semibold))
         .foregroundStyle(.white)

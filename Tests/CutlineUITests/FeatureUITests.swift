@@ -6,8 +6,11 @@ final class FeatureUITests: CutlineUITestCase {
     func test01_ProjectLibraryAndImport() {
         XCTAssertTrue(element("projects.new").waitForExistence(timeout: 10))
         snapshot("01-projects-empty")
-        // A new project closed without adding anything is not kept.
+        // A new project has nothing to export, so there's no Export button (EDT).
         tap("projects.new")
+        XCTAssertTrue(element("editor.close").waitForExistence(timeout: 10))
+        XCTAssertFalse(element("editor.export").exists, "Export should be hidden in an empty project")
+        // A new project closed without adding anything is not kept.
         tap("editor.close")
         XCTAssertTrue(element("projects.new").waitForExistence(timeout: 10))
         RunLoop.current.run(until: Date().addingTimeInterval(1))
@@ -15,6 +18,7 @@ final class FeatureUITests: CutlineUITestCase {
         openProjectWithSamples()
         XCTAssertEqual(count(prefix: "clip."), 3)
         XCTAssertEqual(totalSeconds, 12, accuracy: 0.2)
+        XCTAssertTrue(element("editor.export").exists, "Export appears once there's content")
         snapshot("01-editor-imported")
         // Close and confirm the project is listed and reopens.
         tap("editor.close")

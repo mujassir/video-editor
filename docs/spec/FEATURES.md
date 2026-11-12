@@ -73,7 +73,7 @@ These apply to every feature on every platform.
    - **Close (×):** saves the project, writes its thumbnail and returns to the library.
    - **Aspect ratio button:** shows the ratio, such as `9:16`, and opens Canvas (`CNV-1`).
    - **Undo and Redo:** disabled when there's nothing to undo or redo.
-   - **Export:** an accent capsule, disabled with no clips.
+   - **Export:** an accent capsule. **Hidden** while there's nothing to export, that is while the edit has no length (`Project.duration == 0`: no clips and no voiceover; music or text on their own don't count). It appears as soon as there is.
 2. **Preview:** the canvas at its aspect ratio. Tapping it plays or pauses.
 3. **Transport:** current time `m:ss.f`, "/ total", and a play/pause button.
 4. **Timeline:** see `TML-*`.
