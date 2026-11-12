@@ -12,7 +12,11 @@ final class FeatureUITests: CutlineUITestCase {
         XCTAssertFalse(element("editor.export").exists, "Export should be hidden in an empty project")
         XCTAssertFalse(element("editor.undo").exists, "nothing to undo in a new project")
         XCTAssertFalse(element("editor.redo").exists, "nothing to redo in a new project")
-        XCTAssertFalse(element("tool.Captions").exists, "no Captions without a video clip (TBR-1)")
+        // TBR-1 with no content: only Intro and Outro.
+        for hidden in ["tool.Music", "tool.Captions", "tool.Watermark", "tool.Text"] {
+            XCTAssertFalse(element(hidden).exists, "\(hidden) should be hidden with no content")
+        }
+        XCTAssertTrue(element("tool.Intro").exists && element("tool.Outro").exists)
         // A new project closed without adding anything is not kept.
         tap("editor.close")
         XCTAssertTrue(element("projects.new").waitForExistence(timeout: 10))
@@ -22,7 +26,9 @@ final class FeatureUITests: CutlineUITestCase {
         XCTAssertEqual(count(prefix: "clip."), 3)
         XCTAssertEqual(totalSeconds, 12, accuracy: 0.2)
         XCTAssertTrue(element("editor.export").exists, "Export appears once there's content")
-        XCTAssertTrue(element("tool.Captions").waitForExistence(timeout: 5), "Captions appear with video clips")
+        for shown in ["tool.Music", "tool.Captions", "tool.Watermark", "tool.Text"] {
+            XCTAssertTrue(element(shown).waitForExistence(timeout: 5), "\(shown) should appear once there's content")
+        }
         snapshot("01-editor-imported")
         // Close and confirm the project is listed and reopens.
         tap("editor.close")
@@ -257,6 +263,7 @@ final class FeatureUITests: CutlineUITestCase {
         let empty = element("preview.addMedia")
         XCTAssertTrue(empty.waitForExistence(timeout: 5), "empty preview should show")
         XCTAssertFalse(element("editor.export").exists)
+        XCTAssertFalse(element("tool.Music").exists, "project tools hide again with no content")
         snapshot("28-empty-again")
         // Tapping the film icon / label adds media (test runs get the Sample Clips menu).
         empty.tap()

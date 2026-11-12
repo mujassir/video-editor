@@ -249,13 +249,16 @@ struct EditorView: View {
     }
 
     @ViewBuilder private var mainTools: some View {
-        ToolButton(title: "Music", systemImage: "music.note") { model.select(.none); model.panel = .music }
-        // Captions transcribe speech, so they're only offered once there's a video clip (not just photos).
-        if model.project.hasVideoClips {
-            ToolButton(title: "Captions", systemImage: "captions.bubble", badge: "AI") { model.panel = .captions }
+        // With no content yet (the edit has no length, as for Export) only Intro and Outro show.
+        if model.duration > .zero {
+            ToolButton(title: "Music", systemImage: "music.note") { model.select(.none); model.panel = .music }
+            // Captions transcribe speech, so they're only offered once there's a video clip (not just photos).
+            if model.project.hasVideoClips {
+                ToolButton(title: "Captions", systemImage: "captions.bubble", badge: "AI") { model.panel = .captions }
+            }
+            ToolButton(title: "Watermark", systemImage: "seal", isActive: model.project.watermark != nil) { model.select(.none); model.panel = .watermark }
+            ToolButton(title: "Text", systemImage: "textformat") { model.addText() }
         }
-        ToolButton(title: "Watermark", systemImage: "seal", isActive: model.project.watermark != nil) { model.select(.none); model.panel = .watermark }
-        ToolButton(title: "Text", systemImage: "textformat") { model.addText() }
         ToolButton(title: "Intro", systemImage: "rectangle.lefthalf.inset.filled") { model.select(.none); model.panel = .titleCard(.opening) }
         ToolButton(title: "Outro", systemImage: "rectangle.righthalf.inset.filled") { model.select(.none); model.panel = .titleCard(.closing) }
     }
