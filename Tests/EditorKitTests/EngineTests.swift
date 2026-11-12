@@ -854,3 +854,34 @@ struct NoiseReductionTests {
         #expect(back.denoisedFileNames?[.medium] == "nr-medium-v.m4a")
     }
 }
+
+@Suite("PRV-8 Preview plays music past the video")
+struct PreviewPastVideoEndTests {
+    @Test func previewRunsToTheEndOfTheMusicExportStopsAtTheVideo() async throws {
+        var fx = try Fixture()
+        defer { fx.cleanup() }
+        try await fx.addVideo("v", duration: 2, draw: SampleMedia.solid(.black))
+        let url = fx.store.mediaDirectory(for: fx.project.id).appendingPathComponent("tone.m4a")
+        try SampleMedia.renderTonePattern([(true, 6)], to: url)
+        let song = try await MediaImporter.probeAudio(url, fileName: "tone.m4a")
+        fx.project.media.append(song)
+        fx.project.addAudio(AudioClip(mediaID: song.id, role: .music,
+                                      sourceRange: MediaTimeRange(start: .zero, duration: song.duration), start: .zero))
+        let size = CGSize(width: 64, height: 64)
+        // Export (and the default build): the video's length.
+        let export = try await CompositionBuilder().build(project: fx.project, resolver: fx.resolver, renderSize: size)
+        #expect(abs(export.composition.duration.seconds - 2) < 0.05)
+        // Preview: to the end of the music, with the song's audio all the way.
+        let preview = try await CompositionBuilder().build(project: fx.project, resolver: fx.resolver, renderSize: size,
+                                                           minimumLength: fx.project.timelineDuration)
+        #expect(abs(preview.composition.duration.seconds - song.duration.seconds) < 0.1)
+        var musicEnd = 0.0
+        for t in try await preview.composition.loadTracks(withMediaType: .audio) {
+            musicEnd = max(musicEnd, try await t.load(.timeRange).end.seconds)
+        }
+        #expect(abs(musicEnd - song.duration.seconds) < 0.1, "music plays to its end in the preview, got \(musicEnd)")
+        // The instructions still cover the whole (longer) preview.
+        let last = try #require(preview.videoComposition.instructions.last)
+        #expect(abs(last.timeRange.end.seconds - preview.composition.duration.seconds) < 0.01)
+    }
+}

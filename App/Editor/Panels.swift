@@ -5,21 +5,25 @@ import AVFoundation
 import EditorKit
 
 /// Bottom panel container – slides up over the toolbar.
-/// Swipe down on its top (grabber and title row) to close it (EDT-1).
+/// Swipe down to close it (EDT-1): anywhere on the panel, or only on its top
+/// (grabber and title row) for panels with a vertically scrolling list.
 struct PanelContainer<Content: View>: View {
     let title: String
     let onDone: () -> Void
     /// What a swipe down does; defaults to `onDone`. Panels whose ✓ also commits
     /// something (Intro/Outro adds the slide) pass a plain close instead.
     var onSwipeDown: (() -> Void)? = nil
+    /// false for panels whose content scrolls vertically: there only the top row swipes,
+    /// so scrolling the list never closes the panel.
+    var swipeAnywhere = true
     var onUndo: (() -> Void)? = nil
     var canUndo = true
     @ViewBuilder var content: Content
     @State private var dragOffset: CGFloat = 0
 
     /// Distance (pt) or predicted distance that closes the panel when the finger lifts.
-    static var closeDistance: CGFloat { 60 }
-    static var closePredictedDistance: CGFloat { 140 }
+    static var closeDistance: CGFloat { 30 }
+    static var closePredictedDistance: CGFloat { 80 }
 
     var body: some View {
         VStack(spacing: 10) {
@@ -31,24 +35,35 @@ struct PanelContainer<Content: View>: View {
                         .accessibilityHidden(true)
                 }
                 .contentShape(Rectangle())
-                .gesture(swipeDown)
+                .gesture(swipeDown, including: swipeAnywhere ? .none : .all)
             content
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
         }
         .frame(maxWidth: .infinity)
         .background(Theme.surface)
+        .contentShape(Rectangle())
+        // Simultaneous, so buttons and horizontal sliders inside keep working.
+        .simultaneousGesture(swipeDown, including: swipeAnywhere ? .all : .none)
         .offset(y: dragOffset)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("panel.\(title)")
         .accessibilityAction(.escape) { close() }
     }
 
+    /// Measured in screen space: the panel moves with the finger, so local coordinates
+    /// would cancel the movement out and the swipe would never reach the threshold.
+    /// Only mostly-downward drags count (horizontal slider drags are ignored).
     private var swipeDown: some Gesture {
-        DragGesture(minimumDistance: 8)
-            .onChanged { g in dragOffset = max(0, g.translation.height) }
+        DragGesture(minimumDistance: 8, coordinateSpace: .global)
+            .onChanged { g in
+                let t = g.translation
+                dragOffset = t.height > abs(t.width) ? max(0, t.height) : 0
+            }
             .onEnded { g in
-                if g.translation.height > Self.closeDistance || g.predictedEndTranslation.height > Self.closePredictedDistance {
+                let t = g.translation, predicted = g.predictedEndTranslation
+                let downward = t.height > abs(t.width)
+                if downward && (t.height > Self.closeDistance || predicted.height > Self.closePredictedDistance) {
                     close()
                     dragOffset = 0
                 } else {
@@ -246,7 +261,7 @@ struct AdjustPanel: View {
     }
 
     var body: some View {
-        PanelContainer(title: "Adjust", onDone: { model.panel = nil }) {
+        PanelContainer(title: "Adjust", onDone: { model.panel = nil }, swipeAnywhere: false) {
             VStack(spacing: 8) {
                 HStack {
                     Button { model.autoEnhance() } label: {
@@ -500,7 +515,7 @@ struct TextPanel: View {
     }
 
     var body: some View {
-        PanelContainer(title: "Text", onDone: { focused = false; model.panel = nil }) {
+        PanelContainer(title: "Text", onDone: { focused = false; model.panel = nil }, swipeAnywhere: false) {
             if let overlay {
                 ScrollView {
                 VStack(spacing: 12) {
@@ -555,13 +570,14 @@ struct MusicPanel: View {
         PanelContainer(title: "Music", onDone: { model.panel = nil }) {
             VStack(spacing: 10) {
                 HStack(spacing: 8) {
-                    sourceButton("Audio Tracks", "folder", id: "music.source.files") { model.openFiles(for: .music) }
+                    sourceButton("Audio Tracks", "music.note", id: "music.source.files") { model.openFiles(for: .music) }
                     PhotosPicker(selection: $videoItem, matching: .videos) {
                         MusicSourceLabel(title: "From Video", icon: "film")
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("music.source.video")
                 }
+                if !model.recentTracks.isEmpty { recentList }
                 // Built-in tracks were removed from the app (MUS-1). UI tests and demos
                 // (-sampleMedia / -demoMedia) still get them, like "Sample Clips" in the Add
                 // menu, because the simulator can't drive the Files picker.
@@ -570,6 +586,7 @@ struct MusicPanel: View {
                 }
             }
         }
+        .onAppear { model.loadRecentTracks() }
         .onChange(of: videoItem) { _, item in
             guard let item else { return }
             videoItem = nil
@@ -582,6 +599,37 @@ struct MusicPanel: View {
                 model.panel = nil
             }
         }
+    }
+
+    /// MUS-10: the last 5 audio tracks used in any project. Tap one to add it again.
+    @ViewBuilder private var recentList: some View {
+        Text("Recent").font(.caption).foregroundStyle(Theme.secondaryText)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        ForEach(Array(model.recentTracks.enumerated()), id: \.element.id) { i, entry in
+            Button {
+                model.addRecentTrack(entry)
+                model.panel = nil
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "music.note").font(.system(size: 15, weight: .semibold))
+                        .frame(width: 36, height: 36)
+                        .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: 8))
+                    Text(entry.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                    Spacer()
+                    Text(Self.clock(entry.duration)).font(.caption.monospacedDigit()).foregroundStyle(Theme.secondaryText)
+                    Image(systemName: "plus.circle.fill").font(.system(size: 20)).foregroundStyle(Theme.accent)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("music.recent.\(i)")
+        }
+    }
+
+    /// m:ss
+    static func clock(_ t: MediaTime) -> String {
+        let s = Int(t.seconds.rounded())
+        return String(format: "%d:%02d", s / 60, s % 60)
     }
 
     @ViewBuilder private var sampleTracks: some View {
@@ -620,7 +668,7 @@ struct CaptionsPanel: View {
     private var track: CaptionTrack { model.project.captions }
 
     var body: some View {
-        PanelContainer(title: "Captions", onDone: { model.panel = nil }) {
+        PanelContainer(title: "Captions", onDone: { model.panel = nil }, swipeAnywhere: false) {
             VStack(spacing: 12) {
                 if track.segments.isEmpty {
                     VStack(spacing: 8) {
@@ -821,7 +869,7 @@ struct PhotoMotionPanel: View {
     private var motion: PhotoMotion { clip?.photoMotion ?? .none }
 
     var body: some View {
-        PanelContainer(title: "Animate", onDone: { model.panel = nil }) {
+        PanelContainer(title: "Animate", onDone: { model.panel = nil }, swipeAnywhere: false) {
             VStack(spacing: 10) {
                 Picker("", selection: $tab) {
                     ForEach(tabs) { Text($0.rawValue).tag($0) }
@@ -994,12 +1042,13 @@ struct MusicSourceLabel: View {
     let title: String
     let icon: String
     var body: some View {
-        VStack(spacing: 4) {
-            Image(systemName: icon).font(.system(size: 17, weight: .semibold))
-            Text(title).font(.caption.weight(.medium))
+        VStack(spacing: 8) {
+            Image(systemName: icon).font(.system(size: 26, weight: .semibold))
+            Text(title).font(.subheadline.weight(.semibold))
         }
-        .frame(maxWidth: .infinity).padding(.vertical, 10)
-        .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
+        .frame(maxWidth: .infinity, minHeight: 88).padding(.vertical, 12)
+        .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 14))
+        .contentShape(RoundedRectangle(cornerRadius: 14))
         .foregroundStyle(.white)
     }
 }
@@ -1060,7 +1109,7 @@ struct TextAnimatePanel: View {
     private var anim: ClipAnimation { overlay?.animation ?? ClipAnimation() }
 
     var body: some View {
-        PanelContainer(title: "Animate Text", onDone: { model.panel = nil }) {
+        PanelContainer(title: "Animate Text", onDone: { model.panel = nil }, swipeAnywhere: false) {
             VStack(spacing: 10) {
                 Picker("", selection: $tab) { ForEach(Tab.allCases) { Text($0.rawValue).tag($0) } }
                     .pickerStyle(.segmented)

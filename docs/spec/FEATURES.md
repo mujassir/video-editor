@@ -78,7 +78,7 @@ These apply to every feature on every platform.
 3. **Transport:** current time `m:ss.f`, "/ total", and a play/pause button.
 4. **Timeline:** see `TML-*`.
 5. **Bottom area:** the toolbar for the current selection, or the open panel.
-   - **EDT-1 Swipe down to close a panel:** every bottom panel (Music, Captions, Text, Watermark, Filters, …) has a grabber bar at the top. Dragging down on the grabber or title row moves the panel with the finger. Letting go after more than `60 pt`, or a quick flick (predicted `140 pt`), closes it, the same as ✓. Otherwise it springs back. Sliders and lists inside the panel aren't affected. **Exception:** on Intro/Outro (`TTL-*`) a swipe closes without adding or saving the slide; only ✓ does that.
+   - **EDT-1 Swipe down to close a panel:** every bottom panel (Music, Captions, Text, Watermark, Filters, …) has a grabber bar at the top. A **short swipe down anywhere on the panel** closes it, the same as ✓: letting go after more than `30 pt`, or a quick flick (predicted `80 pt`). While dragging, the panel follows the finger (measured in screen coordinates); a shorter drag springs back. Only mostly-vertical drags count, so horizontal sliders and buttons inside keep working. Panels with a vertically scrolling list (Adjust, Text, Captions, Animate, Animate Text) only swipe on the grabber and title row, so scrolling never closes them. **Exception:** on Intro/Outro (`TTL-*`) a swipe closes without adding or saving the slide; only ✓ does that.
 
 Overlays:
 - **Toast:** appears at the top, about 2.2 s.
@@ -114,14 +114,15 @@ A full-screen sheet; see `EXP-*`.
 - **TML-8 Add button:** a "+" after the last clip opens Add media (`IMP-*`).
 - **TML-9 Music past the end:** music longer than the video is drawn in full. The part past the end of the video is dimmed. The playhead may move past the end of the video over music, so you can cut there; the preview holds the last frame.
 - **TML-10 Move audio:** press and hold an audio bar for `0.25 s`, then drag it. The new start snaps to a frame at `30 fps`.
-- **TML-11 Scissors on music:** see `MUS-4`.
+- **TML-11 Scissors on music:** *(removed: music is cut with Cut in the toolbar, `MUS-4`.)*
 - **TML-12 Waveforms** are drawn on audio bars. Clip thumbnails load in the background.
 
 ---
 
 ## 5. Preview and playback (PRV)
 
-- **PRV-1 Play/pause:** tap the preview or the play button. Pressing play at the end starts again from 0.
+- **PRV-1 Play/pause:** tap the preview or the play button. Playback stops at the end of the video, and pressing play at the end starts again from 0. **Exception:** while an audio clip is selected, see `PRV-8`.
+- **PRV-8 Listen past the video:** while an audio clip is selected, Play continues past the end of the video to the end of the music (the end of the timeline), so the whole song can be heard and cut there (`MUS-4`, `MUS-11`). Pressing play with the playhead after the end of the video plays from there; only at the end of the music does play start again from 0. Past the end of the video the preview is dimmed with "Music only · not in export". Deselecting while playing past the end pauses where it is. Export is unchanged: it still stops at the end of the video.
 - **PRV-7 Empty preview:** while the main track has no clips (a new project, or after deleting every clip), the preview shows a film icon and "Add videos or photos to start". Tapping the icon or the text opens the Photos library, the same as the timeline "+" (`IMP-1`).
 - **PRV-2 No black flash:** after an edit, the last frame stays on screen until the updated preview is ready.
 - **PRV-3 Animations only while playing:** animations play only during playback and export. This covers In/Out/Combo, photo motion and text animations. Paused or scrubbing, clips and text are shown at rest, so edits can be judged. Transitions always show.
@@ -144,8 +145,8 @@ The toolbar is one horizontally scrolling row of icon buttons with labels. The o
 | **TBR-2 Video clip** | Split · Voice (`CLP-5`; active while the voice is off) · Speed · Animate (active if any animation) · Denoise (active if on) · Filters · Adjust · Enhance (AI) · Cutout (AI) · Reframe (AI) · Crop · Reverse (active if reversed) · Freeze · Duplicate · Delete |
 | **TBR-3 Photo or freeze frame** | Duration · Animate (active if motion or animation) · Filters · Adjust · Enhance (AI) · Cutout (AI) · Crop · Duplicate · Delete |
 | **TBR-4 Text** | Edit · Duration · Animate (active if set) · Position (active if a fixed spot) · Duplicate · Delete |
-| **TBR-5 Music** | Cut · Duck · Move to Start (only when there's a gap before it) · Repeat (only when it ends before the video) · Delete |
-| **TBR-5b Other audio** (voiceover, extracted, effect) | Cut · Move to Start (conditional) · Repeat (conditional) · Delete |
+| **TBR-5 Music** | Cut · Start Here (`MUS-11`; only while the playhead is inside the clip) · Duck · Move to Start (only when there's a gap before it) · Repeat (only when it ends before the video) · Delete |
+| **TBR-5b Other audio** (voiceover, extracted, effect) | Cut · Start Here (conditional) · Move to Start (conditional) · Repeat (conditional) · Delete |
 | **TBR-6 Captions** | Edit · Style · Fillers · Delete |
 
 Deleting closes any open panel and clears the selection.
@@ -341,8 +342,9 @@ Deleting closes any open panel and clears the selection.
 ## 11. Music and audio (MUS)
 
 - **MUS-1 Add music** (Music in the main toolbar):
-  - **Audio Tracks:** your own audio file (opens Files).
+  - **Audio Tracks** (music-note icon): your own audio file (opens Files).
   - **From Video:** the soundtrack of a video from Photos.
+  - **Recent** (`MUS-10`): under the two buttons, when there are any.
 - **MUS-2 New music defaults:**
   - Volume `70%`.
   - Fade-out at the end: `min(1.5 s, song length ÷ 4)`.
@@ -351,8 +353,7 @@ Deleting closes any open panel and clears the selection.
   - Toast: "Added <name>".
 - **MUS-3 Whole song:** music that hasn't been cut runs from its start to the end of the song file, however long the video is (see `TML-9`). Preview and export stop at the end of the video.
 - **MUS-4 Cut:** splits the music at the playhead. Toast: "Cut at m:ss.f". Each piece is its own clip, and the right-hand piece becomes selected.
-  - **Toolbar Cut** works at the playhead.
-  - **Scissors on the bar:** a round scissors button on the music bar under the playhead. It shows **only when that music bar is selected** and the playhead is at least `0.2 s` from its ends.
+  - Only **Cut** in the toolbar cuts music; there's no scissors button on the music bar.
 - **MUS-5 Duck** (music only) opens the "Duck" panel:
   - Text: "Music volume while someone is speaking".
   - **Music slider:** `0`–`100%` in `5%` steps, default `25%`. Moving it also turns auto-duck on.
@@ -364,6 +365,17 @@ Deleting closes any open panel and clears the selection.
   - If the clip already reaches the end: "Already plays to the end".
 - **MUS-8 Move:** see `TML-10`. **Delete** removes the audio clip.
 - **MUS-9 Lanes:** a new audio clip goes on the first lane where it doesn't overlap anything.
+- **MUS-11 Start Here:** one tap makes the selected audio play from the playhead's point in the song. Shown while the playhead is inside the clip, at least `0.2 s` from its ends (it can be past the end of the video, over the dimmed part). As **one** undo step it:
+  1. cuts the clip at the playhead (snapped to a frame),
+  2. removes the part before the playhead,
+  3. moves the rest back to where the clip's space on its lane begins: the end of the previous clip on that lane, or 0:00,
+  4. gives it a `0.3 s` fade-in (at most half its length), because it no longer starts at the beginning of the song. The fade-out at the end is kept.
+
+  Then the remaining clip is selected, the playhead jumps to its start and playback starts (if that's inside the video), so the user hears the result with the video. Toast: "Music starts from m:ss.f" (the position in the song). Skipping an intro or using a part from the middle of a long song are both one tap.
+- **MUS-10 Recent tracks:** the Music panel lists the **5 audio tracks used most recently, in any project**, newest first, under a "Recent" heading. Each row shows a music-note icon, the track's name, its length `m:ss` and a ＋. Tapping a row adds that track to the project like a new pick (`MUS-2` defaults) and closes the panel.
+  - A track counts as used when it's added from Audio Tracks, From Video or Recent. Using one again moves it to the top. Two tracks are the same when the name and length (to `0.1 s`) match.
+  - The app keeps its own copy of each recent track, so it still works after the project it was first used in is deleted (IMPLEMENTATION §4.1). The 6th oldest is dropped, with its copy.
+  - Hidden when the list is empty.
 
 ---
 
@@ -482,7 +494,7 @@ These were tried and removed on purpose. Don't add them back without changing th
 | 2026-11 | **Voice on/off is back on video clips** (`CLP-5`), as a single toggle after Split. It sets the existing `isMuted` field; there's still no volume slider and no Extract Audio. |
 | 2026-11 | **Caption styles are Classic, Karaoke and Bold.** Minimal and Neon were removed (`CAP-8`). |
 | 2026-11 | **The caption text editor is full screen** and saves once on Done (`CAP-5`). Text editing isn't in the Style panel. |
-| 2026-11 | **The scissors on a music bar show only when that bar is selected** (`MUS-4`). |
+| 2026-11 | **No scissors on the music bar.** It first showed under the playhead, then only on the selected bar, and was then removed: music is cut with **Cut** (and **Start Here**, `MUS-11`) in the toolbar (`MUS-4`). |
 | 2026-11 | **No Media button in the main toolbar.** Media is added with the timeline "+", and a new project opens the Photos library (`LIB-1`). |
 | 2026-11 | **The timeline "+" opens the Photos library directly**, with no Add menu, so video and photo files can't be picked from Files any more. Own audio still comes from Music → Audio Tracks. UI tests and demos (`-sampleMedia` / `-demoMedia`) still get the Add menu with Sample Clips. |
 | 2026-11 | **No built-in music tracks in the Music panel.** It offers only Audio Tracks (Files) and From Video. The generator stays in the engine for UI tests and demos, which launch with `-sampleMedia` / `-demoMedia` and still see the tracks (§14 in IMPLEMENTATION). Projects that use them still play. |

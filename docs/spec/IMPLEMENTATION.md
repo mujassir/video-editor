@@ -173,6 +173,11 @@ All types are value types, and all IDs are UUIDs. The complete field list, with 
         title-<placement>-<8hex>.png  rendered slide image
         watermark-<8hex>.png        watermark image
     Cache/              temporary files; safe to delete
+
+<AppData>/RecentAudio/                 recent audio tracks (MUS-10), shared by all projects
+    recent.json         [{id, name, fileName, duration, usedAt}], newest first, at most 5;
+                        duration as MediaTime ticks, usedAt as ISO 8601
+    <UUID>.<ext>        the app's own copy of each track
 ```
 
 - **Saving:** write to a temporary file, then rename over `project.json`, so a crash never leaves a half-written file.
@@ -358,7 +363,7 @@ The total length is the last entry's end. `entry(at: t)` returns the **last** en
 
 ## 7. Composition (what plays when)
 
-- **Length:** the composition lasts `project.duration`. Audio past that point, such as music longer than the video, is cut off.
+- **Length:** the composition lasts `project.duration`. Audio past that point, such as music longer than the video, is cut off. **Preview only:** the preview composition lasts `max(project.duration, timelineDuration)` (`timelineDuration` = the end of the last audio clip), so music past the video can be heard (`PRV-8`); there's no video there, only the background. The player pauses at `project.duration` unless an audio clip is selected.
 - **Main track:** two video lanes (A and B) alternate so clips that overlap during a transition sit on different tracks. For each clip:
   - **Video:** insert `sourceRange` from the media file and time-scale it to `timelineDuration` when `speed ≠ 1`.
   - **Reversed:** use the reversed file, with source range `[media.duration − src.end, + src.duration)`.
@@ -828,7 +833,7 @@ Used by beat sync. The settings:
 - **Toasts:** last `2.2 s` (6 s in UI tests). A new toast replaces the current one.
 - **UI-test identifiers:** keep the same accessibility identifiers on every platform, so test scripts can be shared:
   - Tool buttons: `tool.<Title>`. Option chips: `chip.<Title>`. Swatches: `swatch.<n>`.
-  - Panel close: `panel.done`. Timeline items: `clip.<n>`, `audio.<n>`, `caption.<n>`. Music scissors: `timeline.cut`.
+  - Panel close: `panel.done`. Timeline items: `clip.<n>`, `audio.<n>`, `caption.<n>`.
   - Editor: `editor.export`, `editor.close`, `editor.undo`, `editor.redo`, `editor.aspect`, `timeline.add`, `panel.<Title>`, `panel.done`.
   - Export: `export.start`, `export.startShare`, `export.share`, `export.save`, `export.done`.
   - Caption editor: `captionEditor.done`, `captionEditor.cancel`, `caption.field.<n>`, `caption.time.<n>`.

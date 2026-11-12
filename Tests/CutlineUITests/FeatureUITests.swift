@@ -274,6 +274,52 @@ final class FeatureUITests: CutlineUITestCase {
         XCTAssertFalse(element("preview.addMedia").exists)
     }
 
+    func test29_MUS10_RecentAudioTracks() {
+        openProjectWithSamples()
+        XCTAssertFalse(element("music.recent.0").exists)
+        tap("tool.Music")
+        XCTAssertFalse(element("music.recent.0").exists, "no recent tracks yet")
+        tap("music.use.sunrise")
+        waitUntilIdle()
+        waitFor("music added") { count(prefix: "audio.") == 1 }
+        // Reopen Music: the track is listed under Recent, and tapping it adds it again.
+        element("editor.aspect").tap()
+        tap("panel.done")
+        tap("tool.Music")
+        let recent = element("music.recent.0")
+        XCTAssertTrue(recent.waitForExistence(timeout: 5), "recent track missing")
+        XCTAssertTrue(recent.label.contains("Sunrise"), recent.label)
+        snapshot("29-music-recent")
+        recent.tap()
+        waitUntilIdle()
+        waitFor("recent track added") { count(prefix: "audio.") == 2 }
+    }
+
+    func test30_MUS11_StartHere() {
+        openProjectWithSamples()
+        tap("tool.Music")
+        tap("music.use.sunrise")
+        waitUntilIdle()
+        waitFor("music added") { count(prefix: "audio.") == 1 }
+        // Playhead a few seconds into the song, music selected: Start Here shows.
+        let tl = element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.2))
+        tl.press(forDuration: 0.05, thenDragTo: tl.withOffset(CGVector(dx: -150, dy: 0)))
+        waitUntilIdle()
+        revealAndTap("audio.0")
+        XCTAssertTrue(element("tool.Start Here").waitForExistence(timeout: 5))
+        let fullWidth = element("audio.0").frame.width
+        tap("tool.Start Here")
+        XCTAssertTrue(toastText?.hasPrefix("Music starts from") ?? false)
+        // One clip left, and it now begins where the video begins.
+        waitFor("one music clip") { count(prefix: "audio.") == 1 }
+        waitFor("moved to 0:00") { abs(element("audio.0").frame.minX - element("clip.0").frame.minX) < 4 }
+        XCTAssertLessThan(element("audio.0").frame.width, fullWidth - 20, "the part before the playhead is gone")
+        snapshot("30-start-here")
+        // One undo step brings the whole song back.
+        tap("editor.undo")
+        waitFor("undo restores the whole song") { abs(element("audio.0").frame.width - fullWidth) < 4 }
+    }
+
     func test11_CanvasAndBackground() {
         openProjectWithSamples()
         tap("editor.aspect")
@@ -408,7 +454,7 @@ final class FeatureUITests: CutlineUITestCase {
         let tl = element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.2))
         tl.press(forDuration: 0.05, thenDragTo: tl.withOffset(CGVector(dx: -120, dy: 0)))
         element("audio.0").tap()
-        tap("timeline.cut")
+        tap("tool.Cut")
         waitFor("track cut") { count(prefix: "audio.") == 2 }
         tap("tool.Delete")
         waitFor("rest deleted") { count(prefix: "audio.") == 1 }
@@ -451,11 +497,11 @@ final class FeatureUITests: CutlineUITestCase {
         let tl = element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.2))
         tl.press(forDuration: 0.05, thenDragTo: tl.withOffset(CGVector(dx: -120, dy: 0)))
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-        XCTAssertFalse(element("timeline.cut").exists, "scissors should be hidden until the music is selected")
         element("audio.0").tap()
-        XCTAssertTrue(element("timeline.cut").waitForExistence(timeout: 5))
-        snapshot("18-audio-scissors")
-        tap("timeline.cut")
+        XCTAssertTrue(element("tool.Cut").waitForExistence(timeout: 5))
+        XCTAssertFalse(element("timeline.cut").exists, "no scissors on the music bar (MUS-4)")
+        snapshot("18-audio-selected")
+        tap("tool.Cut")
         waitFor("audio cut") { count(prefix: "audio.") == 2 }
         // The right-hand piece is selected; there is no Edit / editor panel any more.
         XCTAssertTrue(element("tool.Cut").waitForExistence(timeout: 5))
@@ -547,7 +593,7 @@ final class FeatureUITests: CutlineUITestCase {
         let tl = element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.2))
         tl.press(forDuration: 0.05, thenDragTo: tl.withOffset(CGVector(dx: -120, dy: 0)))
         element("audio.0").tap()
-        tap("timeline.cut")
+        tap("tool.Cut")
         waitFor("audio cut") { count(prefix: "audio.") == 2 }
         element("audio.0").tap()
         tap("tool.Delete")

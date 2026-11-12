@@ -558,6 +558,28 @@ public extension Project {
         return true
     }
 
+    /// Fade-in given to music that no longer starts at the beginning of its song (MUS-11).
+    static let startHereFadeIn = MediaTime(seconds: 0.3)
+
+    /// "Start here" (MUS-11): the audio plays from `time` on. Cuts the clip there, removes
+    /// the part before, and moves the rest back to where the clip started on its lane
+    /// (the end of the previous clip there, or 0:00), with a short fade-in.
+    /// One edit, so one undo step. Returns the remaining clip's id.
+    @discardableResult
+    mutating func startAudioHere(_ id: UUID, at time: MediaTime) throws -> UUID {
+        let (i, _) = try audioIndex(id)
+        let original = audioClips[i]
+        let before = audioClips
+            .filter { $0.id != id && $0.lane == original.lane && $0.timelineRange.end <= original.start }
+            .map(\.timelineRange.end).max() ?? .zero
+        let rightID = try splitAudio(id, at: time)
+        audioClips.removeAll { $0.id == id }
+        guard let r = audioClips.firstIndex(where: { $0.id == rightID }) else { throw EditError.clipNotFound }
+        audioClips[r].start = before
+        audioClips[r].fadeIn = min(Self.startHereFadeIn, MediaTime(ticks: audioClips[r].playedDuration.ticks / 2))
+        return rightID
+    }
+
     /// Splits an audio clip at a timeline time. Returns the new right-hand clip's id.
     @discardableResult
     mutating func splitAudio(_ id: UUID, at time: MediaTime) throws -> UUID {

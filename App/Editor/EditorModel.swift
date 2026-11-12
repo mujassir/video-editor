@@ -95,6 +95,9 @@ final class EditorModel {
     /// Incremented when the timeline must redraw (thumbnails, waveforms loaded).
     var timelineVersion = 0
     var waveforms: [UUID: [Float]] = [:]
+    /// The 5 audio tracks used most recently, in any project (MUS-10).
+    let recentAudio = RecentAudioStore.defaultStore()
+    var recentTracks: [RecentAudioStore.Entry] = []
 
     private var rebuildTask: Task<Void, Never>?
     private var timeObserver: Any?
@@ -118,6 +121,14 @@ final class EditorModel {
                 self.currentTime = MediaTime(time)
                 let playing = self.player.rate != 0
                 if self.isPlaying != playing { self.isPlaying = playing }
+                // PRV-8: past the end of the video, playback only continues while music is selected.
+                if playing, !self.isAuditioningMusic, self.currentTime >= self.duration {
+                    self.player.pause()
+                    self.isPlaying = false
+                    // Just reached the end: land exactly on it. Already further (music was
+                    // deselected while playing past it): stay where the playhead is.
+                    if self.currentTime - self.duration < MediaTime(seconds: 0.25) { self.seek(to: self.duration) }
+                }
             }
         }
         scheduleRebuild(immediate: true)
@@ -126,6 +137,16 @@ final class EditorModel {
 
     var project: Project { session.project }
     var duration: MediaTime { project.duration }
+
+    /// PRV-8: with an audio clip selected, Play goes on past the end of the video to the end
+    /// of the music, so the whole song can be heard (and cut with Start Here / ✂︎).
+    var isAuditioningMusic: Bool { selectedAudioID != nil }
+
+    /// Where Play stops: the end of the video, or the end of the music while auditioning.
+    var playbackEnd: MediaTime { isAuditioningMusic ? project.timelineDuration : duration }
+
+    /// The playhead is past the end of the video (over music only); not exported.
+    var isPastVideoEnd: Bool { duration > .zero && currentTime > duration + MediaTime(seconds: 0.02) }
 
     // MARK: Preview
 
@@ -150,8 +171,9 @@ final class EditorModel {
         }
         let size = project.aspectRatio.renderSize(shortEdge: 720)
         do {
+            // The preview runs to the end of the music too (PRV-8); export stays at the video's length.
             let built = try await CompositionBuilder().build(project: project, resolver: resolver, renderSize: size,
-                                                             toggles: renderToggles)
+                                                             toggles: renderToggles, minimumLength: project.timelineDuration)
             guard !Task.isCancelled else { return }
             // Grab what's on screen now so the swap is seamless.
             if let output = frameOutput, let pb = output.copyPixelBuffer(forItemTime: player.currentTime(), itemTimeForDisplay: nil) {
@@ -184,7 +206,9 @@ final class EditorModel {
             player.pause()
             isPlaying = false
         } else {
-            if currentTime >= duration - MediaTime(seconds: 0.05) { seek(to: .zero) }
+            // At (or past) the end, Play starts again from 0:00. With music selected the end is the
+            // end of the music, so Play from a point after the video keeps playing from there.
+            if currentTime >= playbackEnd - MediaTime(seconds: 0.05) { seek(to: .zero) }
             isPlaying = true          // enable animations before the first frame plays
             player.play()
         }
@@ -207,8 +231,8 @@ final class EditorModel {
         let t = time.clamped(to: .zero...max(project.timelineDuration, .zero))
         currentTime = t
         let tolerance = exact ? CMTime.zero : CMTime(value: 1, timescale: 30)
-        let playable = min(t, max(duration, .zero))
-        player.seek(to: playable.cmTime, toleranceBefore: tolerance, toleranceAfter: tolerance)
+        // The preview composition runs to the end of the music (PRV-8), so seek there directly.
+        player.seek(to: t.cmTime, toleranceBefore: tolerance, toleranceAfter: tolerance)
     }
 
     // MARK: Editing
@@ -406,6 +430,29 @@ final class EditorModel {
 
 
 
+    /// "Start Here" (MUS-11) is offered while the playhead is inside the selected audio clip,
+    /// at least 0.2 s from its ends (the same rule as the scissors).
+    var canStartSelectedAudioHere: Bool {
+        guard let clip = selectedAudio else { return false }
+        let margin = Project.minimumAudioDuration
+        return currentTime >= clip.start + margin && currentTime <= clip.timelineRange.end - margin
+    }
+
+    /// One tap: the music now plays from the playhead's point in the song, moved back to the
+    /// start. Then it plays from there so the user hears the result with the video.
+    func startSelectedAudioHere() {
+        guard let id = selectedAudioID, canStartSelectedAudioHere else { return }
+        let time = currentTime.snappedToFrame(fps: 30)
+        var newID: UUID?
+        edit("Start here") { newID = try $0.startAudioHere(id, at: time) }
+        guard let newID, let clip = project.audioClips.first(where: { $0.id == newID }) else { return }
+        session.selection = .audio(newID)
+        loadWaveforms()
+        showToast("Music starts from \(clip.sourceRange.start.timecode)", systemImage: "arrow.right.to.line")
+        seek(to: clip.start)
+        if clip.start < duration { play() }
+    }
+
     /// "Move to Start" is offered when there is blank space before the selected music on its lane.
     var canMoveSelectedAudioToStart: Bool {
         guard let id = selectedAudioID else { return false }
@@ -566,6 +613,9 @@ final class EditorModel {
             var item = try await MediaImporter.probeAudio(url, fileName: file, displayName: track.name)
             item.id = UUID()
             try await model.placeMusic(item, name: track.name)
+            if let list = try? model.recentAudio.add(fileAt: url, name: track.name, duration: item.duration) {
+                model.recentTracks = list
+            }
         }
     }
 
@@ -584,7 +634,20 @@ final class EditorModel {
                 throw MusicImportError.noAudio
             }
             try await model.placeMusic(item, name: name)
+            // Remember it for the Recent list (kept even if this project is deleted later).
+            if let list = try? model.recentAudio.add(fileAt: stored, name: name, duration: item.duration) {
+                model.recentTracks = list
+            }
         }
+    }
+
+    /// Adds one of the recent tracks to this project (copied in, like a file from Files).
+    func addRecentTrack(_ entry: RecentAudioStore.Entry) {
+        addMusicFile(recentAudio.url(for: entry), name: entry.name)
+    }
+
+    func loadRecentTracks() {
+        recentTracks = recentAudio.entries
     }
 
     /// Puts music on its own lane (after any existing music),
