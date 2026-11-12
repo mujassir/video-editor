@@ -833,7 +833,7 @@ Used by beat sync. The settings:
 - **Toasts:** last `2.2 s` (6 s in UI tests). A new toast replaces the current one.
 - **UI-test identifiers:** keep the same accessibility identifiers on every platform, so test scripts can be shared:
   - Tool buttons: `tool.<Title>`. Option chips: `chip.<Title>`. Swatches: `swatch.<n>`.
-  - Panel close: `panel.done`. Timeline items: `clip.<n>`, `audio.<n>`, `caption.<n>`. Music scissors: `timeline.cut`.
+  - Panel close: `panel.done`. Timeline items: `clip.<n>`, `audio.<n>`, `caption.<n>`.
   - Editor: `editor.export`, `editor.close`, `editor.undo`, `editor.redo`, `editor.aspect`, `timeline.add`, `panel.<Title>`, `panel.done`.
   - Export: `export.start`, `export.startShare`, `export.share`, `export.save`, `export.done`.
   - Caption editor: `captionEditor.done`, `captionEditor.cancel`, `caption.field.<n>`, `caption.time.<n>`.

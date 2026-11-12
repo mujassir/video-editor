@@ -454,7 +454,7 @@ final class FeatureUITests: CutlineUITestCase {
         let tl = element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.2))
         tl.press(forDuration: 0.05, thenDragTo: tl.withOffset(CGVector(dx: -120, dy: 0)))
         element("audio.0").tap()
-        tap("timeline.cut")
+        tap("tool.Cut")
         waitFor("track cut") { count(prefix: "audio.") == 2 }
         tap("tool.Delete")
         waitFor("rest deleted") { count(prefix: "audio.") == 1 }
@@ -497,11 +497,11 @@ final class FeatureUITests: CutlineUITestCase {
         let tl = element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.2))
         tl.press(forDuration: 0.05, thenDragTo: tl.withOffset(CGVector(dx: -120, dy: 0)))
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-        XCTAssertFalse(element("timeline.cut").exists, "scissors should be hidden until the music is selected")
         element("audio.0").tap()
-        XCTAssertTrue(element("timeline.cut").waitForExistence(timeout: 5))
-        snapshot("18-audio-scissors")
-        tap("timeline.cut")
+        XCTAssertTrue(element("tool.Cut").waitForExistence(timeout: 5))
+        XCTAssertFalse(element("timeline.cut").exists, "no scissors on the music bar (MUS-4)")
+        snapshot("18-audio-selected")
+        tap("tool.Cut")
         waitFor("audio cut") { count(prefix: "audio.") == 2 }
         // The right-hand piece is selected; there is no Edit / editor panel any more.
         XCTAssertTrue(element("tool.Cut").waitForExistence(timeout: 5))
@@ -593,7 +593,7 @@ final class FeatureUITests: CutlineUITestCase {
         let tl = element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.2))
         tl.press(forDuration: 0.05, thenDragTo: tl.withOffset(CGVector(dx: -120, dy: 0)))
         element("audio.0").tap()
-        tap("timeline.cut")
+        tap("tool.Cut")
         waitFor("audio cut") { count(prefix: "audio.") == 2 }
         element("audio.0").tap()
         tap("tool.Delete")

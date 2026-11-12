@@ -114,7 +114,7 @@ A full-screen sheet; see `EXP-*`.
 - **TML-8 Add button:** a "+" after the last clip opens Add media (`IMP-*`).
 - **TML-9 Music past the end:** music longer than the video is drawn in full. The part past the end of the video is dimmed. The playhead may move past the end of the video over music, so you can cut there; the preview holds the last frame.
 - **TML-10 Move audio:** press and hold an audio bar for `0.25 s`, then drag it. The new start snaps to a frame at `30 fps`.
-- **TML-11 Scissors on music:** see `MUS-4`.
+- **TML-11 Scissors on music:** *(removed: music is cut with Cut in the toolbar, `MUS-4`.)*
 - **TML-12 Waveforms** are drawn on audio bars. Clip thumbnails load in the background.
 
 ---
@@ -353,8 +353,7 @@ Deleting closes any open panel and clears the selection.
   - Toast: "Added <name>".
 - **MUS-3 Whole song:** music that hasn't been cut runs from its start to the end of the song file, however long the video is (see `TML-9`). Preview and export stop at the end of the video.
 - **MUS-4 Cut:** splits the music at the playhead. Toast: "Cut at m:ss.f". Each piece is its own clip, and the right-hand piece becomes selected.
-  - **Toolbar Cut** works at the playhead.
-  - **Scissors on the bar:** a round scissors button on the music bar under the playhead. It shows **only when that music bar is selected** and the playhead is at least `0.2 s` from its ends.
+  - Only **Cut** in the toolbar cuts music; there's no scissors button on the music bar.
 - **MUS-5 Duck** (music only) opens the "Duck" panel:
   - Text: "Music volume while someone is speaking".
   - **Music slider:** `0`–`100%` in `5%` steps, default `25%`. Moving it also turns auto-duck on.
@@ -495,7 +494,7 @@ These were tried and removed on purpose. Don't add them back without changing th
 | 2026-11 | **Voice on/off is back on video clips** (`CLP-5`), as a single toggle after Split. It sets the existing `isMuted` field; there's still no volume slider and no Extract Audio. |
 | 2026-11 | **Caption styles are Classic, Karaoke and Bold.** Minimal and Neon were removed (`CAP-8`). |
 | 2026-11 | **The caption text editor is full screen** and saves once on Done (`CAP-5`). Text editing isn't in the Style panel. |
-| 2026-11 | **The scissors on a music bar show only when that bar is selected** (`MUS-4`). |
+| 2026-11 | **No scissors on the music bar.** It first showed under the playhead, then only on the selected bar, and was then removed: music is cut with **Cut** (and **Start Here**, `MUS-11`) in the toolbar (`MUS-4`). |
 | 2026-11 | **No Media button in the main toolbar.** Media is added with the timeline "+", and a new project opens the Photos library (`LIB-1`). |
 | 2026-11 | **The timeline "+" opens the Photos library directly**, with no Add menu, so video and photo files can't be picked from Files any more. Own audio still comes from Music → Audio Tracks. UI tests and demos (`-sampleMedia` / `-demoMedia`) still get the Add menu with Sample Clips. |
 | 2026-11 | **No built-in music tracks in the Music panel.** It offers only Audio Tracks (Files) and From Video. The generator stays in the engine for UI tests and demos, which launch with `-sampleMedia` / `-demoMedia` and still see the tracks (§14 in IMPLEMENTATION). Projects that use them still play. |
