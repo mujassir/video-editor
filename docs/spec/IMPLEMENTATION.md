@@ -829,7 +829,7 @@ Used by beat sync. The settings:
 - **UI-test identifiers:** keep the same accessibility identifiers on every platform, so test scripts can be shared:
   - Tool buttons: `tool.<Title>`. Option chips: `chip.<Title>`. Swatches: `swatch.<n>`.
   - Panel close: `panel.done`. Timeline items: `clip.<n>`, `audio.<n>`, `caption.<n>`. Music scissors: `timeline.cut`.
-  - Editor: `editor.export`, `editor.close`, `editor.undo`, `editor.aspect`.
+  - Editor: `editor.export`, `editor.close`, `editor.undo`, `editor.redo`, `editor.aspect`, `timeline.add`, `panel.<Title>`, `panel.done`.
   - Export: `export.start`, `export.startShare`, `export.share`, `export.save`, `export.done`.
   - Caption editor: `captionEditor.done`, `captionEditor.cancel`, `caption.field.<n>`, `caption.time.<n>`.
   - Animations: `anim.<In|Out>.<kind>`, `anim.combo.<kind>`, `motion.<kind>`.
@@ -838,6 +838,8 @@ Used by beat sync. The settings:
 ---
 
 ## 14. Built-in music
+
+**Not offered to users** (MUS-1). The Music panel lists them only when the app is launched with `-sampleMedia` or `-demoMedia` (UI tests and demos, which can't drive the Files picker). Other platforms only need to **play** them when a project contains them, which works because the generated file is stored in the project.
 
 The four tracks (`sunrise`, `night`, `chill`, `epic`) are **generated on the device** for the length needed: `max(edit length, 10 s)`. They're written as `music-<id>-<seconds>.m4a`. Because the generated file is stored in the project, a project opened on another platform plays exactly the same audio. A port must reproduce the track names, tempos and moods. It may generate different notes, but should keep the same feel: the root note frequency and major or minor key are in `SampleMedia.Track`.
 

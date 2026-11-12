@@ -78,6 +78,7 @@ These apply to every feature on every platform.
 3. **Transport:** current time `m:ss.f`, "/ total", and a play/pause button.
 4. **Timeline:** see `TML-*`.
 5. **Bottom area:** the toolbar for the current selection, or the open panel.
+   - **EDT-1 Swipe down to close a panel:** every bottom panel (Music, Captions, Text, Watermark, Filters, …) has a grabber bar at the top. Dragging down on the grabber or title row moves the panel with the finger. Letting go after more than `60 pt`, or a quick flick (predicted `140 pt`), closes it, the same as ✓. Otherwise it springs back. Sliders and lists inside the panel aren't affected. **Exception:** on Intro/Outro (`TTL-*`) a swipe closes without adding or saving the slide; only ✓ does that.
 
 Overlays:
 - **Toast:** appears at the top, about 2.2 s.
@@ -138,7 +139,7 @@ The toolbar is one horizontally scrolling row of icon buttons with labels. The o
 
 | Selection | Buttons, in order |
 |---|---|
-| **TBR-1 Nothing** | Media · Music · Captions (AI) · Watermark (active if set) · Text · Intro · Outro |
+| **TBR-1 Nothing** | Music · Captions (AI) · Watermark (active if set) · Text · Intro · Outro |
 | **TBR-2 Video clip** | Split · Voice (`CLP-5`; active while the voice is off) · Speed · Animate (active if any animation) · Denoise (active if on) · Filters · Adjust · Enhance (AI) · Cutout (AI) · Reframe (AI) · Crop · Reverse (active if reversed) · Freeze · Duplicate · Delete |
 | **TBR-3 Photo or freeze frame** | Duration · Animate (active if motion or animation) · Filters · Adjust · Enhance (AI) · Cutout (AI) · Crop · Duplicate · Delete |
 | **TBR-4 Text** | Edit · Duration · Animate (active if set) · Position (active if a fixed spot) · Duplicate · Delete |
@@ -152,7 +153,7 @@ Deleting closes any open panel and clears the selection.
 
 ## 7. Import (IMP)
 
-- **IMP-1 Add media:** Media (or the timeline "+") offers:
+- **IMP-1 Add media:** the timeline "+" offers (a new project also opens the Photos library straight away, `LIB-1`):
   - **Photos library:** videos and photos, up to `20` at once.
   - **Files:** video, image and audio.
 - **IMP-2 Copy in:** each file is copied into the project's media folder under a new unique name. The original isn't needed afterwards.
@@ -341,9 +342,8 @@ Deleting closes any open panel and clears the selection.
 ## 11. Music and audio (MUS)
 
 - **MUS-1 Add music** (Music in the main toolbar):
-  - **Files:** your own audio file.
+  - **Audio Tracks:** your own audio file (opens Files).
   - **From Video:** the soundtrack of a video from Photos.
-  - **Built-in tracks** (4, royalty-free, made on the device): Sunrise Drive (Upbeat, 120 BPM), Night Run (Energetic, 128), Lo-Fi Chill (Relaxed, 84), Big Moment (Cinematic, 100).
 - **MUS-2 New music defaults:**
   - Volume `70%`.
   - Fade-out at the end: `min(1.5 s, song length ÷ 4)`.
@@ -484,6 +484,8 @@ These were tried and removed on purpose. Don't add them back without changing th
 | 2026-11 | **Caption styles are Classic, Karaoke and Bold.** Minimal and Neon were removed (`CAP-8`). |
 | 2026-11 | **The caption text editor is full screen** and saves once on Done (`CAP-5`). Text editing isn't in the Style panel. |
 | 2026-11 | **The scissors on a music bar show only when that bar is selected** (`MUS-4`). |
+| 2026-11 | **No Media button in the main toolbar.** Media is added with the timeline "+", and a new project opens the Photos library (`LIB-1`). |
+| 2026-11 | **No built-in music tracks in the Music panel.** It offers only Audio Tracks (Files) and From Video. The generator stays in the engine for UI tests and demos, which launch with `-sampleMedia` / `-demoMedia` and still see the tracks (§14 in IMPLEMENTATION). Projects that use them still play. |
 
 ### Engine features not exposed in the interface
 

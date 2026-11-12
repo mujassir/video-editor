@@ -238,7 +238,6 @@ struct EditorView: View {
     }
 
     @ViewBuilder private var mainTools: some View {
-        ToolButton(title: "Media", systemImage: "plus.rectangle.on.rectangle") { showAddMenu = true }
         ToolButton(title: "Music", systemImage: "music.note") { model.select(.none); model.panel = .music }
         ToolButton(title: "Captions", systemImage: "captions.bubble", badge: "AI") { model.panel = .captions }
         ToolButton(title: "Watermark", systemImage: "seal", isActive: model.project.watermark != nil) { model.select(.none); model.panel = .watermark }

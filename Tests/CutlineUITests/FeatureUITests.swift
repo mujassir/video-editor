@@ -187,10 +187,11 @@ final class FeatureUITests: CutlineUITestCase {
     func test09_MusicAndBeatSync() {
         openProjectWithSamples()
         tap("tool.Music")
-        // User-music sources are offered next to the built-in tracks.
+        // MUS-1: two sources, Audio Tracks (Files) and From Video.
         for source in ["music.source.files", "music.source.video"] {
             XCTAssertTrue(element(source).waitForExistence(timeout: 5), "\(source) missing")
         }
+        XCTAssertTrue(element("music.source.files").label.contains("Audio Tracks"), element("music.source.files").label)
         snapshot("09-music-sources")
         // Files must actually present the system picker (regression: it silently did nothing).
         tap("music.source.files")
@@ -214,8 +215,9 @@ final class FeatureUITests: CutlineUITestCase {
 
     func test10_MainToolbarOrder() {
         openProjectWithSamples()
-        // Main toolbar: Media, Music, Captions, Watermark, Text, Intro, Outro – no Silence / Beat Sync.
-        let ids = ["tool.Media", "tool.Music", "tool.Captions", "tool.Watermark", "tool.Text", "tool.Intro", "tool.Outro"]
+        // TBR-1 main toolbar: Music, Captions, Watermark, Text, Intro, Outro – no Media, Silence or Beat Sync.
+        XCTAssertFalse(element("tool.Media").exists, "media is added with the timeline +")
+        let ids = ["tool.Music", "tool.Captions", "tool.Watermark", "tool.Text", "tool.Intro", "tool.Outro"]
         var lastX = -CGFloat.infinity
         for id in ids {
             let e = element(id)
@@ -225,6 +227,20 @@ final class FeatureUITests: CutlineUITestCase {
         }
         XCTAssertFalse(element("tool.Silence").exists)
         XCTAssertFalse(element("tool.Beat Sync").exists)
+    }
+
+    func test27_EDT1_SwipeDownClosesPanels() {
+        openProjectWithSamples()
+        for (tool, panel) in [("tool.Music", "panel.Music"), ("tool.Captions", "panel.Captions"), ("tool.Watermark", "panel.Watermark")] {
+            tap(tool)
+            let p = element(panel)
+            XCTAssertTrue(p.waitForExistence(timeout: 5), "\(panel) didn't open")
+            // Drag down from the panel's top edge (grabber / title row).
+            let top = p.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.02))
+            top.press(forDuration: 0.05, thenDragTo: top.withOffset(CGVector(dx: 0, dy: 220)))
+            waitFor("\(panel) closed by swiping down") { !element(panel).exists }
+            XCTAssertTrue(element("tool.Music").waitForExistence(timeout: 5), "main toolbar is back")
+        }
     }
 
     func test11_CanvasAndBackground() {
@@ -652,7 +668,7 @@ final class CaptionUITests: CutlineUITestCase {
             throw XCTSkip("Needs DEMO_MEDIA speech footage")
         }
         tap("projects.new")
-        tap("tool.Media")
+        tap("timeline.add")
         app.buttons["Sample Clips"].tap()
         waitFor("demo clips", timeout: 90) { count(prefix: "clip.") >= 1 }
         waitUntilIdle()
