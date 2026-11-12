@@ -68,7 +68,7 @@ final class DemoTourUITests: CutlineUITestCase {
         chapter(1) {
             tap("projects.new")
             pause(0.8)
-            tap("tool.Media")
+            tap("timeline.add")
             pause(0.6)
             app.buttons["Sample Clips"].tap()
             waitFor("demo clips", timeout: 120) { count(prefix: "clip.") >= 4 }

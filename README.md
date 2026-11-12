@@ -18,7 +18,8 @@ A fast, private video editor for iPhone. It's built natively in Swift, SwiftUI, 
 - Project library with thumbnails: rename, duplicate, delete.
 - Autosave, plus undo and redo of up to 200 steps.
 - Empty projects aren't kept.
-- Import from Photos or Files: video, photos and audio.
+- Import videos and photos from the Photos library: a new project opens it straight away, and the timeline **+** opens it again to add more. Audio comes from Music (Audio Tracks or From Video).
+- Tool panels (Music, Captions, Text, …) close with ✓ or by swiping down.
 
 ### Timeline and preview
 - Live preview rendered by the Metal compositor, with no black flash after edits.
@@ -54,8 +55,7 @@ A fast, private video editor for iPhone. It's built natively in Swift, SwiftUI, 
 - Drag the text on the video to place it anywhere (Custom position).
 
 ### Music and audio
-- 4 built-in royalty-free tracks, synthesized on the device.
-- Your own music from **Files**, or the soundtrack of a video (**From Video**).
+- Your own music from **Audio Tracks** (Files), or the soundtrack of a video (**From Video**).
 - **Music toolbar:** Cut, Duck (music level under speech, 25% by default), Move to Start (when there's a gap before it), Repeat (when it ends before the video), Delete.
 - **Whole song on the timeline:** a 3-minute song on a 1-minute video shows all 3 minutes. The part past the end of the video is dimmed; preview and export stop at the end of the video.
 - **Cut:** a ✂︎ sits on the music bar under the playhead; tap it (or **Cut** in the toolbar) to cut the music there. Each piece is its own clip that you can select, move, repeat or delete. The ✂︎ shows only on the selected music bar.

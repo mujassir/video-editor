@@ -5,6 +5,9 @@ import EditorKit
 
 struct EditorView: View {
     @State var model: EditorModel
+    /// Opened from New Project: present the Photos library right away so the user can
+    /// pick videos and photos and start (LIB-1). Cancelling leaves the empty editor open.
+    var startWithPhotos = false
     let onClose: () -> Void
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var showPicker = false
@@ -14,11 +17,11 @@ struct EditorView: View {
     var body: some View {
         VStack(spacing: 0) {
             topBar
-            PreviewView(model: model)
+            PreviewView(model: model, onAddMedia: addMedia)
                 .padding(.horizontal, 8)
                 .frame(minHeight: 150, maxHeight: .infinity)
             transport
-            TimelineRepresentable(model: model, onAddMedia: { showAddMenu = true })
+            TimelineRepresentable(model: model, onAddMedia: addMedia)
                 .frame(height: timelineHeight)
             bottomArea
                 .layoutPriority(1)
@@ -36,6 +39,13 @@ struct EditorView: View {
                     BusyOverlay(message: message, progress: model.busyProgress)
                 }
             }
+        }
+        .task {
+            // UI tests and demos (-sampleMedia) import bundled clips instead of the Photos library.
+            guard startWithPhotos, model.project.isEmptyEdit, !LaunchOptions.useSampleMedia,
+                  LaunchOptions.demoMediaFolder == nil else { return }
+            try? await Task.sleep(for: .milliseconds(350))   // let the editor slide in first
+            showPicker = true
         }
         .photosPicker(isPresented: $showPicker, selection: $pickerItems, maxSelectionCount: 20,
                       matching: .any(of: [.videos, .images]), preferredItemEncoding: .current)
@@ -83,6 +93,17 @@ struct EditorView: View {
         return min(250, 150 + CGFloat(lanes) * 34)
     }
 
+    /// The timeline "+" and the empty preview open the Photos library directly (IMP-1, PRV-7). UI tests and demos
+    /// (-sampleMedia / -demoMedia) get the Add menu instead, to pick the bundled Sample Clips.
+    private func addMedia() {
+        if LaunchOptions.useSampleMedia || LaunchOptions.demoMediaFolder != nil {
+            showAddMenu = true
+        } else {
+            model.pause()
+            showPicker = true
+        }
+    }
+
     // MARK: Top bar
 
     private var topBar: some View {
@@ -100,25 +121,36 @@ struct EditorView: View {
             }
             .accessibilityIdentifier("editor.aspect")
             Spacer()
-            Button { model.undo() } label: { Image(systemName: "arrow.uturn.backward") }
-                .disabled(!model.session.canUndo).accessibilityIdentifier("editor.undo")
-            Button { model.redo() } label: { Image(systemName: "arrow.uturn.forward") }
-                .disabled(!model.session.canRedo).accessibilityIdentifier("editor.redo")
-            Button {
-                model.pause()
-                showExport = true
-            } label: {
-                Text("Export").font(.subheadline.weight(.bold))
-                    .padding(.horizontal, 16).frame(height: 34)
-                    .background(Theme.accent, in: Capsule())
+            // Shown only when they can do something: none in a new project, Redo only after an Undo.
+            if model.session.canUndo {
+                Button { model.undo() } label: { Image(systemName: "arrow.uturn.backward") }
+                    .accessibilityIdentifier("editor.undo")
+                    .transition(.opacity)
             }
-            .disabled(model.project.clips.isEmpty)
-            .accessibilityIdentifier("editor.export")
+            if model.session.canRedo {
+                Button { model.redo() } label: { Image(systemName: "arrow.uturn.forward") }
+                    .accessibilityIdentifier("editor.redo")
+                    .transition(.opacity)
+            }
+            // Hidden while there's nothing to export (the edit has no length yet).
+            if model.duration > .zero {
+                Button {
+                    model.pause()
+                    showExport = true
+                } label: {
+                    Text("Export").font(.subheadline.weight(.bold))
+                        .padding(.horizontal, 16).frame(height: 34)
+                        .background(Theme.accent, in: Capsule())
+                }
+                .accessibilityIdentifier("editor.export")
+            }
         }
         .font(.system(size: 17, weight: .semibold))
         .foregroundStyle(.white)
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
+        .animation(.easeOut(duration: 0.2), value: model.session.canUndo)
+        .animation(.easeOut(duration: 0.2), value: model.session.canRedo)
     }
 
     // MARK: Transport
@@ -217,11 +249,16 @@ struct EditorView: View {
     }
 
     @ViewBuilder private var mainTools: some View {
-        ToolButton(title: "Media", systemImage: "plus.rectangle.on.rectangle") { showAddMenu = true }
-        ToolButton(title: "Music", systemImage: "music.note") { model.select(.none); model.panel = .music }
-        ToolButton(title: "Captions", systemImage: "captions.bubble", badge: "AI") { model.panel = .captions }
-        ToolButton(title: "Watermark", systemImage: "seal", isActive: model.project.watermark != nil) { model.select(.none); model.panel = .watermark }
-        ToolButton(title: "Text", systemImage: "textformat") { model.addText() }
+        // With no content yet (the edit has no length, as for Export) only Intro and Outro show.
+        if model.duration > .zero {
+            ToolButton(title: "Music", systemImage: "music.note") { model.select(.none); model.panel = .music }
+            // Captions transcribe speech, so they're only offered once there's a video clip (not just photos).
+            if model.project.hasVideoClips {
+                ToolButton(title: "Captions", systemImage: "captions.bubble", badge: "AI") { model.panel = .captions }
+            }
+            ToolButton(title: "Watermark", systemImage: "seal", isActive: model.project.watermark != nil) { model.select(.none); model.panel = .watermark }
+            ToolButton(title: "Text", systemImage: "textformat") { model.addText() }
+        }
         ToolButton(title: "Intro", systemImage: "rectangle.lefthalf.inset.filled") { model.select(.none); model.panel = .titleCard(.opening) }
         ToolButton(title: "Outro", systemImage: "rectangle.righthalf.inset.filled") { model.select(.none); model.panel = .titleCard(.closing) }
     }

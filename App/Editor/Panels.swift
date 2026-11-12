@@ -5,25 +5,59 @@ import AVFoundation
 import EditorKit
 
 /// Bottom panel container – slides up over the toolbar.
+/// Swipe down on its top (grabber and title row) to close it (EDT-1).
 struct PanelContainer<Content: View>: View {
     let title: String
     let onDone: () -> Void
+    /// What a swipe down does; defaults to `onDone`. Panels whose ✓ also commits
+    /// something (Intro/Outro adds the slide) pass a plain close instead.
+    var onSwipeDown: (() -> Void)? = nil
     var onUndo: (() -> Void)? = nil
     var canUndo = true
     @ViewBuilder var content: Content
+    @State private var dragOffset: CGFloat = 0
+
+    /// Distance (pt) or predicted distance that closes the panel when the finger lifts.
+    static var closeDistance: CGFloat { 60 }
+    static var closePredictedDistance: CGFloat { 140 }
 
     var body: some View {
         VStack(spacing: 10) {
             PanelHeader(title: title, onDone: onDone, onUndo: onUndo, canUndo: canUndo)
+                .overlay(alignment: .top) {
+                    Capsule().fill(Theme.secondaryText.opacity(0.6))
+                        .frame(width: 36, height: 5)
+                        .padding(.top, 4)
+                        .accessibilityHidden(true)
+                }
+                .contentShape(Rectangle())
+                .gesture(swipeDown)
             content
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
         }
         .frame(maxWidth: .infinity)
         .background(Theme.surface)
+        .offset(y: dragOffset)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("panel.\(title)")
+        .accessibilityAction(.escape) { close() }
     }
+
+    private var swipeDown: some Gesture {
+        DragGesture(minimumDistance: 8)
+            .onChanged { g in dragOffset = max(0, g.translation.height) }
+            .onEnded { g in
+                if g.translation.height > Self.closeDistance || g.predictedEndTranslation.height > Self.closePredictedDistance {
+                    close()
+                    dragOffset = 0
+                } else {
+                    withAnimation(.spring(duration: 0.25)) { dragOffset = 0 }
+                }
+            }
+    }
+
+    private func close() { (onSwipeDown ?? onDone)() }
 }
 
 private let swatches: [RGBAColor] = [
@@ -521,33 +555,19 @@ struct MusicPanel: View {
         PanelContainer(title: "Music", onDone: { model.panel = nil }) {
             VStack(spacing: 10) {
                 HStack(spacing: 8) {
-                    sourceButton("Files", "folder") { model.openFiles(for: .music) }
+                    sourceButton("Audio Tracks", "folder", id: "music.source.files") { model.openFiles(for: .music) }
                     PhotosPicker(selection: $videoItem, matching: .videos) {
                         MusicSourceLabel(title: "From Video", icon: "film")
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("music.source.video")
                 }
-                Text("Built-in tracks").font(.caption).foregroundStyle(Theme.secondaryText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                ForEach(SampleMedia.library) { track in
-                    HStack {
-                        Image(systemName: "music.note").frame(width: 36, height: 36)
-                            .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: 8))
-                        VStack(alignment: .leading) {
-                            Text(track.name).font(.subheadline.weight(.semibold))
-                            Text("\(track.mood) · \(Int(track.bpm)) BPM").font(.caption).foregroundStyle(Theme.secondaryText)
-                        }
-                        Spacer()
-                        Button("Use") { model.addMusic(track); model.panel = nil }
-                            .font(.subheadline.weight(.semibold))
-                            .padding(.horizontal, 14).padding(.vertical, 6)
-                            .background(Theme.accent, in: Capsule())
-                            .buttonStyle(.plain)
-                            .accessibilityIdentifier("music.use.\(track.id)")
-                    }
+                // Built-in tracks were removed from the app (MUS-1). UI tests and demos
+                // (-sampleMedia / -demoMedia) still get them, like "Sample Clips" in the Add
+                // menu, because the simulator can't drive the Files picker.
+                if LaunchOptions.useSampleMedia || LaunchOptions.demoMediaFolder != nil {
+                    sampleTracks
                 }
-                Text("Royalty-free · generated on device").font(.caption2).foregroundStyle(Theme.secondaryText)
             }
         }
         .onChange(of: videoItem) { _, item in
@@ -564,10 +584,32 @@ struct MusicPanel: View {
         }
     }
 
-    private func sourceButton(_ title: String, _ icon: String, action: @escaping () -> Void) -> some View {
+    @ViewBuilder private var sampleTracks: some View {
+        Text("Sample tracks (testing)").font(.caption).foregroundStyle(Theme.secondaryText)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        ForEach(SampleMedia.library) { track in
+            HStack {
+                Image(systemName: "music.note").frame(width: 36, height: 36)
+                    .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: 8))
+                VStack(alignment: .leading) {
+                    Text(track.name).font(.subheadline.weight(.semibold))
+                    Text("\(track.mood) · \(Int(track.bpm)) BPM").font(.caption).foregroundStyle(Theme.secondaryText)
+                }
+                Spacer()
+                Button("Use") { model.addMusic(track); model.panel = nil }
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 14).padding(.vertical, 6)
+                    .background(Theme.accent, in: Capsule())
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("music.use.\(track.id)")
+            }
+        }
+    }
+
+    private func sourceButton(_ title: String, _ icon: String, id: String? = nil, action: @escaping () -> Void) -> some View {
         Button(action: action) { MusicSourceLabel(title: title, icon: icon) }
             .buttonStyle(.plain)
-            .accessibilityIdentifier("music.source.\(title.lowercased())")
+            .accessibilityIdentifier(id ?? "music.source.\(title.lowercased())")
     }
 }
 
@@ -1249,7 +1291,8 @@ struct TitleCardPanel: View {
     private var name: String { placement == .opening ? "Opening Slide" : "Closing Slide" }
 
     var body: some View {
-        PanelContainer(title: name, onDone: save) {
+        // Swiping down closes without adding or saving the slide (only ✓ does that).
+        PanelContainer(title: name, onDone: save, onSwipeDown: { model.panel = nil }) {
             if let card = draft {
                 VStack(spacing: 10) {
                     TextField("Title", text: Binding(get: { card.title }, set: { draft?.title = $0 }))

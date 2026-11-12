@@ -57,7 +57,7 @@ These apply to every feature on every platform.
 
 ### LIB: Project library (home)
 
-- **LIB-1 New Project:** a large card at the top, "New Project / Edit videos and photos with on-device AI". Tapping it creates a project named `Project N` (N = number of projects + 1) and opens the editor.
+- **LIB-1 New Project:** a large card at the top, "New Project / Edit videos and photos with on-device AI". Tapping it creates a project named `Project N` (N = number of projects + 1), opens the editor and **immediately opens the Photos library** (the same picker as `IMP-1`: videos and photos, up to `20`). The picked media goes on the main track and the user can start editing. Cancelling the picker leaves the empty editor open (the empty preview and the timeline "+" still work, `PRV-7`), and closing an empty editor deletes the project (`LIB-4`). Opening an existing project never opens the picker.
 - **LIB-2 Recent:** a 2-column grid of project cards, most recently modified first. Each card shows:
   - **Thumbnail:** the first clip's first frame, cropped to fill a fixed `150 pt` high box, rounded corners. A placeholder film icon when there's no thumbnail. Cards must never overlap, whatever the project's aspect ratio.
   - **Duration badge:** in the bottom-right corner, `m:ss.f`.
@@ -72,12 +72,13 @@ These apply to every feature on every platform.
 1. **Top bar:**
    - **Close (×):** saves the project, writes its thumbnail and returns to the library.
    - **Aspect ratio button:** shows the ratio, such as `9:16`, and opens Canvas (`CNV-1`).
-   - **Undo and Redo:** disabled when there's nothing to undo or redo.
-   - **Export:** an accent capsule, disabled with no clips.
+   - **Undo and Redo:** each is shown only when it can do something, and hidden otherwise. A new project shows neither. Undo appears after the first edit. Redo appears only after an undo, and disappears again once there's nothing left to redo or a new edit clears it (`PRJ-2`).
+   - **Export:** an accent capsule. **Hidden** while there's nothing to export, that is while the edit has no length (`Project.duration == 0`: no clips and no voiceover; music or text on their own don't count). It appears as soon as there is.
 2. **Preview:** the canvas at its aspect ratio. Tapping it plays or pauses.
 3. **Transport:** current time `m:ss.f`, "/ total", and a play/pause button.
 4. **Timeline:** see `TML-*`.
 5. **Bottom area:** the toolbar for the current selection, or the open panel.
+   - **EDT-1 Swipe down to close a panel:** every bottom panel (Music, Captions, Text, Watermark, Filters, …) has a grabber bar at the top. Dragging down on the grabber or title row moves the panel with the finger. Letting go after more than `60 pt`, or a quick flick (predicted `140 pt`), closes it, the same as ✓. Otherwise it springs back. Sliders and lists inside the panel aren't affected. **Exception:** on Intro/Outro (`TTL-*`) a swipe closes without adding or saving the slide; only ✓ does that.
 
 Overlays:
 - **Toast:** appears at the top, about 2.2 s.
@@ -121,6 +122,7 @@ A full-screen sheet; see `EXP-*`.
 ## 5. Preview and playback (PRV)
 
 - **PRV-1 Play/pause:** tap the preview or the play button. Pressing play at the end starts again from 0.
+- **PRV-7 Empty preview:** while the main track has no clips (a new project, or after deleting every clip), the preview shows a film icon and "Add videos or photos to start". Tapping the icon or the text opens the Photos library, the same as the timeline "+" (`IMP-1`).
 - **PRV-2 No black flash:** after an edit, the last frame stays on screen until the updated preview is ready.
 - **PRV-3 Animations only while playing:** animations play only during playback and export. This covers In/Out/Combo, photo motion and text animations. Paused or scrubbing, clips and text are shown at rest, so edits can be judged. Transitions always show.
 - **PRV-4 Clean frame:** opening Filters, Adjust, Crop, Cutout, Speed or Duration moves the playhead to a frame of the selected clip where no animation, transition or fade is active. It stays put if it's already on such a frame.
@@ -138,7 +140,7 @@ The toolbar is one horizontally scrolling row of icon buttons with labels. The o
 
 | Selection | Buttons, in order |
 |---|---|
-| **TBR-1 Nothing** | Media · Music · Captions (AI) · Watermark (active if set) · Text · Intro · Outro |
+| **TBR-1 Nothing** | With **no content** (the edit has no length, as for Export: no clips, slides or voiceover) only **Intro · Outro** show. Otherwise: Music · Captions (AI; **hidden** until the main track has a video clip: not shown for an empty project or one with only photos, slides or freeze frames) · Watermark (active if set) · Text · Intro · Outro |
 | **TBR-2 Video clip** | Split · Voice (`CLP-5`; active while the voice is off) · Speed · Animate (active if any animation) · Denoise (active if on) · Filters · Adjust · Enhance (AI) · Cutout (AI) · Reframe (AI) · Crop · Reverse (active if reversed) · Freeze · Duplicate · Delete |
 | **TBR-3 Photo or freeze frame** | Duration · Animate (active if motion or animation) · Filters · Adjust · Enhance (AI) · Cutout (AI) · Crop · Duplicate · Delete |
 | **TBR-4 Text** | Edit · Duration · Animate (active if set) · Position (active if a fixed spot) · Duplicate · Delete |
@@ -152,9 +154,7 @@ Deleting closes any open panel and clears the selection.
 
 ## 7. Import (IMP)
 
-- **IMP-1 Add media:** Media (or the timeline "+") offers:
-  - **Photos library:** videos and photos, up to `20` at once.
-  - **Files:** video, image and audio.
+- **IMP-1 Add media:** the timeline "+" at the end of the main track, or the empty preview (`PRV-7`), opens the **Photos library** directly: videos and photos, up to `20` at once. (A new project opens it straight away too, `LIB-1`.) Audio is added from Music (`MUS-1`).
 - **IMP-2 Copy in:** each file is copied into the project's media folder under a new unique name. The original isn't needed afterwards.
 - **IMP-3 Placement:** videos and photos go to the end of the main track, in the order picked. Photos last `3 s`. Audio files go on the first free audio lane as music.
 - **IMP-4 Orientation:** video recorded in portrait (rotated in the file) is shown upright. Photos are shown upright using their orientation tag.
@@ -341,9 +341,8 @@ Deleting closes any open panel and clears the selection.
 ## 11. Music and audio (MUS)
 
 - **MUS-1 Add music** (Music in the main toolbar):
-  - **Files:** your own audio file.
+  - **Audio Tracks:** your own audio file (opens Files).
   - **From Video:** the soundtrack of a video from Photos.
-  - **Built-in tracks** (4, royalty-free, made on the device): Sunrise Drive (Upbeat, 120 BPM), Night Run (Energetic, 128), Lo-Fi Chill (Relaxed, 84), Big Moment (Cinematic, 100).
 - **MUS-2 New music defaults:**
   - Volume `70%`.
   - Fade-out at the end: `min(1.5 s, song length ÷ 4)`.
@@ -484,6 +483,9 @@ These were tried and removed on purpose. Don't add them back without changing th
 | 2026-11 | **Caption styles are Classic, Karaoke and Bold.** Minimal and Neon were removed (`CAP-8`). |
 | 2026-11 | **The caption text editor is full screen** and saves once on Done (`CAP-5`). Text editing isn't in the Style panel. |
 | 2026-11 | **The scissors on a music bar show only when that bar is selected** (`MUS-4`). |
+| 2026-11 | **No Media button in the main toolbar.** Media is added with the timeline "+", and a new project opens the Photos library (`LIB-1`). |
+| 2026-11 | **The timeline "+" opens the Photos library directly**, with no Add menu, so video and photo files can't be picked from Files any more. Own audio still comes from Music → Audio Tracks. UI tests and demos (`-sampleMedia` / `-demoMedia`) still get the Add menu with Sample Clips. |
+| 2026-11 | **No built-in music tracks in the Music panel.** It offers only Audio Tracks (Files) and From Video. The generator stays in the engine for UI tests and demos, which launch with `-sampleMedia` / `-demoMedia` and still see the tracks (§14 in IMPLEMENTATION). Projects that use them still play. |
 
 ### Engine features not exposed in the interface
 

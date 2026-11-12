@@ -104,7 +104,7 @@ class CutlineUITestCase: XCTestCase {
     /// New project with the three sample clips on the timeline.
     func openProjectWithSamples(expectedClips: Int = 3) {
         tap("projects.new")
-        tap("tool.Media")
+        tap("timeline.add")   // there's no Media button in the main toolbar (TBR-1)
         let sample = app.buttons["Sample Clips"]
         XCTAssertTrue(sample.waitForExistence(timeout: 5))
         sample.tap()

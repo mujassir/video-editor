@@ -6,8 +6,18 @@ final class FeatureUITests: CutlineUITestCase {
     func test01_ProjectLibraryAndImport() {
         XCTAssertTrue(element("projects.new").waitForExistence(timeout: 10))
         snapshot("01-projects-empty")
-        // A new project closed without adding anything is not kept.
+        // A new project has nothing to export, so there's no Export button (EDT).
         tap("projects.new")
+        XCTAssertTrue(element("editor.close").waitForExistence(timeout: 10))
+        XCTAssertFalse(element("editor.export").exists, "Export should be hidden in an empty project")
+        XCTAssertFalse(element("editor.undo").exists, "nothing to undo in a new project")
+        XCTAssertFalse(element("editor.redo").exists, "nothing to redo in a new project")
+        // TBR-1 with no content: only Intro and Outro.
+        for hidden in ["tool.Music", "tool.Captions", "tool.Watermark", "tool.Text"] {
+            XCTAssertFalse(element(hidden).exists, "\(hidden) should be hidden with no content")
+        }
+        XCTAssertTrue(element("tool.Intro").exists && element("tool.Outro").exists)
+        // A new project closed without adding anything is not kept.
         tap("editor.close")
         XCTAssertTrue(element("projects.new").waitForExistence(timeout: 10))
         RunLoop.current.run(until: Date().addingTimeInterval(1))
@@ -15,6 +25,10 @@ final class FeatureUITests: CutlineUITestCase {
         openProjectWithSamples()
         XCTAssertEqual(count(prefix: "clip."), 3)
         XCTAssertEqual(totalSeconds, 12, accuracy: 0.2)
+        XCTAssertTrue(element("editor.export").exists, "Export appears once there's content")
+        for shown in ["tool.Music", "tool.Captions", "tool.Watermark", "tool.Text"] {
+            XCTAssertTrue(element(shown).waitForExistence(timeout: 5), "\(shown) should appear once there's content")
+        }
         snapshot("01-editor-imported")
         // Close and confirm the project is listed and reopens.
         tap("editor.close")
@@ -63,6 +77,9 @@ final class FeatureUITests: CutlineUITestCase {
 
     func test03_SplitDeleteUndoRedo() {
         openProjectWithSamples()
+        // Adding the clips is an edit: Undo shows, Redo doesn't yet.
+        XCTAssertTrue(element("editor.undo").exists)
+        XCTAssertFalse(element("editor.redo").exists, "Redo only appears after an Undo")
         // Move the playhead ~1.5 s into the first clip and split.
         let tl = element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.2))
         tl.press(forDuration: 0.05, thenDragTo: tl.withOffset(CGVector(dx: -100, dy: 0)))
@@ -76,8 +93,16 @@ final class FeatureUITests: CutlineUITestCase {
         XCTAssertLessThan(totalSeconds, 12)
         tap("editor.undo")
         waitFor("undo restores clip") { count(prefix: "clip.") == 4 }
+        XCTAssertTrue(element("editor.redo").waitForExistence(timeout: 5), "Redo appears after an Undo")
         tap("editor.redo")
         waitFor("redo deletes again") { count(prefix: "clip.") == 3 }
+        waitFor("nothing left to redo") { !element("editor.redo").exists }
+        // A new edit after an Undo clears Redo.
+        tap("editor.undo")
+        waitFor("redo back") { element("editor.redo").exists }
+        selectClip(0)
+        tap("tool.Duplicate")
+        waitFor("new edit clears redo") { !element("editor.redo").exists }
     }
 
     func test04_TrimWithHandles() {
@@ -170,10 +195,11 @@ final class FeatureUITests: CutlineUITestCase {
     func test09_MusicAndBeatSync() {
         openProjectWithSamples()
         tap("tool.Music")
-        // User-music sources are offered next to the built-in tracks.
+        // MUS-1: two sources, Audio Tracks (Files) and From Video.
         for source in ["music.source.files", "music.source.video"] {
             XCTAssertTrue(element(source).waitForExistence(timeout: 5), "\(source) missing")
         }
+        XCTAssertTrue(element("music.source.files").label.contains("Audio Tracks"), element("music.source.files").label)
         snapshot("09-music-sources")
         // Files must actually present the system picker (regression: it silently did nothing).
         tap("music.source.files")
@@ -197,8 +223,9 @@ final class FeatureUITests: CutlineUITestCase {
 
     func test10_MainToolbarOrder() {
         openProjectWithSamples()
-        // Main toolbar: Media, Music, Captions, Watermark, Text, Intro, Outro – no Silence / Beat Sync.
-        let ids = ["tool.Media", "tool.Music", "tool.Captions", "tool.Watermark", "tool.Text", "tool.Intro", "tool.Outro"]
+        // TBR-1 main toolbar: Music, Captions, Watermark, Text, Intro, Outro – no Media, Silence or Beat Sync.
+        XCTAssertFalse(element("tool.Media").exists, "media is added with the timeline +")
+        let ids = ["tool.Music", "tool.Captions", "tool.Watermark", "tool.Text", "tool.Intro", "tool.Outro"]
         var lastX = -CGFloat.infinity
         for id in ids {
             let e = element(id)
@@ -208,6 +235,43 @@ final class FeatureUITests: CutlineUITestCase {
         }
         XCTAssertFalse(element("tool.Silence").exists)
         XCTAssertFalse(element("tool.Beat Sync").exists)
+    }
+
+    func test27_EDT1_SwipeDownClosesPanels() {
+        openProjectWithSamples()
+        for (tool, panel) in [("tool.Music", "panel.Music"), ("tool.Captions", "panel.Captions"), ("tool.Watermark", "panel.Watermark")] {
+            tap(tool)
+            let p = element(panel)
+            XCTAssertTrue(p.waitForExistence(timeout: 5), "\(panel) didn't open")
+            // Drag down from the panel's top edge (grabber / title row).
+            let top = p.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.02))
+            top.press(forDuration: 0.05, thenDragTo: top.withOffset(CGVector(dx: 0, dy: 220)))
+            waitFor("\(panel) closed by swiping down") { !element(panel).exists }
+            XCTAssertTrue(element("tool.Music").waitForExistence(timeout: 5), "main toolbar is back")
+        }
+    }
+
+    func test28_PRV7_EmptyPreviewAddsMedia() {
+        openProjectWithSamples()
+        // Delete every clip: the editor is back to its start state.
+        while count(prefix: "clip.") > 0 {
+            let before = count(prefix: "clip.")
+            selectClip(0)
+            tap("tool.Delete")
+            waitFor("clip deleted") { count(prefix: "clip.") < before }
+        }
+        let empty = element("preview.addMedia")
+        XCTAssertTrue(empty.waitForExistence(timeout: 5), "empty preview should show")
+        XCTAssertFalse(element("editor.export").exists)
+        XCTAssertFalse(element("tool.Music").exists, "project tools hide again with no content")
+        snapshot("28-empty-again")
+        // Tapping the film icon / label adds media (test runs get the Sample Clips menu).
+        empty.tap()
+        let sample = app.buttons["Sample Clips"]
+        XCTAssertTrue(sample.waitForExistence(timeout: 5))
+        sample.tap()
+        waitFor("clips added from the empty preview", timeout: 60) { count(prefix: "clip.") >= 3 }
+        XCTAssertFalse(element("preview.addMedia").exists)
     }
 
     func test11_CanvasAndBackground() {
@@ -635,7 +699,7 @@ final class CaptionUITests: CutlineUITestCase {
             throw XCTSkip("Needs DEMO_MEDIA speech footage")
         }
         tap("projects.new")
-        tap("tool.Media")
+        tap("timeline.add")
         app.buttons["Sample Clips"].tap()
         waitFor("demo clips", timeout: 90) { count(prefix: "clip.") >= 1 }
         waitUntilIdle()

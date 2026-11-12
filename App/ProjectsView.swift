@@ -4,11 +4,13 @@ import EditorKit
 struct RootView: View {
     @State private var app = AppModel()
     @State private var editor: EditorModel?
+    /// The editor was opened from New Project: show the Photos library straight away (LIB-1).
+    @State private var startWithPhotos = false
 
     var body: some View {
         ZStack {
             if let editor {
-                EditorView(model: editor) {
+                EditorView(model: editor, startWithPhotos: startWithPhotos) {
                     let closed = editor.project
                     self.editor = nil
                     if closed.isEmptyEdit {
@@ -19,7 +21,8 @@ struct RootView: View {
                 }
                 .transition(.move(edge: .trailing))
             } else {
-                ProjectsView(app: app) { project in open(project) }
+                ProjectsView(app: app, onOpen: { project in open(project) },
+                             onCreate: { project in open(project, startWithPhotos: true) })
                     .transition(.opacity)
             }
         }
@@ -28,8 +31,9 @@ struct RootView: View {
         .tint(Theme.accent)
     }
 
-    private func open(_ project: Project) {
+    private func open(_ project: Project, startWithPhotos: Bool = false) {
         guard let fresh = try? app.store.load(project.id) else { return }
+        self.startWithPhotos = startWithPhotos
         editor = EditorModel(project: fresh, store: app.store)
     }
 }
@@ -37,6 +41,8 @@ struct RootView: View {
 struct ProjectsView: View {
     let app: AppModel
     let onOpen: (Project) -> Void
+    /// A new project was created (opens the editor with the Photos library).
+    let onCreate: (Project) -> Void
     @State private var renaming: Project?
     @State private var newName = ""
 
@@ -77,7 +83,7 @@ struct ProjectsView: View {
 
     private var newProjectCard: some View {
         Button {
-            if let project = try? app.createProject() { onOpen(project) }
+            if let project = try? app.createProject() { onCreate(project) }
         } label: {
             HStack(spacing: 16) {
                 Image(systemName: "plus")

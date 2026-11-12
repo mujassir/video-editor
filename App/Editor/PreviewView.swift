@@ -38,6 +38,8 @@ struct PlayerSurface: UIViewRepresentable {
 /// Canvas-shaped preview with direct manipulation of the selected text.
 struct PreviewView: View {
     @Bindable var model: EditorModel
+    /// Tapping the empty state adds media, like the timeline "+" (PRV-7).
+    var onAddMedia: () -> Void = {}
     @State private var dragStart: SIMD2<Double>?
 
     var body: some View {
@@ -68,11 +70,19 @@ struct PreviewView: View {
         }
     }
 
+    /// Shown whenever the main track is empty: at the start and after every clip is deleted.
     private var emptyState: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "film.stack").font(.system(size: 40)).foregroundStyle(Theme.secondaryText)
-            Text("Add videos or photos to start").foregroundStyle(Theme.secondaryText)
+        Button(action: onAddMedia) {
+            VStack(spacing: 10) {
+                Image(systemName: "film.stack").font(.system(size: 40))
+                Text("Add videos or photos to start")
+            }
+            .foregroundStyle(Theme.secondaryText)
+            .padding(24)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("preview.addMedia")
     }
 
     private func fit(ratio: Double, in size: CGSize) -> CGSize {
