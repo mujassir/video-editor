@@ -21,7 +21,7 @@ struct EditorView: View {
                 .padding(.horizontal, 8)
                 .frame(minHeight: 150, maxHeight: .infinity)
             transport
-            TimelineRepresentable(model: model, onAddMedia: { showAddMenu = true })
+            TimelineRepresentable(model: model, onAddMedia: addMedia)
                 .frame(height: timelineHeight)
             bottomArea
                 .layoutPriority(1)
@@ -91,6 +91,17 @@ struct EditorView: View {
     private var timelineHeight: CGFloat {
         let lanes = (model.project.audioClips.map(\.lane).max() ?? 0) + 1
         return min(250, 150 + CGFloat(lanes) * 34)
+    }
+
+    /// The timeline "+" opens the Photos library directly (IMP-1). UI tests and demos
+    /// (-sampleMedia / -demoMedia) get the Add menu instead, to pick the bundled Sample Clips.
+    private func addMedia() {
+        if LaunchOptions.useSampleMedia || LaunchOptions.demoMediaFolder != nil {
+            showAddMenu = true
+        } else {
+            model.pause()
+            showPicker = true
+        }
     }
 
     // MARK: Top bar

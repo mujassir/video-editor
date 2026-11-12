@@ -153,9 +153,7 @@ Deleting closes any open panel and clears the selection.
 
 ## 7. Import (IMP)
 
-- **IMP-1 Add media:** the timeline "+" offers (a new project also opens the Photos library straight away, `LIB-1`):
-  - **Photos library:** videos and photos, up to `20` at once.
-  - **Files:** video, image and audio.
+- **IMP-1 Add media:** the timeline "+" at the end of the main track opens the **Photos library** directly: videos and photos, up to `20` at once. (A new project opens it straight away too, `LIB-1`.) Audio is added from Music (`MUS-1`).
 - **IMP-2 Copy in:** each file is copied into the project's media folder under a new unique name. The original isn't needed afterwards.
 - **IMP-3 Placement:** videos and photos go to the end of the main track, in the order picked. Photos last `3 s`. Audio files go on the first free audio lane as music.
 - **IMP-4 Orientation:** video recorded in portrait (rotated in the file) is shown upright. Photos are shown upright using their orientation tag.
@@ -485,6 +483,7 @@ These were tried and removed on purpose. Don't add them back without changing th
 | 2026-11 | **The caption text editor is full screen** and saves once on Done (`CAP-5`). Text editing isn't in the Style panel. |
 | 2026-11 | **The scissors on a music bar show only when that bar is selected** (`MUS-4`). |
 | 2026-11 | **No Media button in the main toolbar.** Media is added with the timeline "+", and a new project opens the Photos library (`LIB-1`). |
+| 2026-11 | **The timeline "+" opens the Photos library directly**, with no Add menu, so video and photo files can't be picked from Files any more. Own audio still comes from Music → Audio Tracks. UI tests and demos (`-sampleMedia` / `-demoMedia`) still get the Add menu with Sample Clips. |
 | 2026-11 | **No built-in music tracks in the Music panel.** It offers only Audio Tracks (Files) and From Video. The generator stays in the engine for UI tests and demos, which launch with `-sampleMedia` / `-demoMedia` and still see the tracks (§14 in IMPLEMENTATION). Projects that use them still play. |
 
 ### Engine features not exposed in the interface

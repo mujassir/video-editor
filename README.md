@@ -18,7 +18,7 @@ A fast, private video editor for iPhone. It's built natively in Swift, SwiftUI, 
 - Project library with thumbnails: rename, duplicate, delete.
 - Autosave, plus undo and redo of up to 200 steps.
 - Empty projects aren't kept.
-- Import from Photos or Files: video, photos and audio. A new project opens the Photos library straight away; add more with the timeline **+**.
+- Import videos and photos from the Photos library: a new project opens it straight away, and the timeline **+** opens it again to add more. Audio comes from Music (Audio Tracks or From Video).
 - Tool panels (Music, Captions, Text, …) close with ✓ or by swiping down.
 
 ### Timeline and preview
