@@ -769,3 +769,28 @@ struct MutedClipDuckingTests {
         #expect(r == [MediaTimeRange(start: s(0), end: s(2)), MediaTimeRange(start: s(3), end: s(8))])
     }
 }
+
+@Suite("TBR-1 Captions need a video clip")
+struct HasVideoClipsTests {
+    private func photo() -> MediaItem { MediaItem(kind: .photo, fileName: "a.jpg", naturalSize: CGSize(width: 10, height: 10), duration: .zero, hasAudio: false) }
+    private func video() -> MediaItem { MediaItem(kind: .video, fileName: "v.mov", naturalSize: CGSize(width: 10, height: 10), duration: s(5), hasAudio: true) }
+
+    @Test func onlyVideoClipsCount() throws {
+        var p = Project(name: "P")
+        #expect(!p.hasVideoClips, "empty project")
+        p.appendClip(for: photo())
+        p.appendClip(for: photo())
+        #expect(!p.hasVideoClips, "photos only")
+        p.appendClip(for: video())
+        #expect(p.hasVideoClips)
+        p.clips.removeLast()
+        #expect(!p.hasVideoClips, "the video was removed again")
+    }
+
+    @Test func freezeFramesDontCount() {
+        var p = Project(name: "P")
+        p.appendClip(for: video())
+        p.clips[0].freezeAt = s(1)
+        #expect(!p.hasVideoClips)
+    }
+}

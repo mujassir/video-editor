@@ -59,6 +59,12 @@ public struct TimelineLayout: Sendable {
 public extension Project {
     var layout: TimelineLayout { TimelineLayout(clips: clips) }
 
+    /// The main track has at least one video clip that plays motion (not a photo,
+    /// title slide or freeze frame). Captions are only offered then (TBR-1).
+    var hasVideoClips: Bool {
+        clips.contains { $0.kind == .video && !$0.isStill }
+    }
+
     /// Nothing has been added yet (no clips, audio, text or captions).
     var isEmptyEdit: Bool {
         clips.isEmpty && audioClips.isEmpty && textOverlays.isEmpty && captions.segments.isEmpty

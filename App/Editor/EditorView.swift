@@ -250,7 +250,10 @@ struct EditorView: View {
 
     @ViewBuilder private var mainTools: some View {
         ToolButton(title: "Music", systemImage: "music.note") { model.select(.none); model.panel = .music }
-        ToolButton(title: "Captions", systemImage: "captions.bubble", badge: "AI") { model.panel = .captions }
+        // Captions transcribe speech, so they're only offered once there's a video clip (not just photos).
+        if model.project.hasVideoClips {
+            ToolButton(title: "Captions", systemImage: "captions.bubble", badge: "AI") { model.panel = .captions }
+        }
         ToolButton(title: "Watermark", systemImage: "seal", isActive: model.project.watermark != nil) { model.select(.none); model.panel = .watermark }
         ToolButton(title: "Text", systemImage: "textformat") { model.addText() }
         ToolButton(title: "Intro", systemImage: "rectangle.lefthalf.inset.filled") { model.select(.none); model.panel = .titleCard(.opening) }

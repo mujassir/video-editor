@@ -140,7 +140,7 @@ The toolbar is one horizontally scrolling row of icon buttons with labels. The o
 
 | Selection | Buttons, in order |
 |---|---|
-| **TBR-1 Nothing** | Music · Captions (AI) · Watermark (active if set) · Text · Intro · Outro |
+| **TBR-1 Nothing** | Music · Captions (AI; **hidden** until the main track has a video clip: not shown for an empty project or one with only photos, slides or freeze frames) · Watermark (active if set) · Text · Intro · Outro |
 | **TBR-2 Video clip** | Split · Voice (`CLP-5`; active while the voice is off) · Speed · Animate (active if any animation) · Denoise (active if on) · Filters · Adjust · Enhance (AI) · Cutout (AI) · Reframe (AI) · Crop · Reverse (active if reversed) · Freeze · Duplicate · Delete |
 | **TBR-3 Photo or freeze frame** | Duration · Animate (active if motion or animation) · Filters · Adjust · Enhance (AI) · Cutout (AI) · Crop · Duplicate · Delete |
 | **TBR-4 Text** | Edit · Duration · Animate (active if set) · Position (active if a fixed spot) · Duplicate · Delete |
