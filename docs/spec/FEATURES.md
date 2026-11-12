@@ -78,7 +78,7 @@ These apply to every feature on every platform.
 3. **Transport:** current time `m:ss.f`, "/ total", and a play/pause button.
 4. **Timeline:** see `TML-*`.
 5. **Bottom area:** the toolbar for the current selection, or the open panel.
-   - **EDT-1 Swipe down to close a panel:** every bottom panel (Music, Captions, Text, Watermark, Filters, …) has a grabber bar at the top. Dragging down on the grabber or title row moves the panel with the finger. Letting go after more than `60 pt`, or a quick flick (predicted `140 pt`), closes it, the same as ✓. Otherwise it springs back. Sliders and lists inside the panel aren't affected. **Exception:** on Intro/Outro (`TTL-*`) a swipe closes without adding or saving the slide; only ✓ does that.
+   - **EDT-1 Swipe down to close a panel:** every bottom panel (Music, Captions, Text, Watermark, Filters, …) has a grabber bar at the top. A **short swipe down anywhere on the panel** closes it, the same as ✓: letting go after more than `30 pt`, or a quick flick (predicted `80 pt`). While dragging, the panel follows the finger (measured in screen coordinates); a shorter drag springs back. Only mostly-vertical drags count, so horizontal sliders and buttons inside keep working. Panels with a vertically scrolling list (Adjust, Text, Captions, Animate, Animate Text) only swipe on the grabber and title row, so scrolling never closes them. **Exception:** on Intro/Outro (`TTL-*`) a swipe closes without adding or saving the slide; only ✓ does that.
 
 Overlays:
 - **Toast:** appears at the top, about 2.2 s.
@@ -341,7 +341,7 @@ Deleting closes any open panel and clears the selection.
 ## 11. Music and audio (MUS)
 
 - **MUS-1 Add music** (Music in the main toolbar):
-  - **Audio Tracks:** your own audio file (opens Files).
+  - **Audio Tracks** (music-note icon): your own audio file (opens Files).
   - **From Video:** the soundtrack of a video from Photos.
 - **MUS-2 New music defaults:**
   - Volume `70%`.
