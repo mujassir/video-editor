@@ -794,3 +794,48 @@ struct HasVideoClipsTests {
         #expect(!p.hasVideoClips)
     }
 }
+
+@Suite("MUS-10 Recent audio tracks")
+struct RecentAudioStoreTests {
+    private func store() -> (RecentAudioStore, URL) {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("recent-\(UUID().uuidString)")
+        return (RecentAudioStore(rootURL: dir.appendingPathComponent("RecentAudio")), dir)
+    }
+
+    private func file(_ dir: URL, _ name: String) throws -> URL {
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("\(name).m4a")
+        try Data(name.utf8).write(to: url)
+        return url
+    }
+
+    @Test func keepsTheFiveNewestWithTheirOwnCopies() throws {
+        let (recent, dir) = store()
+        for i in 1...7 { try recent.add(fileAt: file(dir, "song\(i)"), name: "Song \(i)", duration: s(Double(60 + i))) }
+        let list = recent.entries
+        #expect(list.map(\.name) == ["Song 7", "Song 6", "Song 5", "Song 4", "Song 3"])
+        // The originals can go away (e.g. the project is deleted); the copies still play.
+        try FileManager.default.removeItem(at: dir.appendingPathComponent("song7.m4a"))
+        #expect(FileManager.default.fileExists(atPath: recent.url(for: list[0]).path))
+        let files = try FileManager.default.contentsOfDirectory(atPath: recent.rootURL.path).filter { $0.hasSuffix(".m4a") }
+        #expect(files.count == 5, "older copies are deleted")
+    }
+
+    @Test func usingATrackAgainMovesItToTheTop() throws {
+        let (recent, dir) = store()
+        try recent.add(fileAt: file(dir, "a"), name: "A", duration: s(30))
+        try recent.add(fileAt: file(dir, "b"), name: "B", duration: s(40))
+        let a = try #require(recent.entries.last)
+        // Re-adding from the store's own copy (tapping it in Recent) doesn't duplicate it.
+        try recent.add(fileAt: recent.url(for: a), name: "A", duration: s(30))
+        #expect(recent.entries.map(\.name) == ["A", "B"])
+        #expect(recent.entries[0].id == a.id)
+    }
+
+    @Test func sameNameDifferentLengthIsADifferentTrack() throws {
+        let (recent, dir) = store()
+        try recent.add(fileAt: file(dir, "v1"), name: "Video sound", duration: s(12))
+        try recent.add(fileAt: file(dir, "v2"), name: "Video sound", duration: s(20))
+        #expect(recent.entries.count == 2)
+    }
+}

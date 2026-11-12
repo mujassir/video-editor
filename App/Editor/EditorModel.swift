@@ -95,6 +95,9 @@ final class EditorModel {
     /// Incremented when the timeline must redraw (thumbnails, waveforms loaded).
     var timelineVersion = 0
     var waveforms: [UUID: [Float]] = [:]
+    /// The 5 audio tracks used most recently, in any project (MUS-10).
+    let recentAudio = RecentAudioStore.defaultStore()
+    var recentTracks: [RecentAudioStore.Entry] = []
 
     private var rebuildTask: Task<Void, Never>?
     private var timeObserver: Any?
@@ -566,6 +569,9 @@ final class EditorModel {
             var item = try await MediaImporter.probeAudio(url, fileName: file, displayName: track.name)
             item.id = UUID()
             try await model.placeMusic(item, name: track.name)
+            if let list = try? model.recentAudio.add(fileAt: url, name: track.name, duration: item.duration) {
+                model.recentTracks = list
+            }
         }
     }
 
@@ -584,7 +590,20 @@ final class EditorModel {
                 throw MusicImportError.noAudio
             }
             try await model.placeMusic(item, name: name)
+            // Remember it for the Recent list (kept even if this project is deleted later).
+            if let list = try? model.recentAudio.add(fileAt: stored, name: name, duration: item.duration) {
+                model.recentTracks = list
+            }
         }
+    }
+
+    /// Adds one of the recent tracks to this project (copied in, like a file from Files).
+    func addRecentTrack(_ entry: RecentAudioStore.Entry) {
+        addMusicFile(recentAudio.url(for: entry), name: entry.name)
+    }
+
+    func loadRecentTracks() {
+        recentTracks = recentAudio.entries
     }
 
     /// Puts music on its own lane (after any existing music),

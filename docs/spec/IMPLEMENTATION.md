@@ -173,6 +173,11 @@ All types are value types, and all IDs are UUIDs. The complete field list, with 
         title-<placement>-<8hex>.png  rendered slide image
         watermark-<8hex>.png        watermark image
     Cache/              temporary files; safe to delete
+
+<AppData>/RecentAudio/                 recent audio tracks (MUS-10), shared by all projects
+    recent.json         [{id, name, fileName, duration, usedAt}], newest first, at most 5;
+                        duration as MediaTime ticks, usedAt as ISO 8601
+    <UUID>.<ext>        the app's own copy of each track
 ```
 
 - **Saving:** write to a temporary file, then rename over `project.json`, so a crash never leaves a half-written file.

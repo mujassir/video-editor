@@ -343,6 +343,7 @@ Deleting closes any open panel and clears the selection.
 - **MUS-1 Add music** (Music in the main toolbar):
   - **Audio Tracks** (music-note icon): your own audio file (opens Files).
   - **From Video:** the soundtrack of a video from Photos.
+  - **Recent** (`MUS-10`): under the two buttons, when there are any.
 - **MUS-2 New music defaults:**
   - Volume `70%`.
   - Fade-out at the end: `min(1.5 s, song length ÷ 4)`.
@@ -364,6 +365,10 @@ Deleting closes any open panel and clears the selection.
   - If the clip already reaches the end: "Already plays to the end".
 - **MUS-8 Move:** see `TML-10`. **Delete** removes the audio clip.
 - **MUS-9 Lanes:** a new audio clip goes on the first lane where it doesn't overlap anything.
+- **MUS-10 Recent tracks:** the Music panel lists the **5 audio tracks used most recently, in any project**, newest first, under a "Recent" heading. Each row shows a music-note icon, the track's name, its length `m:ss` and a ＋. Tapping a row adds that track to the project like a new pick (`MUS-2` defaults) and closes the panel.
+  - A track counts as used when it's added from Audio Tracks, From Video or Recent. Using one again moves it to the top. Two tracks are the same when the name and length (to `0.1 s`) match.
+  - The app keeps its own copy of each recent track, so it still works after the project it was first used in is deleted (IMPLEMENTATION §4.1). The 6th oldest is dropped, with its copy.
+  - Hidden when the list is empty.
 
 ---
 

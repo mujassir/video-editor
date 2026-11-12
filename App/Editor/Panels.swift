@@ -577,6 +577,7 @@ struct MusicPanel: View {
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("music.source.video")
                 }
+                if !model.recentTracks.isEmpty { recentList }
                 // Built-in tracks were removed from the app (MUS-1). UI tests and demos
                 // (-sampleMedia / -demoMedia) still get them, like "Sample Clips" in the Add
                 // menu, because the simulator can't drive the Files picker.
@@ -585,6 +586,7 @@ struct MusicPanel: View {
                 }
             }
         }
+        .onAppear { model.loadRecentTracks() }
         .onChange(of: videoItem) { _, item in
             guard let item else { return }
             videoItem = nil
@@ -597,6 +599,37 @@ struct MusicPanel: View {
                 model.panel = nil
             }
         }
+    }
+
+    /// MUS-10: the last 5 audio tracks used in any project. Tap one to add it again.
+    @ViewBuilder private var recentList: some View {
+        Text("Recent").font(.caption).foregroundStyle(Theme.secondaryText)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        ForEach(Array(model.recentTracks.enumerated()), id: \.element.id) { i, entry in
+            Button {
+                model.addRecentTrack(entry)
+                model.panel = nil
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "music.note").font(.system(size: 15, weight: .semibold))
+                        .frame(width: 36, height: 36)
+                        .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: 8))
+                    Text(entry.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                    Spacer()
+                    Text(Self.clock(entry.duration)).font(.caption.monospacedDigit()).foregroundStyle(Theme.secondaryText)
+                    Image(systemName: "plus.circle.fill").font(.system(size: 20)).foregroundStyle(Theme.accent)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("music.recent.\(i)")
+        }
+    }
+
+    /// m:ss
+    static func clock(_ t: MediaTime) -> String {
+        let s = Int(t.seconds.rounded())
+        return String(format: "%d:%02d", s / 60, s % 60)
     }
 
     @ViewBuilder private var sampleTracks: some View {

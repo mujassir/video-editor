@@ -274,6 +274,27 @@ final class FeatureUITests: CutlineUITestCase {
         XCTAssertFalse(element("preview.addMedia").exists)
     }
 
+    func test29_MUS10_RecentAudioTracks() {
+        openProjectWithSamples()
+        XCTAssertFalse(element("music.recent.0").exists)
+        tap("tool.Music")
+        XCTAssertFalse(element("music.recent.0").exists, "no recent tracks yet")
+        tap("music.use.sunrise")
+        waitUntilIdle()
+        waitFor("music added") { count(prefix: "audio.") == 1 }
+        // Reopen Music: the track is listed under Recent, and tapping it adds it again.
+        element("editor.aspect").tap()
+        tap("panel.done")
+        tap("tool.Music")
+        let recent = element("music.recent.0")
+        XCTAssertTrue(recent.waitForExistence(timeout: 5), "recent track missing")
+        XCTAssertTrue(recent.label.contains("Sunrise"), recent.label)
+        snapshot("29-music-recent")
+        recent.tap()
+        waitUntilIdle()
+        waitFor("recent track added") { count(prefix: "audio.") == 2 }
+    }
+
     func test11_CanvasAndBackground() {
         openProjectWithSamples()
         tap("editor.aspect")
