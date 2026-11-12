@@ -666,6 +666,8 @@ See §7. The volume crossfades across transitions.
 
 Each caption segment's range, widened to `[start − 0.15 s, end + 0.25 s]`, with overlapping ranges merged. **Without captions there's no ducking** (the Duck panel says so).
 
+**Muted clips don't duck** (`CLP-5`). Remove from those ranges the timeline range of every main-track clip whose voice is off (`isMuted`), except where something else speaks there: a voiceover or extracted audio clip, or another main-track clip whose sound plays (not muted, not reversed, `volume > 0`, media has sound), such as during a transition overlap. In other words: `speech − (muted − voiced)`.
+
 ### 9.4 Noise reduction (DNS), spectral gating
 
 Ports must produce comparable results. The settings:
