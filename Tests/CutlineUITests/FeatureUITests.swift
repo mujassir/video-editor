@@ -404,6 +404,22 @@ final class FeatureUITests: CutlineUITestCase {
         snapshot("18-audio-cut-repeat")
     }
 
+    func test26_CLP5_VoiceToggle() {
+        openProjectWithSamples()
+        selectClip(0)
+        let voice = element("tool.Voice")
+        XCTAssertTrue(voice.waitForExistence(timeout: 5))
+        // Voice sits right after Split in the video toolbar.
+        XCTAssertLessThan(element("tool.Split").frame.minX, voice.frame.minX)
+        XCTAssertLessThan(voice.frame.minX, element("tool.Speed").frame.minX)
+        tap("tool.Voice")
+        XCTAssertEqual(toastText, "Voice off")
+        snapshot("26-voice-off")
+        waitFor("toast gone") { !element("toast").exists }
+        tap("tool.Voice")
+        XCTAssertEqual(toastText, "Voice on")
+    }
+
     func test24_VideoNoiseReduction() {
         openProjectWithSamples()
         selectClip(0)
@@ -526,7 +542,7 @@ final class FeatureUITests: CutlineUITestCase {
         selectClip(0)
         XCTAssertTrue(element("tool.Duration").waitForExistence(timeout: 5))
         XCTAssertTrue(element("tool.Animate").exists)
-        for videoOnly in ["tool.Speed", "tool.Volume", "tool.Reverse", "tool.Freeze", "tool.Split", "tool.Trim"] {
+        for videoOnly in ["tool.Speed", "tool.Voice", "tool.Volume", "tool.Reverse", "tool.Freeze", "tool.Split", "tool.Trim"] {
             XCTAssertFalse(element(videoOnly).exists, "\(videoOnly) should be hidden for stills")
         }
         snapshot("15-photo-tools")

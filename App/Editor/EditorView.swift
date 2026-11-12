@@ -251,6 +251,9 @@ struct EditorView: View {
 
     @ViewBuilder private var videoTools: some View {
         ToolButton(title: "Split", systemImage: "scissors") { model.split() }
+        // Voice: the clip's own sound on/off. Highlighted (and slashed) while it's off.
+        ToolButton(title: "Voice", systemImage: model.selectedClip?.isMuted == true ? "mic.slash" : "mic",
+                   isActive: model.selectedClip?.isMuted == true) { model.toggleVoice() }
         ToolButton(title: "Speed", systemImage: "speedometer") { model.panel = .speed }
         ToolButton(title: "Animate", systemImage: "camera.metering.center.weighted",
                    isActive: !(model.selectedClip?.animation?.isEmpty ?? true)) { model.panel = .motion }

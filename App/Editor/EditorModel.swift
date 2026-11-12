@@ -322,6 +322,15 @@ final class EditorModel {
         }
     }
 
+    /// Voice (CLP-5): turns the selected video clip's own sound off or back on.
+    func toggleVoice() {
+        guard let clip = selectedClip, let media = project.mediaItem(clip.mediaID) else { return }
+        guard media.hasAudio else { showToast("This clip has no sound", systemImage: "speaker.slash"); return }
+        let muting = !clip.isMuted
+        edit("Voice") { try $0.updateClip(clip.id) { $0.isMuted = muting } }
+        showToast(muting ? "Voice off" : "Voice on", systemImage: muting ? "mic.slash" : "mic")
+    }
+
     /// Turns noise reduction on (at `level`) or off for the selected clip. The cleaned sound is
     /// made once per video and strength, then reused (also by split pieces of the same video).
     func setNoiseReduction(_ level: NoiseReduction?) {
