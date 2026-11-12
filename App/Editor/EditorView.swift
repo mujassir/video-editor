@@ -324,6 +324,9 @@ struct EditorView: View {
 
     @ViewBuilder private var audioTools: some View {
         ToolButton(title: "Cut", systemImage: "scissors") { model.cutSelectedAudio() }
+        if model.canStartSelectedAudioHere {
+            ToolButton(title: "Start Here", systemImage: "arrow.right.to.line") { model.startSelectedAudioHere() }
+        }
         if model.selectedAudio?.role == .music {
             ToolButton(title: "Duck", systemImage: "waveform.badge.minus") { model.panel = .duck }
         }

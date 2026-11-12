@@ -839,3 +839,60 @@ struct RecentAudioStoreTests {
         #expect(recent.entries.count == 2)
     }
 }
+
+@Suite("MUS-11 Start here")
+struct StartHereTests {
+    /// A 15 s video and a 180 s song at 0:00.
+    private func project() -> (Project, UUID) {
+        var p = Project(name: "P")
+        p.appendClip(for: MediaItem(kind: .video, fileName: "v.mov", naturalSize: CGSize(width: 10, height: 10), duration: s(15), hasAudio: true))
+        let song = MediaItem(kind: .audio, fileName: "s.m4a", naturalSize: .zero, duration: s(180), hasAudio: true)
+        p.media.append(song)
+        var clip = AudioClip(mediaID: song.id, role: .music, sourceRange: MediaTimeRange(start: .zero, duration: s(180)), start: .zero)
+        clip.fadeOut = s(1.5)
+        p.addAudio(clip)
+        return (p, clip.id)
+    }
+
+    @Test func skipsTheBeginningAndMovesToZero() throws {
+        var (p, id) = project()
+        let kept = try p.startAudioHere(id, at: s(25))
+        #expect(p.audioClips.count == 1)
+        let clip = try #require(p.audioClips.first)
+        #expect(clip.id == kept)
+        #expect(clip.start == .zero)
+        #expect(clip.sourceRange == MediaTimeRange(start: s(25), end: s(180)))
+        #expect(clip.fadeIn == Project.startHereFadeIn)
+        #expect(clip.fadeOut == s(1.5), "the end of the song keeps its fade-out")
+    }
+
+    @Test func picksAPartFromTheMiddle() throws {
+        var (p, id) = project()
+        try p.startAudioHere(id, at: s(70))   // playhead past the video end, over the song
+        #expect(p.audioClips[0].start == .zero)
+        #expect(p.audioClips[0].sourceRange.start == s(70))
+        #expect(p.duration == s(15), "export still stops at the video end")
+    }
+
+    @Test func movesOnlyBackToThePreviousClipOnItsLane() throws {
+        var (p, id) = project()
+        let second = try p.splitAudio(id, at: s(10))   // 0–10 and 10–180 on one lane
+        try p.startAudioHere(second, at: s(40))
+        let moved = try #require(p.audioClips.first { $0.id != id })
+        #expect(moved.start == s(10), "stops at the end of the clip in front")
+        #expect(moved.sourceRange.start == s(40))
+    }
+
+    @Test func refusesNearTheEdges() {
+        var (p, id) = project()
+        #expect(throws: EditError.tooShort) { try p.startAudioHere(id, at: s(0.1)) }
+    }
+
+    @Test @MainActor func isOneUndoStep() throws {
+        let (p, id) = project()
+        let session = EditSession(project: p)
+        try session.apply("Start here") { try $0.startAudioHere(id, at: s(25)) }
+        session.undo()
+        #expect(session.project.audioClips == p.audioClips, "one undo restores the whole song")
+    }
+}

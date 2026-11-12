@@ -409,6 +409,29 @@ final class EditorModel {
 
 
 
+    /// "Start Here" (MUS-11) is offered while the playhead is inside the selected audio clip,
+    /// at least 0.2 s from its ends (the same rule as the scissors).
+    var canStartSelectedAudioHere: Bool {
+        guard let clip = selectedAudio else { return false }
+        let margin = Project.minimumAudioDuration
+        return currentTime >= clip.start + margin && currentTime <= clip.timelineRange.end - margin
+    }
+
+    /// One tap: the music now plays from the playhead's point in the song, moved back to the
+    /// start. Then it plays from there so the user hears the result with the video.
+    func startSelectedAudioHere() {
+        guard let id = selectedAudioID, canStartSelectedAudioHere else { return }
+        let time = currentTime.snappedToFrame(fps: 30)
+        var newID: UUID?
+        edit("Start here") { newID = try $0.startAudioHere(id, at: time) }
+        guard let newID, let clip = project.audioClips.first(where: { $0.id == newID }) else { return }
+        session.selection = .audio(newID)
+        loadWaveforms()
+        showToast("Music starts from \(clip.sourceRange.start.timecode)", systemImage: "arrow.right.to.line")
+        seek(to: clip.start)
+        if clip.start < duration { play() }
+    }
+
     /// "Move to Start" is offered when there is blank space before the selected music on its lane.
     var canMoveSelectedAudioToStart: Bool {
         guard let id = selectedAudioID else { return false }

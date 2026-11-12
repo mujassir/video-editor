@@ -144,8 +144,8 @@ The toolbar is one horizontally scrolling row of icon buttons with labels. The o
 | **TBR-2 Video clip** | Split · Voice (`CLP-5`; active while the voice is off) · Speed · Animate (active if any animation) · Denoise (active if on) · Filters · Adjust · Enhance (AI) · Cutout (AI) · Reframe (AI) · Crop · Reverse (active if reversed) · Freeze · Duplicate · Delete |
 | **TBR-3 Photo or freeze frame** | Duration · Animate (active if motion or animation) · Filters · Adjust · Enhance (AI) · Cutout (AI) · Crop · Duplicate · Delete |
 | **TBR-4 Text** | Edit · Duration · Animate (active if set) · Position (active if a fixed spot) · Duplicate · Delete |
-| **TBR-5 Music** | Cut · Duck · Move to Start (only when there's a gap before it) · Repeat (only when it ends before the video) · Delete |
-| **TBR-5b Other audio** (voiceover, extracted, effect) | Cut · Move to Start (conditional) · Repeat (conditional) · Delete |
+| **TBR-5 Music** | Cut · Start Here (`MUS-11`; only while the playhead is inside the clip) · Duck · Move to Start (only when there's a gap before it) · Repeat (only when it ends before the video) · Delete |
+| **TBR-5b Other audio** (voiceover, extracted, effect) | Cut · Start Here (conditional) · Move to Start (conditional) · Repeat (conditional) · Delete |
 | **TBR-6 Captions** | Edit · Style · Fillers · Delete |
 
 Deleting closes any open panel and clears the selection.
@@ -365,6 +365,13 @@ Deleting closes any open panel and clears the selection.
   - If the clip already reaches the end: "Already plays to the end".
 - **MUS-8 Move:** see `TML-10`. **Delete** removes the audio clip.
 - **MUS-9 Lanes:** a new audio clip goes on the first lane where it doesn't overlap anything.
+- **MUS-11 Start Here:** one tap makes the selected audio play from the playhead's point in the song. Shown while the playhead is inside the clip, at least `0.2 s` from its ends (it can be past the end of the video, over the dimmed part). As **one** undo step it:
+  1. cuts the clip at the playhead (snapped to a frame),
+  2. removes the part before the playhead,
+  3. moves the rest back to where the clip's space on its lane begins: the end of the previous clip on that lane, or 0:00,
+  4. gives it a `0.3 s` fade-in (at most half its length), because it no longer starts at the beginning of the song. The fade-out at the end is kept.
+
+  Then the remaining clip is selected, the playhead jumps to its start and playback starts (if that's inside the video), so the user hears the result with the video. Toast: "Music starts from m:ss.f" (the position in the song). Skipping an intro or using a part from the middle of a long song are both one tap.
 - **MUS-10 Recent tracks:** the Music panel lists the **5 audio tracks used most recently, in any project**, newest first, under a "Recent" heading. Each row shows a music-note icon, the track's name, its length `m:ss` and a ＋. Tapping a row adds that track to the project like a new pick (`MUS-2` defaults) and closes the panel.
   - A track counts as used when it's added from Audio Tracks, From Video or Recent. Using one again moves it to the top. Two tracks are the same when the name and length (to `0.1 s`) match.
   - The app keeps its own copy of each recent track, so it still works after the project it was first used in is deleted (IMPLEMENTATION §4.1). The 6th oldest is dropped, with its copy.
