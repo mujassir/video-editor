@@ -5,6 +5,9 @@ import EditorKit
 
 struct EditorView: View {
     @State var model: EditorModel
+    /// Opened from New Project: present the Photos library right away so the user can
+    /// pick videos and photos and start (LIB-1). Cancelling leaves the empty editor open.
+    var startWithPhotos = false
     let onClose: () -> Void
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var showPicker = false
@@ -36,6 +39,13 @@ struct EditorView: View {
                     BusyOverlay(message: message, progress: model.busyProgress)
                 }
             }
+        }
+        .task {
+            // UI tests and demos (-sampleMedia) import bundled clips instead of the Photos library.
+            guard startWithPhotos, model.project.isEmptyEdit, !LaunchOptions.useSampleMedia,
+                  LaunchOptions.demoMediaFolder == nil else { return }
+            try? await Task.sleep(for: .milliseconds(350))   // let the editor slide in first
+            showPicker = true
         }
         .photosPicker(isPresented: $showPicker, selection: $pickerItems, maxSelectionCount: 20,
                       matching: .any(of: [.videos, .images]), preferredItemEncoding: .current)

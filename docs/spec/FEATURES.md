@@ -57,7 +57,7 @@ These apply to every feature on every platform.
 
 ### LIB: Project library (home)
 
-- **LIB-1 New Project:** a large card at the top, "New Project / Edit videos and photos with on-device AI". Tapping it creates a project named `Project N` (N = number of projects + 1) and opens the editor.
+- **LIB-1 New Project:** a large card at the top, "New Project / Edit videos and photos with on-device AI". Tapping it creates a project named `Project N` (N = number of projects + 1), opens the editor and **immediately opens the Photos library** (the same picker as `IMP-1`: videos and photos, up to `20`). The picked media goes on the main track and the user can start editing. Cancelling the picker leaves the empty editor open (Media and the timeline "+" still work), and closing an empty editor deletes the project (`LIB-4`). Opening an existing project never opens the picker.
 - **LIB-2 Recent:** a 2-column grid of project cards, most recently modified first. Each card shows:
   - **Thumbnail:** the first clip's first frame, cropped to fill a fixed `150 pt` high box, rounded corners. A placeholder film icon when there's no thumbnail. Cards must never overlap, whatever the project's aspect ratio.
   - **Duration badge:** in the bottom-right corner, `m:ss.f`.
