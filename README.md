@@ -30,6 +30,7 @@ A fast, private video editor for iPhone. It's built natively in Swift, SwiftUI, 
 
 ### Video clips
 - Split, trim (drag the clip's handles on the timeline), duplicate and delete.
+- **Voice:** turn the clip's own sound off and on (mic button, right after Split).
 - Speed from 0.1× to 10×, reverse, freeze frame.
 - **Denoise:** removes background hiss, hum and wind from the clip's sound (Off, Low, Medium, High).
 - 20 filters (3D lookup tables), plus adjustments: exposure, contrast, saturation, warmth, highlights, shadows, vignette, sharpen.

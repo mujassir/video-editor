@@ -139,7 +139,7 @@ The toolbar is one horizontally scrolling row of icon buttons with labels. The o
 | Selection | Buttons, in order |
 |---|---|
 | **TBR-1 Nothing** | Media · Music · Captions (AI) · Watermark (active if set) · Text · Intro · Outro |
-| **TBR-2 Video clip** | Split · Speed · Animate (active if any animation) · Denoise (active if on) · Filters · Adjust · Enhance (AI) · Cutout (AI) · Reframe (AI) · Crop · Reverse (active if reversed) · Freeze · Duplicate · Delete |
+| **TBR-2 Video clip** | Split · Voice (`CLP-5`; active while the voice is off) · Speed · Animate (active if any animation) · Denoise (active if on) · Filters · Adjust · Enhance (AI) · Cutout (AI) · Reframe (AI) · Crop · Reverse (active if reversed) · Freeze · Duplicate · Delete |
 | **TBR-3 Photo or freeze frame** | Duration · Animate (active if motion or animation) · Filters · Adjust · Enhance (AI) · Cutout (AI) · Crop · Duplicate · Delete |
 | **TBR-4 Text** | Edit · Duration · Animate (active if set) · Position (active if a fixed spot) · Duplicate · Delete |
 | **TBR-5 Music** | Cut · Duck · Move to Start (only when there's a gap before it) · Repeat (only when it ends before the video) · Delete |
@@ -171,6 +171,7 @@ Deleting closes any open panel and clears the selection.
 - **CLP-2 Duplicate:** inserts a copy right after the clip.
 - **CLP-3 Delete:** removes the clip, and the following clips move up. Deleting the last clip also removes the transition on the new last clip.
 - **CLP-4 Reorder:** *(engine only; there's no interface yet.)* When clips are reordered, the clip that ends up last never keeps a transition.
+- **CLP-5 Voice:** toggles the clip's own sound off and on (`isMuted`). The button shows a mic, or a slashed mic and is drawn active while the sound is off. Toast: "Voice off" / "Voice on". A clip whose media has no sound isn't changed (toast: "This clip has no sound"). The clip shows a 🔇 badge on the timeline while its voice is off.
 
 ### SPD: Speed
 
@@ -479,6 +480,7 @@ These were tried and removed on purpose. Don't add them back without changing th
 | 2026-11 | **No volume control on music clips.** The music toolbar has no Volume, Fade or Duplicate. New music is always 70% volume with an automatic fade-out. Old projects keep their stored values. |
 | 2026-11 | **Auto-duck is always on for new music**, and there's no on/off button. Only its level is adjustable (`MUS-5`). |
 | 2026-11 | **No Volume tool on video clips.** A per-clip music/voice balance slider was built and then removed. Mute and Extract Audio were removed from the interface; projects that already used them still play as saved. |
+| 2026-11 | **Voice on/off is back on video clips** (`CLP-5`), as a single toggle after Split. It sets the existing `isMuted` field; there's still no volume slider and no Extract Audio. |
 | 2026-11 | **Caption styles are Classic, Karaoke and Bold.** Minimal and Neon were removed (`CAP-8`). |
 | 2026-11 | **The caption text editor is full screen** and saves once on Done (`CAP-5`). Text editing isn't in the Style panel. |
 | 2026-11 | **The scissors on a music bar show only when that bar is selected** (`MUS-4`). |
@@ -493,4 +495,4 @@ These exist in the iOS engine and in older projects, but have no button. Other p
 - **Precise trim panel:** start and end sliders.
 - **Clip reordering** (`CLP-4`).
 - **Older text animations:** `animationIn` and `animationOut`, used when a text has no `animation` set.
-- **Mute and extracted audio** on clips.
+- **Extracted audio** on clips. (Muting is exposed as Voice, `CLP-5`.)
