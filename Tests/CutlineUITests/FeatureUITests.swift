@@ -10,6 +10,8 @@ final class FeatureUITests: CutlineUITestCase {
         tap("projects.new")
         XCTAssertTrue(element("editor.close").waitForExistence(timeout: 10))
         XCTAssertFalse(element("editor.export").exists, "Export should be hidden in an empty project")
+        XCTAssertFalse(element("editor.undo").exists, "nothing to undo in a new project")
+        XCTAssertFalse(element("editor.redo").exists, "nothing to redo in a new project")
         // A new project closed without adding anything is not kept.
         tap("editor.close")
         XCTAssertTrue(element("projects.new").waitForExistence(timeout: 10))
@@ -67,6 +69,9 @@ final class FeatureUITests: CutlineUITestCase {
 
     func test03_SplitDeleteUndoRedo() {
         openProjectWithSamples()
+        // Adding the clips is an edit: Undo shows, Redo doesn't yet.
+        XCTAssertTrue(element("editor.undo").exists)
+        XCTAssertFalse(element("editor.redo").exists, "Redo only appears after an Undo")
         // Move the playhead ~1.5 s into the first clip and split.
         let tl = element("timeline").coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.2))
         tl.press(forDuration: 0.05, thenDragTo: tl.withOffset(CGVector(dx: -100, dy: 0)))
@@ -80,8 +85,16 @@ final class FeatureUITests: CutlineUITestCase {
         XCTAssertLessThan(totalSeconds, 12)
         tap("editor.undo")
         waitFor("undo restores clip") { count(prefix: "clip.") == 4 }
+        XCTAssertTrue(element("editor.redo").waitForExistence(timeout: 5), "Redo appears after an Undo")
         tap("editor.redo")
         waitFor("redo deletes again") { count(prefix: "clip.") == 3 }
+        waitFor("nothing left to redo") { !element("editor.redo").exists }
+        // A new edit after an Undo clears Redo.
+        tap("editor.undo")
+        waitFor("redo back") { element("editor.redo").exists }
+        selectClip(0)
+        tap("tool.Duplicate")
+        waitFor("new edit clears redo") { !element("editor.redo").exists }
     }
 
     func test04_TrimWithHandles() {

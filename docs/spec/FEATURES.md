@@ -72,7 +72,7 @@ These apply to every feature on every platform.
 1. **Top bar:**
    - **Close (×):** saves the project, writes its thumbnail and returns to the library.
    - **Aspect ratio button:** shows the ratio, such as `9:16`, and opens Canvas (`CNV-1`).
-   - **Undo and Redo:** disabled when there's nothing to undo or redo.
+   - **Undo and Redo:** each is shown only when it can do something, and hidden otherwise. A new project shows neither. Undo appears after the first edit. Redo appears only after an undo, and disappears again once there's nothing left to redo or a new edit clears it (`PRJ-2`).
    - **Export:** an accent capsule. **Hidden** while there's nothing to export, that is while the edit has no length (`Project.duration == 0`: no clips and no voiceover; music or text on their own don't count). It appears as soon as there is.
 2. **Preview:** the canvas at its aspect ratio. Tapping it plays or pauses.
 3. **Transport:** current time `m:ss.f`, "/ total", and a play/pause button.

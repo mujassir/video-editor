@@ -100,10 +100,17 @@ struct EditorView: View {
             }
             .accessibilityIdentifier("editor.aspect")
             Spacer()
-            Button { model.undo() } label: { Image(systemName: "arrow.uturn.backward") }
-                .disabled(!model.session.canUndo).accessibilityIdentifier("editor.undo")
-            Button { model.redo() } label: { Image(systemName: "arrow.uturn.forward") }
-                .disabled(!model.session.canRedo).accessibilityIdentifier("editor.redo")
+            // Shown only when they can do something: none in a new project, Redo only after an Undo.
+            if model.session.canUndo {
+                Button { model.undo() } label: { Image(systemName: "arrow.uturn.backward") }
+                    .accessibilityIdentifier("editor.undo")
+                    .transition(.opacity)
+            }
+            if model.session.canRedo {
+                Button { model.redo() } label: { Image(systemName: "arrow.uturn.forward") }
+                    .accessibilityIdentifier("editor.redo")
+                    .transition(.opacity)
+            }
             // Hidden while there's nothing to export (the edit has no length yet).
             if model.duration > .zero {
                 Button {
@@ -121,6 +128,8 @@ struct EditorView: View {
         .foregroundStyle(.white)
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
+        .animation(.easeOut(duration: 0.2), value: model.session.canUndo)
+        .animation(.easeOut(duration: 0.2), value: model.session.canRedo)
     }
 
     // MARK: Transport
