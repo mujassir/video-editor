@@ -1,0 +1,496 @@
+# Cutline: Feature Specification
+
+**Status:** describes the iOS app as built (reference implementation).
+**Applies to:** iOS (shipping), Android (next), macOS and Windows (later).
+**Companion documents:**
+- [IMPLEMENTATION.md](IMPLEMENTATION.md): how each feature works internally, with exact numbers and formulas.
+- [project.sample.json](project.sample.json): the shared project file format.
+
+This document says **what the user sees and can do**. If two apps behave differently, this document decides which one is right. Change it first, then the apps.
+
+## How to use this spec
+
+- **Every feature has an ID** (for example `MUS-3`). Use it in tickets, pull requests and test names, so a feature can be traced across platforms.
+- **"Must", "should" and "may"** mean what they say. *Must* is required for parity. *Should* is expected unless the platform makes it impractical, and the exception goes in the [parity table](#platform-parity). *May* is optional.
+- **Values in `code font`** are exact. Use the same numbers, names and defaults everywhere, because projects move between devices and must look and sound the same.
+- **Removed features** are listed in [Decisions](#decisions-and-removed-features). Don't bring them back without updating this spec first.
+- **AI agents:** read this file and IMPLEMENTATION.md before changing behaviour. If code and spec disagree, flag it rather than silently picking one.
+
+---
+
+## 1. Product principles
+
+These apply to every feature on every platform.
+
+1. **Private by default.** All processing happens on the device: import, editing, AI, rendering and export. No account, no uploads, no analytics on content, no server fallback for AI. If a platform can't do an AI feature on the device, the feature is hidden there, not sent to a server.
+2. **No watermark** unless the user adds their own (`WMK-*`).
+3. **Every edit is undoable.** One user action is one undo step. A slider drag is one step, however long it lasts.
+4. **Nothing is lost.** The project saves automatically. A crash can't corrupt a project. Media is copied into the project, so moving or deleting the original file doesn't break the edit.
+5. **What you see is what you export.** The preview and the export use the same rendering rules. Paused frames show clips at rest (see `PRV-3`); playback and export show animations.
+6. **One accent colour, dark UI.** See [Visual language](#13-visual-language).
+7. **Short, plain messages.** Toasts say what happened ("Split at 0:03.2", "Removed 3 filler words") or what's wrong and what to do ("Select a video clip").
+
+---
+
+## 2. Glossary
+
+| Term | Meaning |
+|---|---|
+| **Project** | One edit: its clips, audio, text, captions, settings and copied media. |
+| **Media item** | A file copied into the project (video, photo or audio). Several clips can use the same media item. |
+| **Main track** | The single row of video and photo clips, played back to back ("magnetic"). |
+| **Clip** | A piece of the main track: a video clip, a photo clip, a freeze frame or a title slide. |
+| **Still** | A photo clip or a freeze frame. |
+| **Audio clip** | Free-positioned audio on its own lane: music, voiceover, sound effect or extracted audio. |
+| **Lane** | A row for audio clips. Clips on one lane never overlap. |
+| **Text overlay** | Text placed over the video for a time range. |
+| **Captions** | Word-timed subtitles made from speech, shown one short segment at a time. |
+| **Canvas** | The output frame, with an aspect ratio (9:16, 3:4, 1:1, 4:5, 16:9). |
+| **Playhead** | The current time. On the timeline it's a fixed vertical line in the centre. |
+| **Selection** | What the toolbar acts on: nothing, a clip, a text, an audio clip, or the captions. |
+| **Panel** | The settings area that replaces the toolbar while a tool is open. It closes with ✓. |
+| **Toast** | A short message near the top of the editor that disappears by itself. |
+
+---
+
+## 3. Screens
+
+### LIB: Project library (home)
+
+- **LIB-1 New Project:** a large card at the top, "New Project / Edit videos and photos with on-device AI". Tapping it creates a project named `Project N` (N = number of projects + 1) and opens the editor.
+- **LIB-2 Recent:** a 2-column grid of project cards, most recently modified first. Each card shows:
+  - **Thumbnail:** the first clip's first frame, cropped to fill a fixed `150 pt` high box, rounded corners. A placeholder film icon when there's no thumbnail. Cards must never overlap, whatever the project's aspect ratio.
+  - **Duration badge:** in the bottom-right corner, `m:ss.f`.
+  - **Name:** one line.
+  - **Relative modified time:** for example "5 min".
+- **LIB-3 Card actions:** long press opens Rename, Duplicate and Delete (destructive). Duplicate copies the whole project folder and names the copy "<name> Copy".
+- **LIB-4 Empty projects:** a project with no clips, audio, text or captions is deleted when the editor closes and on app start. The library never shows an empty "0:00" project.
+- **LIB-5 Privacy note:** at the bottom, a lock icon with "Everything runs on your iPhone. No account, no uploads, no watermark." Platforms use their own device word, such as "phone" or "computer".
+
+### EDT: Editor layout (top to bottom)
+
+1. **Top bar:**
+   - **Close (×):** saves the project, writes its thumbnail and returns to the library.
+   - **Aspect ratio button:** shows the ratio, such as `9:16`, and opens Canvas (`CNV-1`).
+   - **Undo and Redo:** disabled when there's nothing to undo or redo.
+   - **Export:** an accent capsule, disabled with no clips.
+2. **Preview:** the canvas at its aspect ratio. Tapping it plays or pauses.
+3. **Transport:** current time `m:ss.f`, "/ total", and a play/pause button.
+4. **Timeline:** see `TML-*`.
+5. **Bottom area:** the toolbar for the current selection, or the open panel.
+
+Overlays:
+- **Toast:** appears at the top, about 2.2 s.
+- **Busy overlay:** dims the screen, shows a message ("Reducing noise…") and a progress ring when progress is known. Playback pauses.
+
+### EXP: Export screen
+
+A full-screen sheet; see `EXP-*`.
+
+---
+
+## 4. Timeline (TML)
+
+- **TML-1 Fixed centre playhead:** the white playhead line stays in the middle and the content scrolls under it. Scrolling scrubs the preview.
+- **TML-2 Zoom:** pinch to zoom between `12` and `400` points per second; the default is `64`.
+- **TML-3 Rows**, from top to bottom:
+  - Ruler.
+  - Main track: filmstrip thumbnails, `58 pt` high.
+  - Text lane.
+  - Captions lane.
+  - Audio lanes: `30 pt` each, `4 pt` apart, as many as needed.
+- **TML-4 Clip colours:**
+  - Video: `#4073F2` (0.25, 0.45, 0.95).
+  - Audio: `#33BF8C` (0.20, 0.75, 0.55).
+  - Text: `#F29933` (0.95, 0.60, 0.20).
+  - Captions: `#B373F2` (0.70, 0.45, 0.95).
+- **TML-5 Select:** tap an item to select it, and tap it again to deselect. Tapping empty space deselects. The toolbar changes to match the selection (`TBR-*`).
+- **TML-6 Trim handles:** a selected main-track clip shows handles on both ends (`16 pt` wide).
+  - Dragging a handle trims live; the preview follows the edge being dragged.
+  - One drag is one undo step.
+  - The clip is never shorter than `0.1 s`, and a video can't go past the ends of its source file.
+- **TML-7 Transition buttons:** a small button between two clips opens the Transition panel for the cut (`TRN-*`).
+- **TML-8 Add button:** a "+" after the last clip opens Add media (`IMP-*`).
+- **TML-9 Music past the end:** music longer than the video is drawn in full. The part past the end of the video is dimmed. The playhead may move past the end of the video over music, so you can cut there; the preview holds the last frame.
+- **TML-10 Move audio:** press and hold an audio bar for `0.25 s`, then drag it. The new start snaps to a frame at `30 fps`.
+- **TML-11 Scissors on music:** see `MUS-4`.
+- **TML-12 Waveforms** are drawn on audio bars. Clip thumbnails load in the background.
+
+---
+
+## 5. Preview and playback (PRV)
+
+- **PRV-1 Play/pause:** tap the preview or the play button. Pressing play at the end starts again from 0.
+- **PRV-2 No black flash:** after an edit, the last frame stays on screen until the updated preview is ready.
+- **PRV-3 Animations only while playing:** animations play only during playback and export. This covers In/Out/Combo, photo motion and text animations. Paused or scrubbing, clips and text are shown at rest, so edits can be judged. Transitions always show.
+- **PRV-4 Clean frame:** opening Filters, Adjust, Crop, Cutout, Speed or Duration moves the playhead to a frame of the selected clip where no animation, transition or fade is active. It stays put if it's already on such a frame.
+- **PRV-5 Panels preview their effect:** choosing an animation or transition plays the part of the clip where it happens:
+  - **In animation:** plays from the start of the clip.
+  - **Out animation:** plays the last `1.5 s`.
+  - **Transition:** plays from `0.4 s` before the transition.
+- **PRV-6 Drag text on the preview:** drag the selected text to place it anywhere. This sets the text's position to Custom (`TXT-5`).
+
+---
+
+## 6. Toolbars (TBR)
+
+The toolbar is one horizontally scrolling row of icon buttons with labels. The order is fixed and must match on every platform. A button with an **AI** badge runs an on-device AI feature. *Active* means the button is drawn highlighted.
+
+| Selection | Buttons, in order |
+|---|---|
+| **TBR-1 Nothing** | Media · Music · Captions (AI) · Watermark (active if set) · Text · Intro · Outro |
+| **TBR-2 Video clip** | Split · Speed · Animate (active if any animation) · Denoise (active if on) · Filters · Adjust · Enhance (AI) · Cutout (AI) · Reframe (AI) · Crop · Reverse (active if reversed) · Freeze · Duplicate · Delete |
+| **TBR-3 Photo or freeze frame** | Duration · Animate (active if motion or animation) · Filters · Adjust · Enhance (AI) · Cutout (AI) · Crop · Duplicate · Delete |
+| **TBR-4 Text** | Edit · Duration · Animate (active if set) · Position (active if a fixed spot) · Duplicate · Delete |
+| **TBR-5 Music** | Cut · Duck · Move to Start (only when there's a gap before it) · Repeat (only when it ends before the video) · Delete |
+| **TBR-5b Other audio** (voiceover, extracted, effect) | Cut · Move to Start (conditional) · Repeat (conditional) · Delete |
+| **TBR-6 Captions** | Edit · Style · Fillers · Delete |
+
+Deleting closes any open panel and clears the selection.
+
+---
+
+## 7. Import (IMP)
+
+- **IMP-1 Add media:** Media (or the timeline "+") offers:
+  - **Photos library:** videos and photos, up to `20` at once.
+  - **Files:** video, image and audio.
+- **IMP-2 Copy in:** each file is copied into the project's media folder under a new unique name. The original isn't needed afterwards.
+- **IMP-3 Placement:** videos and photos go to the end of the main track, in the order picked. Photos last `3 s`. Audio files go on the first free audio lane as music.
+- **IMP-4 Orientation:** video recorded in portrait (rotated in the file) is shown upright. Photos are shown upright using their orientation tag.
+- **IMP-5 Canvas fit:** new clips use the project's canvas fit and position, if they've been set (`CNV-2`).
+- **IMP-6 Errors:** if nothing could be imported, the toast says "Couldn't import that file".
+
+---
+
+## 8. Main-track clip features
+
+### CLP: Common clip editing
+
+- **CLP-1 Split:** splits the clip under the playhead. Toast: "Split at m:ss.f". The right-hand piece gets a new identity. A transition stays on the right-hand piece's cut. A split closer than `0.1 s` to either edge is refused ("Too close to the clip edge").
+- **CLP-2 Duplicate:** inserts a copy right after the clip.
+- **CLP-3 Delete:** removes the clip, and the following clips move up. Deleting the last clip also removes the transition on the new last clip.
+- **CLP-4 Reorder:** *(engine only; there's no interface yet.)* When clips are reordered, the clip that ends up last never keeps a transition.
+
+### SPD: Speed
+
+- **SPD-1 Range:** speed runs from `0.1×` to `10×` on a logarithmic slider, rounded to `0.05`.
+  - **Quick picks:** `0.25×`, `0.5×`, `1×`, `2×`, `4×`.
+  - **Readout:** the current value, for example "1.5×".
+- **SPD-2 Duration:** changing the speed changes how long the clip lasts on the timeline (source length ÷ speed). Stills ignore speed.
+- **SPD-3 Smooth slow motion:** below `1×`, consecutive source frames are blended, so motion looks smooth rather than stepped.
+
+### REV: Reverse
+
+- **REV-1 Toggle:** the button turns reverse on or off. The first time, a reversed copy of the video is made (busy overlay "Reversing clip…"); after that, toggling is instant.
+- **REV-2 Sound:** reversed clips play without sound.
+- **REV-3 Limits:** only video clips that aren't freeze frames can be reversed.
+
+### FRZ: Freeze frame
+
+- **FRZ-1 Insert:** inserts a `1.5 s` still of the frame under the playhead, splitting the clip around it. Toast: "Freeze frame added".
+  - The still always plays at `1×`, not reversed.
+  - Near a clip edge (under `0.1 s` away), the still goes before or after the clip instead of splitting it.
+- **FRZ-2 Treated as a photo:** a freeze frame gets the photo toolbar.
+
+### DNS: Noise reduction (Denoise)
+
+- **DNS-1 Panel** "Noise Reduction":
+  - Text: "Removes background hiss, hum, wind and room noise from this clip's sound."
+  - Choices: **Off · Low · Medium · High**.
+  - Note: "Stronger settings remove more noise but can make voices sound thinner."
+- **DNS-2 Processing:** picking a level cleans the clip's audio on the device, with a busy overlay "Reducing noise…" and a progress ring. Toast: "Noise reduced (Medium)".
+- **DNS-3 Reuse:** the cleaned audio is made once per media item and level. Later switches to an already-made level are instant. Split pieces of the same video share it.
+- **DNS-4 Scope:** it applies to this clip's own sound, in preview and export. Off restores the original sound.
+- **DNS-5 No sound:** a clip without sound shows the toast "This clip has no sound".
+
+### FLT: Filters
+
+- **FLT-1 Choice:** "None" plus `20` looks, in this order:
+  - Vivid, Warm, Cool, Cinema, Film, Fade, Vintage, Mono, Noir, Sepia.
+  - Pastel, Punch, Golden Hour, Moody, Lush, Bleach, Night, Rose, Matte, Chrome.
+- **FLT-2 Thumbnails:** each look's thumbnail is the clip's own frame with that look applied.
+- **FLT-3 Intensity:** a slider from `0`–`100%`, default `100%`. It's shown only when a look is chosen.
+- **FLT-4 Exact looks:** looks must match across platforms; the formulas are in IMPLEMENTATION §8.4.
+
+### ADJ: Adjust
+
+- **ADJ-1 Sliders:**
+  - From `-100` to `+100` (stored as `-1…1`), neutral at 0: Exposure, Contrast, Saturation, Warmth, Highlights, Shadows.
+  - From `0` to `100`: Vignette, Sharpen.
+- **ADJ-2 Buttons:** **Auto Enhance** runs `ENH-1`. **Reset** returns every slider to neutral.
+
+### CRP: Crop and rotate
+
+- **CRP-1 Rotate** turns the clip 90° clockwise each time. **Flip H** and **Flip V** mirror it.
+- **CRP-2 Fit for this clip:** a button that cycles Fit → Fill → Stretch.
+- **CRP-3 Zoom:** a slider from `0.5×` to `3×`.
+- **CRP-4 Crop presets:** Original, 1:1, 4:5, 16:9. Each is a centred crop of the source.
+
+### TRN: Transitions
+
+- **TRN-1 Choice:** None plus `8` kinds:
+  - Fade (dip to black), Dissolve, Slide, Push Up.
+  - Zoom, Wipe, Blur, Glitch.
+- **TRN-2 Duration:** a slider from `0.2 s` to `2 s`, default `0.5 s`. The actual overlap is never more than half of either clip.
+- **TRN-3 Shorter video:** a transition overlaps the two clips, so the video gets shorter by the transition's length.
+- **TRN-4 Last clip:** the last clip never has a transition.
+
+### ANM: Animate (clips and photos)
+
+- **ANM-1 Tabs:** **In · Out · Combo** for video clips, and **In · Out · Combo · Motion** for photos and freeze frames. Each tab is a grid of tiles with "None" first.
+- **ANM-2 In / Out** (14 kinds):
+  - Fade, Zoom In, Zoom Out, Slide ←, Slide →, Slide ↑, Slide ↓.
+  - Rotate, Spin, Pop, Bounce, Drop, Blur, Swing.
+  - Out plays the same animation backwards.
+  - **Length:** a slider from `0.2 s` to `3 s`, default `0.6 s`. In and Out each take at most half the clip, so they never overlap.
+- **ANM-3 Combo** loops for the whole clip (8 kinds): Pulse, Heartbeat, Shake, Wobble, Swing, Float, Rock, Spin.
+- **ANM-4 Motion** (photos and freeze frames): None, Zoom In, Zoom Out, Pan Left, Pan Right, Pan Up, Pan Down, Ken Burns. The camera move is eased and never shows the photo's edges when it fills the canvas.
+- **ANM-5 Apply to all:** shown when there's more than one clip.
+  - On In/Out/Combo, "Apply to all clips" copies this clip's animation to every clip.
+  - On Motion, "Apply to all photos" copies it to every photo.
+  - Toasts: "Applied to all clips" and "Applied to all photos".
+
+### DUR: Photo duration
+
+- **DUR-1 Slider:** from `0.5 s` to `30 s` in `0.1 s` steps, with a large readout "3.0 s".
+- **DUR-2 Quick picks:** `2s`, `3s`, `5s`, `10s`.
+- **DUR-3 Apply to all:** "Apply to all N photos", shown when there are 2 or more photos. Toast: "All photos set to X s".
+
+### ENH: Auto Enhance (AI)
+
+- **ENH-1 What it does:** measures the clip's brightness, contrast, colour and colour cast, then sets the Adjust sliders to correct them.
+  - It analyses 3 frames, at 20%, 50% and 80% of the clip, or the photo itself.
+  - It replaces the Adjust values, and undo restores them.
+  - Toast: "Enhanced".
+
+### CUT: Cutout (background removal, AI)
+
+- **CUT-1 Panel** "Remove Background":
+  - Text: "Cuts out people automatically – no green screen."
+  - Choices: **Off · Blur · Canvas**, plus a row of colour swatches.
+- **CUT-2 What each choice does:** people are cut out on every frame.
+  - **Blur:** a blurred version of the clip shows behind them.
+  - **Canvas:** the project's canvas background shows behind them.
+  - **Colour:** the chosen solid colour shows behind them.
+- **CUT-3 Quality:** the export uses the most accurate cut-out; the preview may use a faster one.
+
+### RFR: Auto Reframe (AI)
+
+- **RFR-1 What it does** (video clips only): tracks faces, or the most noticeable subject, through the clip. The crop then follows them, so a wide shot can fill a vertical canvas.
+  - The clip is switched to Fill.
+  - Toast: "Reframed to follow the subject".
+  - With nothing selected, or a photo selected: "Select a video clip".
+
+---
+
+## 9. Canvas, slides and watermark
+
+### CNV: Canvas
+
+- **CNV-1 Aspect ratio:** `9:16` (default), `3:4`, `1:1`, `4:5`, `16:9`.
+- **CNV-2 "Media that doesn't fit":**
+  - **Fit / Fill / Stretch** (default Fit).
+  - With Fit or Fill, a position: Center, Top, Bottom, Left, Right.
+  - The choice applies to every clip except title slides, and to clips added later.
+- **CNV-3 Background:** behind fitted media, the background is a blurred, darkened copy of the current frame (default), or a solid colour.
+
+### TTL: Opening and closing slides (Intro and Outro)
+
+- **TTL-1 Panel** "Opening Slide" or "Closing Slide":
+  - Title and an optional subtitle.
+  - `7` style presets: Midnight, Sunset, Ocean, Forest, Grape, Paper, Noir.
+  - Duration from `1`–`10 s`, default `3 s`.
+- **TTL-2 Saving:** ✓ adds the slide or saves changes, then closes the panel. Hint: "Tap ✓ to add the slide" or "Tap ✓ to save changes". **Remove** deletes it.
+- **TTL-3 Defaults:** the opening title starts as the project name; the closing title as "Thanks for watching".
+- **TTL-4 Placement:** the opening slide is always the first clip and the closing slide the last. The slide's layout fits any canvas ratio. Animations and transitions work on slides.
+
+### WMK: Watermark
+
+- **WMK-1 Kind:** **Text** (default text "@yourname") or **Image** (picked from Photos). **Remove** deletes it.
+- **WMK-2 Settings:**
+  - Position: a 3×3 grid, default Bottom Right.
+  - Size from `8`–`50%`, default `22%`.
+  - Opacity from `10`–`100%`, default `70%`.
+- **WMK-3 Coverage:** it shows over the whole video, above clips and text, below captions, including exports.
+
+---
+
+## 10. Text (TXT)
+
+- **TXT-1 Add:** Text adds "Your text" at the playhead for `3 s`. It pops in and fades out (`0.4 s` each). It's selected, and the Edit panel opens.
+- **TXT-2 Edit panel** "Text":
+  - **Text field.**
+  - **Fonts** (8): Bold, Classic, Rounded, Condensed, Elegant, Mono, Script, Heavy.
+  - **Colour swatches** (8): white, black, yellow, coral, blue, green, purple, orange.
+  - **Toggles:** Outline, Label (dark rounded box behind the text), Shadow (default on).
+  - **Size:** a slider shown as `30`–`160`.
+- **TXT-3 Duration** "Text Duration":
+  - Slider from `0.5`–`30 s`, and quick picks `2/3/5/10s`.
+  - **Start at playhead:** moves the text to start at the playhead.
+  - **Whole video:** covers the whole video.
+- **TXT-4 Animate:** In / Out / Combo, with the same sets and length range as `ANM-2` and `ANM-3`.
+- **TXT-5 Position:**
+  - A 3×3 grid of fixed spots that keep the text inside the video at that edge.
+  - **Custom:** free position. Dragging the text on the preview also sets Custom.
+- **TXT-6 Duplicate:** places the copy right after the original.
+
+---
+
+## 11. Music and audio (MUS)
+
+- **MUS-1 Add music** (Music in the main toolbar):
+  - **Files:** your own audio file.
+  - **From Video:** the soundtrack of a video from Photos.
+  - **Built-in tracks** (4, royalty-free, made on the device): Sunrise Drive (Upbeat, 120 BPM), Night Run (Energetic, 128), Lo-Fi Chill (Relaxed, 84), Big Moment (Cinematic, 100).
+- **MUS-2 New music defaults:**
+  - Volume `70%`.
+  - Fade-out at the end: `min(1.5 s, song length ÷ 4)`.
+  - Auto-duck **on** at `25%`.
+  - It starts where the existing music ends, if that's inside the video, otherwise at 0:00. It goes on the first lane where it fits (`MUS-9`).
+  - Toast: "Added <name>".
+- **MUS-3 Whole song:** music that hasn't been cut runs from its start to the end of the song file, however long the video is (see `TML-9`). Preview and export stop at the end of the video.
+- **MUS-4 Cut:** splits the music at the playhead. Toast: "Cut at m:ss.f". Each piece is its own clip, and the right-hand piece becomes selected.
+  - **Toolbar Cut** works at the playhead.
+  - **Scissors on the bar:** a round scissors button on the music bar under the playhead. It shows **only when that music bar is selected** and the playhead is at least `0.2 s` from its ends.
+- **MUS-5 Duck** (music only) opens the "Duck" panel:
+  - Text: "Music volume while someone is speaking".
+  - **Music slider:** `0`–`100%` in `5%` steps, default `25%`. Moving it also turns auto-duck on.
+  - **Without captions:** "Ducking finds speech from captions. Add captions to hear it."
+  - **How it sounds:** while captioned speech plays, the music dips to the chosen level, and back up afterwards. See IMPLEMENTATION §9.2–9.3.
+- **MUS-6 Move to Start:** shown only when there's blank space of at least `0.2 s` before the clip on its lane. It moves the clip back to the end of the previous clip on that lane, or to 0:00. Toast: "Moved to m:ss.f".
+- **MUS-7 Repeat:** shown only when the clip ends at least `0.2 s` before the video ends. It adds copies back to back until the end of the video; the last copy is cut at the end and keeps the fade-out.
+  - Toast: "Repeated N× to the end".
+  - If the clip already reaches the end: "Already plays to the end".
+- **MUS-8 Move:** see `TML-10`. **Delete** removes the audio clip.
+- **MUS-9 Lanes:** a new audio clip goes on the first lane where it doesn't overlap anything.
+
+---
+
+## 12. Captions (CAP)
+
+- **CAP-1 Generate:** Captions (main toolbar) with no captions yet shows "Transcribe speech into animated captions. Runs entirely on your device." and **Generate Captions**.
+  - It transcribes the edit's speech on the device: clip sounds, voiceovers and extracted audio, never music or effects.
+  - Busy: "Transcribing on device…". Toast: "Captioned N words".
+  - The captions are then selected and the Style panel opens.
+  - **Must never use server recognition.** If on-device recognition isn't available: "On-device speech recognition isn't available for this language." If speech recognition permission was refused: "Speech recognition permission is needed to create captions." If nothing was heard: "No speech was found in this video."
+- **CAP-2 Splitting into captions:** words are grouped into captions of at most `5` words and `2.6 s`. A new caption starts after a pause over `0.55 s` or after `.`, `!` or `?`.
+- **CAP-3 On screen:** one caption at a time, centred horizontally, at the chosen height. It stays up `0.25 s` past its last word. The word being spoken is the "active" word.
+- **CAP-4 Style panel:**
+  - **Styles:** **Classic · Karaoke (default) · Bold**.
+  - **Highlight colour:** swatches; the default is yellow.
+  - **Position:** a slider from `10`–`92%` of the height, default `78%`.
+  - What the styles look like:
+    - **Classic:** white text in a dark rounded box.
+    - **Karaoke:** white text with a black outline and shadow; the active word is in the highlight colour.
+    - **Bold:** uppercase condensed heavy font, outlined; the active word is highlighted.
+  - In Karaoke and Bold, a newly active word pops slightly (4% for 0.12 s).
+- **CAP-5 Edit** opens a full-screen "Edit Captions" editor:
+  - **Layout:** **Cancel** and **Done** at the top. Each caption shows its time range ("0:03.0 – 0:04.6") above a multi-line text box.
+  - **Starting point:** it opens on the caption at the playhead, or the last one before it, or the first. That caption is scrolled into view and the keyboard comes up on it. The caption being edited is highlighted in the accent colour.
+  - **Above the keyboard:** the caption being typed in always stays visible above the keyboard.
+  - **Navigation:** Return moves to the next caption. Tapping a time moves the playhead there.
+  - **Saving:** typing only changes a draft. **Done** saves every change as **one** undo step. **Cancel** discards them. Closing must be instant; never save on every keystroke.
+  - **Timing:** edited words are spread evenly over the caption's original time.
+- **CAP-6 Fillers:** removes hesitation words from every caption: um, umm, ummm, uh, uhh, uhhh, ah, ahh, ahhh, er, err, erm, hmm, hm, mm, mmm.
+  - **Matching:** ignores capital letters and punctuation around the word. Words that only contain these letters are kept, such as "umbrella" or "uh-huh".
+  - **Tidying:** if a caption started with a removed filler, its new first word is capitalised. A comma left dangling at the end is removed.
+  - **Timing:** the remaining words keep their times. Captions left empty are removed.
+  - **Toasts:** "Removed N filler word(s)", or "No filler words found".
+  - **Text only:** the video isn't cut.
+- **CAP-7 Delete** removes all captions.
+- **CAP-8 Older projects:** projects saved with the removed styles Minimal or Neon open as Classic or Karaoke respectively.
+
+---
+
+## 13. Export (EXP)
+
+- **EXP-1 Options:**
+  - **Resolution:** `720p`, `1080p` (default), `4K`. This is the short edge of the canvas.
+  - **Frame rate:** `24`, `30` (default), `60` fps.
+  - **Format:** `HEVC` (default), `H.264`.
+  - **Readout:** the size and length, for example "720×1,280 · 0:12.0 · hardware encoded".
+- **EXP-2 Estimated size:** shown before export. Formula in IMPLEMENTATION §11.
+- **EXP-3 Buttons:**
+  - **Export Video:** accent.
+  - **Export & Share:** secondary. It exports, then opens the system share sheet straight away.
+  - Below them: "Share to WhatsApp, Instagram, TikTok, Messages, AirDrop and more." Each platform lists its own sharing options.
+- **EXP-4 While exporting:** a progress ring with a percentage. Close is disabled.
+- **EXP-5 When done:**
+  - The video plays in a player, unless Export & Share opened the share sheet.
+  - "Exported in X.Xs · N MB".
+  - **Save to Photos:** changes to "Saved". Platforms save to their gallery, or to Downloads/Movies on desktop.
+  - **Share:** opens the system share sheet.
+- **EXP-6 File name:** the exported file is named after the project, `<Project name>.mp4`, with characters not allowed in file names removed. If the name is empty: "Cutline Video".
+- **EXP-7 Output:** an MP4 file with AAC audio. Preview and export are the same frame for frame (see `PRV-3` for animations).
+
+---
+
+## 14. Visual language
+
+- **Colours:**
+  - Background `#0E0E11`, surface `#1C1C20`, raised surface `#29292E`.
+  - Accent (coral) `#FF3C61` (1.0, 0.235, 0.38). Soft accent: the accent at 18%.
+  - Secondary text: white at 60%. Hairline borders: white at 8%.
+- **Dark mode only.** Portrait only on phones; tablets and desktop may allow any orientation.
+- **Option chips:** a capsule, accent when selected, raised surface otherwise, white text. They report "selected" to accessibility tools.
+- **Colour swatches** (shared by text, captions, cut-out): white, black, yellow (1, 0.86, 0.1), coral (1, 0.24, 0.38), blue (0.25, 0.55, 1), green (0.2, 0.8, 0.55), purple (0.65, 0.4, 0.95), orange (1, 0.55, 0.15).
+- **Panels:** a title on the left and an accent ✓ button on the right that closes the panel.
+
+---
+
+## 15. Projects, saving and undo (PRJ)
+
+- **PRJ-1 Autosave:** saves `0.4 s` after the last change, and on close. Writes are atomic: write to a temporary file, then rename.
+- **PRJ-2 Undo:** up to `200` steps. Undo and redo show a toast ("Undo", "Redo"). A redo is lost after a new edit.
+- **PRJ-3 Portable:** a project folder can be copied between devices and platforms and opens the same (IMPLEMENTATION §4).
+
+---
+
+## Platform parity
+
+Keep this table current. ✅ = done, 🟡 = partly or differently (explain), ⬜ = not started, ⛔ = not possible on that platform (explain).
+
+| Area | iOS | Android | macOS | Windows | Notes |
+|---|---|---|---|---|---|
+| Library LIB-1…5 | ✅ | ⬜ | ⬜ | ⬜ | |
+| Timeline TML-1…12 | ✅ | ⬜ | ⬜ | ⬜ | Desktop: mouse wheel scrolls, ⌘/Ctrl+wheel zooms |
+| Clip editing CLP, SPD, REV, FRZ | ✅ | ⬜ | ⬜ | ⬜ | |
+| Denoise DNS | ✅ | ⬜ | ⬜ | ⬜ | Same algorithm (IMPLEMENTATION §9.4) |
+| Filters, Adjust, Crop FLT, ADJ, CRP | ✅ | ⬜ | ⬜ | ⬜ | Exact formulas |
+| Transitions and animation TRN, ANM | ✅ | ⬜ | ⬜ | ⬜ | Exact formulas |
+| Enhance ENH | ✅ | ⬜ | ⬜ | ⬜ | Pure maths, portable |
+| Cutout CUT | ✅ | ⬜ | ⬜ | ⬜ | Needs on-device person segmentation |
+| Reframe RFR | ✅ | ⬜ | ⬜ | ⬜ | Needs on-device face and saliency detection |
+| Canvas, slides, watermark | ✅ | ⬜ | ⬜ | ⬜ | |
+| Text TXT | ✅ | ⬜ | ⬜ | ⬜ | Fonts: see IMPLEMENTATION §8.6 |
+| Music MUS | ✅ | ⬜ | ⬜ | ⬜ | |
+| Captions CAP | ✅ | ⬜ | ⬜ | ⬜ | Needs an on-device speech model |
+| Export EXP | ✅ | ⬜ | ⬜ | ⬜ | |
+
+---
+
+## Decisions and removed features
+
+These were tried and removed on purpose. Don't add them back without changing this spec.
+
+| Date | Decision |
+|---|---|
+| 2026-11 | **No volume control on music clips.** The music toolbar has no Volume, Fade or Duplicate. New music is always 70% volume with an automatic fade-out. Old projects keep their stored values. |
+| 2026-11 | **Auto-duck is always on for new music**, and there's no on/off button. Only its level is adjustable (`MUS-5`). |
+| 2026-11 | **No Volume tool on video clips.** A per-clip music/voice balance slider was built and then removed. Mute and Extract Audio were removed from the interface; projects that already used them still play as saved. |
+| 2026-11 | **Caption styles are Classic, Karaoke and Bold.** Minimal and Neon were removed (`CAP-8`). |
+| 2026-11 | **The caption text editor is full screen** and saves once on Done (`CAP-5`). Text editing isn't in the Style panel. |
+| 2026-11 | **The scissors on a music bar show only when that bar is selected** (`MUS-4`). |
+
+### Engine features not exposed in the interface
+
+These exist in the iOS engine and in older projects, but have no button. Other platforms must **play them correctly when a project contains them**, but don't need interface for them.
+
+- **Audio sections:** markers that split a song into parts, each with its own volume or cut out (the older "Edit audio" editor).
+- **Remove silences:** cuts long pauses out of speech, moving later text and captions to match.
+- **Beat sync:** moves cuts onto the beats of the music.
+- **Precise trim panel:** start and end sliders.
+- **Clip reordering** (`CLP-4`).
+- **Older text animations:** `animationIn` and `animationOut`, used when a text has no `animation` set.
+- **Mute and extracted audio** on clips.

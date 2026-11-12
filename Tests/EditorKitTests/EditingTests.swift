@@ -617,3 +617,112 @@ struct CaptionFillerTests {
         #expect(track.removeFillers() == 0, "nothing left to remove")
     }
 }
+
+
+/// The shared project-file contract (docs/spec/project.sample.json). Other platforms
+/// (Android, macOS, Windows) must read and write this exact shape.
+@Suite("Project file contract")
+struct ProjectFileContractTests {
+    static let fixture = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("docs/spec/project.sample.json")
+
+    /// A project that uses every field at least once.
+    static func sample() -> Project {
+        var p = Project(id: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!, name: "Sample",
+                        createdAt: Date(timeIntervalSinceReferenceDate: 800_000_000))
+        p.modifiedAt = p.createdAt
+        p.aspectRatio = .portrait9x16
+        p.background = .blur
+        p.defaultFit = .fill
+        p.defaultAnchor = .center
+        var video = MediaItem(id: UUID(uuidString: "22222222-2222-2222-2222-222222222222")!, kind: .video,
+                              fileName: "A1B2.mov", naturalSize: CGSize(width: 1080, height: 1920),
+                              duration: MediaTime(seconds: 8), hasAudio: true, frameRate: 30, displayName: "Beach")
+        video.sourceQuarterTurns = 1
+        video.reversedFileName = "rev-A1B2.mov"
+        video.denoisedFileNames = [.medium: "nr-medium-A1B2.m4a"]
+        let photo = MediaItem(id: UUID(uuidString: "33333333-3333-3333-3333-333333333333")!, kind: .photo,
+                              fileName: "C3D4.heic", naturalSize: CGSize(width: 4032, height: 3024),
+                              duration: .zero, hasAudio: false, displayName: "Sunset")
+        let song = MediaItem(id: UUID(uuidString: "44444444-4444-4444-4444-444444444444")!, kind: .audio,
+                             fileName: "music-sunrise-10.m4a", naturalSize: .zero,
+                             duration: MediaTime(seconds: 60), hasAudio: true, displayName: "Sunrise Drive")
+        p.media = [video, photo, song]
+
+        var v = VideoClip(id: UUID(uuidString: "55555555-5555-5555-5555-555555555555")!, mediaID: video.id, kind: .video,
+                          sourceRange: MediaTimeRange(start: MediaTime(seconds: 1), duration: MediaTime(seconds: 4)))
+        v.speed = 1.5
+        v.noiseReduction = .medium
+        v.transform.crop = CropRect(x: 0, y: 0.1, width: 1, height: 0.8)
+        v.transform.quarterTurns = 0
+        v.transform.fit = .fill
+        v.transform.anchor = .center
+        v.filter = FilterSetting(filterID: "teal_orange", intensity: 0.8)
+        v.adjustments.exposure = 0.2
+        v.adjustments.vignette = 0.3
+        v.backgroundRemoval = .color(RGBAColor(r: 0, g: 0, b: 0))
+        v.reframe = [ReframeKeyframe(time: MediaTime(seconds: 1), centerX: 0.5, centerY: 0.4)]
+        v.transitionOut = Transition(kind: .dissolve, duration: MediaTime(seconds: 0.5))
+        var anim = ClipAnimation()
+        anim.entrance = .zoomIn
+        anim.combo = .pulse
+        v.animation = anim
+        var ph = VideoClip(id: UUID(uuidString: "66666666-6666-6666-6666-666666666666")!, mediaID: photo.id, kind: .photo,
+                           sourceRange: MediaTimeRange(start: .zero, duration: MediaTime(seconds: 3)))
+        ph.photoMotion = .kenBurns
+        p.clips = [v, ph]
+
+        var music = AudioClip(id: UUID(uuidString: "77777777-7777-7777-7777-777777777777")!, mediaID: song.id, role: .music,
+                              sourceRange: MediaTimeRange(start: .zero, duration: MediaTime(seconds: 60)), start: .zero)
+        music.volume = 0.7
+        music.fadeOut = MediaTime(seconds: 1.5)
+        music.autoDuck = true
+        music.duckLevel = 0.25
+        music.name = "Sunrise Drive"
+        music.fitsVideo = true
+        p.audioClips = [music]
+
+        var text = TextOverlay(id: UUID(uuidString: "88888888-8888-8888-8888-888888888888")!, text: "Hello",
+                               range: MediaTimeRange(start: .zero, duration: MediaTime(seconds: 3)))
+        text.style.outlineColor = .black
+        text.style.outlineWidth = 0.08
+        text.anchor = .top
+        var tanim = ClipAnimation()
+        tanim.entrance = .pop
+        tanim.exit = .fade
+        tanim.inDuration = 0.4
+        tanim.outDuration = 0.4
+        text.animation = tanim
+        text.animationIn = .none
+        text.animationOut = .none
+        p.textOverlays = [text]
+
+        p.captions.segments = [CaptionSegment(id: UUID(uuidString: "99999999-9999-9999-9999-999999999999")!, words: [
+            CaptionWord(text: "Hello", range: MediaTimeRange(start: MediaTime(seconds: 0.5), duration: MediaTime(seconds: 0.4))),
+            CaptionWord(text: "there", range: MediaTimeRange(start: MediaTime(seconds: 0.9), duration: MediaTime(seconds: 0.4))),
+        ])]
+        p.captions.preset = .karaoke
+        var mark = Watermark()
+        mark.text = "@cutline"
+        p.watermark = mark
+        return p
+    }
+
+    static func encoder() -> JSONEncoder {
+        let e = JSONEncoder()
+        e.outputFormatting = [.sortedKeys, .prettyPrinted]
+        return e
+    }
+
+    @Test func sampleFileStillDecodesToTheSameProject() throws {
+        let sample = Self.sample()
+        if !FileManager.default.fileExists(atPath: Self.fixture.path) {
+            // First run writes the contract file; commit it.
+            try Self.encoder().encode(sample).write(to: Self.fixture)
+        }
+        let data = try Data(contentsOf: Self.fixture)
+        let decoded = try JSONDecoder().decode(Project.self, from: data)
+        #expect(decoded == sample, "docs/spec/project.sample.json no longer matches the model")
+    }
+}

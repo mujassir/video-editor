@@ -29,8 +29,9 @@ A fast, private video editor for iPhone. It's built natively in Swift, SwiftUI, 
 - Animations play only during playback. Paused or scrubbing, the preview shows clips at rest, so edits are easy to judge.
 
 ### Video clips
-- Split, trim (drag the clip's handles on the timeline), duplicate, reorder and delete.
-- Speed from 0.1× to 10×, reverse, freeze frame, volume, extract audio.
+- Split, trim (drag the clip's handles on the timeline), duplicate and delete.
+- Speed from 0.1× to 10×, reverse, freeze frame.
+- **Denoise:** removes background hiss, hum and wind from the clip's sound (Off, Low, Medium, High).
 - 20 filters (3D lookup tables), plus adjustments: exposure, contrast, saturation, warmth, highlights, shadows, vignette, sharpen.
 - Crop, rotate, flip, zoom; Fit, Fill or Stretch per clip.
 - 8 transitions: fade, dissolve, slide, push, zoom, wipe, blur, glitch.
@@ -54,11 +55,11 @@ A fast, private video editor for iPhone. It's built natively in Swift, SwiftUI, 
 ### Music and audio
 - 4 built-in royalty-free tracks, synthesized on the device.
 - Your own music from **Files**, or the soundtrack of a video (**From Video**).
-- **Music toolbar:** Cut, Volume (volume, fade-out, auto-duck), Repeat (loops the track until the end of the video), Duplicate, Delete.
+- **Music toolbar:** Cut, Duck (music level under speech, 25% by default), Move to Start (when there's a gap before it), Repeat (when it ends before the video), Delete.
 - **Whole song on the timeline:** a 3-minute song on a 1-minute video shows all 3 minutes. The part past the end of the video is dimmed; preview and export stop at the end of the video.
-- **Cut:** a ✂︎ sits on the music bar under the playhead; tap it (or **Cut** in the toolbar) to cut the music there. Each piece is its own clip that you can select, move, repeat, duplicate or delete.
+- **Cut:** a ✂︎ sits on the music bar under the playhead; tap it (or **Cut** in the toolbar) to cut the music there. Each piece is its own clip that you can select, move, repeat or delete. The ✂︎ shows only on the selected music bar.
 - Press and hold a music bar, then drag it, to move it.
-- Fade-out, and automatic ducking of music under speech.
+- New music plays at 70% with a fade-out, and dips automatically while someone speaks (uses captions).
 
 ### Canvas
 - 9:16, 3:4, 1:1, 4:5 and 16:9, with a blurred background.
@@ -74,7 +75,9 @@ A fast, private video editor for iPhone. It's built natively in Swift, SwiftUI, 
 - Drawn over the whole video, including exports.
 
 ### On-device AI
-- **Auto captions:** Apple's on-device speech recognition, with word timing and 5 animated styles. It never falls back to server recognition.
+- **Auto captions:** Apple's on-device speech recognition, with word timing and 3 styles (Classic, Karaoke, Bold). It never falls back to server recognition.
+  - **Edit:** a full-screen editor that opens on the caption at the playhead.
+  - **Fillers:** removes um, uh, ah and similar words in one tap.
 - **Auto enhance:** corrects exposure, contrast, colour and white balance.
 - **Auto reframe:** follows faces and subjects so a wide shot fits a vertical canvas.
 - **Background removal (Cutout):** person segmentation with blur, colour or transparent background.
@@ -82,7 +85,7 @@ A fast, private video editor for iPhone. It's built natively in Swift, SwiftUI, 
 ### Export
 - 720p, 1080p or 4K at 24, 30 or 60 fps, in HEVC or H.264, using the hardware encoder.
 - An estimated file size before export, and the real size after it.
-- Save to Photos, or share.
+- Save to Photos, or **Export & Share** straight to WhatsApp, Instagram, Messages and other apps.
 
 ## Open in Xcode
 
@@ -133,7 +136,18 @@ Tests/
   EditorKitTests/         unit tests (Swift Testing)
   CutlineUITests/         one UI test per feature (XCTest)
 project.yml               XcodeGen project definition
+docs/spec/                cross-platform specs (features, implementation, project file format)
 ```
+
+## Specs for other platforms
+
+The Android, macOS and Windows apps are built from the specs in [`docs/spec`](docs/spec), so they behave the same as this app:
+
+- [Feature spec](docs/spec/FEATURES.md): what the user sees, with feature IDs and the platform parity table.
+- [Implementation spec](docs/spec/IMPLEMENTATION.md): algorithms, formulas, numbers and the project file format.
+- [Sample project file](docs/spec/project.sample.json): the shared `project.json` format. The `ProjectFileContractTests` test checks that it still loads.
+
+AI agents start from [AGENTS.md](AGENTS.md).
 
 ## Tests and CI
 
