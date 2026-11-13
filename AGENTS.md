@@ -2,6 +2,8 @@
 
 Cutline will ship on iOS (this repo, the reference), then Android, macOS and Windows. The apps must behave the same everywhere.
 
+**Starting the Android app?** Begin with [docs/android/README.md](docs/android/README.md): the stack, module layout, iOS → Android map, milestones, tests to port and known pitfalls.
+
 **Before changing behaviour, read:**
 - [docs/spec/FEATURES.md](docs/spec/FEATURES.md): what the user sees. Every feature has an ID (`MUS-4`, `CAP-5`, …).
 - [docs/spec/IMPLEMENTATION.md](docs/spec/IMPLEMENTATION.md): exact algorithms, numbers, formulas and the file format.
