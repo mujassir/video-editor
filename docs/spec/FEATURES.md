@@ -1,7 +1,7 @@
 # Cutline: Feature Specification
 
 **Status:** describes the iOS app as built (reference implementation).
-**Applies to:** iOS (shipping), Android (next), macOS and Windows (later).
+**Applies to:** iOS (shipping), Android (next), macOS and Windows (later). Starting Android: see [docs/android/README.md](../android/README.md).
 **Companion documents:**
 - [IMPLEMENTATION.md](IMPLEMENTATION.md): how each feature works internally, with exact numbers and formulas.
 - [project.sample.json](project.sample.json): the shared project file format.

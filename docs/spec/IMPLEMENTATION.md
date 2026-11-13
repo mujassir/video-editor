@@ -42,6 +42,7 @@
 | Timeline layout | `EditorKit/Model/TimelineLayout.swift` |
 | Undo/redo | `EditorKit/Model/EditSession.swift` |
 | Storage, autosave | `EditorKit/Model/ProjectStore.swift` |
+| Recent audio tracks (MUS-10) | `EditorKit/Model/RecentAudioStore.swift` |
 | Playback/export graph | `EditorKit/Engine/CompositionBuilder.swift` |
 | Per-frame compositor | `EditorKit/Engine/VideoCompositor.swift`, `MetalRenderer.swift`, `Shaders.metal` |
 | Geometry and animation maths | `EditorKit/Engine/LayerGeometry.swift` |
@@ -329,6 +330,11 @@ The total length is the last entry's end. `entry(at: t)` returns the **last** en
   3. Both pieces get `fitsVideo = false`.
   4. The left piece is `[src.start, cut)` with `fadeOut = 0`.
   5. The right piece gets a new id, `[cut, src.end)`, `start = t` and `fadeIn = 0`.
+- **startAudioHere(id, at t)** (MUS-11, "Start Here"):
+  1. `before` = the latest end, at or before the clip's start, among other clips on the same lane, or 0.
+  2. `splitAudio(at t)` (so the same `0.2 s` limits apply), then delete the left piece.
+  3. The right piece gets `start = before` and `fadeIn = min(0.3 s, playedDuration ÷ 2)`. It keeps its `fadeOut`.
+  4. It's one edit (one undo step). The UI then selects the piece, seeks to its start and plays.
 - **audioGapStart(id):** the latest end, at or before the clip's start, among other clips on the same lane, or 0 if there are none. If `clip.start − that < 0.2 s`, the answer is nil (no gap).
 - **moveAudioToGapStart:** `start = audioGapStart`.
 - **repeatAudio(id):**
@@ -821,7 +827,9 @@ Used by beat sync. The settings:
 
 ## 13. UI implementation notes
 
-- **Panels:** opening a panel replaces the toolbar. ✓ closes it. Deselecting closes any panel except Canvas, Music and Captions.
+- **Panels:** opening a panel replaces the toolbar. ✓ closes it, and so does a swipe down (`EDT-1`). Deselecting closes any panel except Canvas, Music and Captions.
+  - **Swipe down:** measure the drag in **screen** coordinates. The panel is offset by the drag, so a drag measured in the panel's own coordinates cancels itself out and never reaches the threshold (this was a real iOS bug). Close at `> 30 pt`, or a predicted end `> 80 pt`, and only when the drag is mostly vertical (`dy > |dx|`).
+- **Toolbar visibility:** with no content (`Project.duration == 0`), the main toolbar shows only Intro and Outro, and Export is hidden. Captions also needs a video clip (`Project.hasVideoClips`: a clip with `kind == video` that isn't a still). Undo and Redo show only when they can act.
 - **Clean frame (PRV-4):**
   - `restStart = overlapIn`, raised to `min(inDuration, D/2)` if the clip has an In animation.
   - `restEnd = D − overlapOut`, lowered to `D − min(outDuration, D/2)` if it has an Out animation.
@@ -838,7 +846,9 @@ Used by beat sync. The settings:
   - Export: `export.start`, `export.startShare`, `export.share`, `export.save`, `export.done`.
   - Caption editor: `captionEditor.done`, `captionEditor.cancel`, `caption.field.<n>`, `caption.time.<n>`.
   - Animations: `anim.<In|Out>.<kind>`, `anim.combo.<kind>`, `motion.<kind>`.
-  - Other: `filter.<id>`, `music.use.<trackId>`, `projects.new`, `project.card`, `mix.*`, `duck.needsCaptions`.
+  - Preview: `preview` (the video surface), `preview.addMedia` (empty state, `PRV-7`), `preview.pastEnd` (music only, `PRV-8`), `toast`, `busy`.
+  - Music panel: `music.source.files` (Audio Tracks), `music.source.video` (From Video), `music.recent.<n>` (`MUS-10`), `music.use.<trackId>` (test-only sample tracks).
+  - Other: `filter.<id>`, `projects.new`, `project.card`, `mix.*`, `duck.needsCaptions`.
 
 ---
 
@@ -855,7 +865,7 @@ The four tracks (`sunrise`, `night`, `chill`, `epic`) are **generated on the dev
 ### 15.1 Contract tests (every platform must pass)
 
 1. **Project file:** read `docs/spec/project.sample.json` and check every field against the expected values listed in `ProjectFileContractTests.sample()`. Write it back out, read it again, and check nothing changed. On iOS, this test re-creates the file if it's missing; commit the file whenever you change the model on purpose.
-2. **Editing algorithms:** port the iOS `EditorKit` test suites (`Tests/EditorKitTests/*.swift`). They're small, fixed-input tests: layout and transitions, split and trim (including reversed clips), freeze frame, ripple delete, beat sync, audio split, repeat, gap and refit, captions grouping and fillers, older-project loading. Keep the test names, prefixed with the feature ID.
+2. **Editing algorithms:** port the iOS `EditorKit` test suites (`Tests/EditorKitTests/*.swift`). They're small, fixed-input tests: layout and transitions, split and trim (including reversed clips), freeze frame, ripple delete, beat sync, audio split (also of sectioned clips), Start Here, repeat, gap and full-length refit, timeline vs edit length, ducking over muted clips, `hasVideoClips`, recent audio tracks, captions grouping and fillers, older-project loading. Keep the test names, prefixed with the feature ID.
 3. **Exact maths:** for each filter, transition, entrance, combo and adjustment, check sample inputs against values computed from the formulas in §8. Generate a golden JSON table from the iOS code once, then check it on every platform.
 4. **Noise reduction:** the four checks in §9.4.
 

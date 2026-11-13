@@ -140,6 +140,7 @@ Tests/
   CutlineUITests/         one UI test per feature (XCTest)
 project.yml               XcodeGen project definition
 docs/spec/                cross-platform specs (features, implementation, project file format)
+docs/android/             kick-start guide for the Android app
 ```
 
 ## Specs for other platforms
@@ -149,6 +150,7 @@ The Android, macOS and Windows apps are built from the specs in [`docs/spec`](do
 - [Feature spec](docs/spec/FEATURES.md): what the user sees, with feature IDs and the platform parity table.
 - [Implementation spec](docs/spec/IMPLEMENTATION.md): algorithms, formulas, numbers and the project file format.
 - [Sample project file](docs/spec/project.sample.json): the shared `project.json` format. The `ProjectFileContractTests` test checks that it still loads.
+- [Android kick-start guide](docs/android/README.md): suggested stack and modules, iOS → Android file map, milestones by feature ID, tests to port first, and pitfalls found on iOS.
 
 AI agents start from [AGENTS.md](AGENTS.md).
 
