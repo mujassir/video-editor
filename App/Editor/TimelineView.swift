@@ -25,6 +25,8 @@ final class TimelineUIView: UIView, UIScrollViewDelegate, UIGestureRecognizerDel
     var onAddMedia: (() -> Void)?
     /// A music / audio bar was dragged to a new timeline start.
     var onAudioMove: ((UUID, MediaTime) -> Void)?
+    /// A main-track clip was moved from the press-and-hold menu (TML-13).
+    var onClipMove: ((UUID, ClipMove) -> Void)?
     private var audioDragOrigin: CGFloat = 0
 
     private let scrollView = TimelineScrollView()
@@ -90,6 +92,7 @@ final class TimelineUIView: UIView, UIScrollViewDelegate, UIGestureRecognizerDel
         scrollView.addGestureRecognizer(tap)
         let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
         addGestureRecognizer(pinch)
+        content.addInteraction(UIContextMenuInteraction(delegate: self))
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -360,6 +363,50 @@ final class TimelineUIView: UIView, UIScrollViewDelegate, UIGestureRecognizerDel
             isProgrammaticScroll = false
         default: break
         }
+    }
+}
+
+// MARK: - Reorder menu (TML-13)
+
+extension TimelineUIView: UIContextMenuInteractionDelegate {
+    /// The movable main-track clip under `point` (content coordinates); slides have no menu.
+    private func movableClip(at point: CGPoint) -> VideoClip? {
+        guard let project, let layout, point.y >= Layout.mainTop, point.y <= Layout.mainTop + Layout.mainHeight,
+              let entry = layout.entry(at: MediaTime(seconds: Double(point.x / pointsPerSecond))) else { return nil }
+        let clip = project.clips[entry.index]
+        guard clip.titleCard == nil, project.movableClipIndices.count > 1 else { return nil }
+        return clip
+    }
+
+    func contextMenuInteraction(_ interaction: UIContextMenuInteraction,
+                                configurationForMenuAtLocation location: CGPoint) -> UIContextMenuConfiguration? {
+        guard let clip = movableClip(at: location), let project else { return nil }
+        let id = clip.id
+        return UIContextMenuConfiguration(identifier: id.uuidString as NSString, previewProvider: nil) { [weak self] _ in
+            let actions = ClipMove.allCases.map { move in
+                let action = UIAction(title: move.title, image: UIImage(systemName: move.systemImage)) { _ in
+                    self?.onClipMove?(id, move)
+                }
+                action.accessibilityIdentifier = "clipMove.\(move.rawValue)"
+                if project.targetIndex(of: id, move) == nil { action.attributes = .disabled }
+                return action
+            }
+            return UIMenu(children: actions)
+        }
+    }
+
+    func contextMenuInteraction(_ interaction: UIContextMenuInteraction,
+                                previewForHighlightingMenuWithConfiguration configuration: UIContextMenuConfiguration) -> UITargetedPreview? {
+        guard let idString = configuration.identifier as? String, let id = UUID(uuidString: idString),
+              let view = clipViews[id], view.window != nil else { return nil }
+        let params = UIPreviewParameters()
+        params.visiblePath = UIBezierPath(roundedRect: view.bounds, cornerRadius: 6)
+        return UITargetedPreview(view: view, parameters: params)
+    }
+
+    func contextMenuInteraction(_ interaction: UIContextMenuInteraction,
+                                previewForDismissingMenuWithConfiguration configuration: UIContextMenuConfiguration) -> UITargetedPreview? {
+        self.contextMenuInteraction(interaction, previewForHighlightingMenuWithConfiguration: configuration)
     }
 }
 
@@ -641,6 +688,7 @@ struct TimelineRepresentable: UIViewRepresentable {
         view.onAudioMove = { [weak model] id, start in
             model?.edit("Move audio") { try $0.moveAudio(id, toTimelineStart: start) }
         }
+        view.onClipMove = { [weak model] id, move in model?.moveClip(id, move) }
         view.onTransitionTap = { [weak model] id in
             model?.select(.clip(id))
             model?.panel = .transition(id)

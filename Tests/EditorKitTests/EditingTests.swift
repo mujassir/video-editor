@@ -896,3 +896,61 @@ struct StartHereTests {
         #expect(session.project.audioClips == p.audioClips, "one undo restores the whole song")
     }
 }
+
+@Suite("TML-13 Reorder menu")
+struct ReorderMenuTests {
+    private func withSlides(_ lengths: [Double]) -> Project {
+        var p = makeProject(lengths)
+        let img = MediaItem(kind: .photo, fileName: "card.png", naturalSize: CGSize(width: 1080, height: 1080),
+                            duration: .zero, hasAudio: false)
+        p.upsertTitleCard(TitleCard(placement: .opening, title: "Hi"), image: img, duration: s(3))
+        p.upsertTitleCard(TitleCard(placement: .closing, title: "Bye"), image: img, duration: s(2))
+        return p
+    }
+
+    @Test func TML13_movesStepAndToEnds() throws {
+        var p = makeProject([1, 2, 3])
+        let ids = p.clips.map(\.id)
+        #expect(try p.moveClip(ids[0], .right) == 1)
+        #expect(p.clips.map(\.id) == [ids[1], ids[0], ids[2]])
+        #expect(try p.moveClip(ids[2], .toStart) == 0)
+        #expect(p.clips.map(\.id) == [ids[2], ids[1], ids[0]])
+        #expect(try p.moveClip(ids[2], .toEnd) == 2)
+        #expect(try p.moveClip(ids[2], .left) == 1)
+        #expect(p.clips.map(\.id) == [ids[1], ids[2], ids[0]])
+    }
+
+    @Test func TML13_impossibleMovesAreDisabled() {
+        let p = makeProject([1, 2])
+        #expect(p.targetIndex(of: p.clips[0].id, .toStart) == nil)
+        #expect(p.targetIndex(of: p.clips[0].id, .left) == nil)
+        #expect(p.targetIndex(of: p.clips[1].id, .right) == nil)
+        #expect(p.targetIndex(of: p.clips[1].id, .toEnd) == nil)
+        let single = makeProject([1])
+        #expect(ClipMove.allCases.allSatisfy { single.targetIndex(of: single.clips[0].id, $0) == nil })
+    }
+
+    @Test func TML13_slidesStayFirstAndLast() throws {
+        var p = withSlides([1, 2, 3])
+        #expect(p.movableClipIndices == 1..<4)
+        let opening = p.clips[0].id, closing = p.clips[4].id
+        #expect(ClipMove.allCases.allSatisfy { p.targetIndex(of: opening, $0) == nil })
+        #expect(ClipMove.allCases.allSatisfy { p.targetIndex(of: closing, $0) == nil })
+        #expect(throws: EditError.invalidMove) { try p.moveClip(opening, .right) }
+        let middle = p.clips[2].id
+        #expect(try p.moveClip(middle, .toStart) == 1)
+        #expect(try p.moveClip(middle, .toEnd) == 3)
+        #expect(p.clips.first?.id == opening && p.clips.last?.id == closing)
+        #expect(p.targetIndex(of: p.clips[1].id, .left) == nil)
+        #expect(p.targetIndex(of: p.clips[3].id, .right) == nil)
+    }
+
+    @Test func TML13_lastClipLosesTransition() throws {
+        var p = makeProject([2, 2, 2])
+        p.clips[0].transitionOut = Transition(kind: .fade, duration: s(0.5))
+        let id = p.clips[0].id
+        try p.moveClip(id, .toEnd)
+        #expect(p.clips.last?.id == id)
+        #expect(p.clips.last?.transitionOut == nil)
+    }
+}

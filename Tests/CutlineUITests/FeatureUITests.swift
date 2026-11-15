@@ -530,6 +530,23 @@ final class FeatureUITests: CutlineUITestCase {
         XCTAssertEqual(toastText, "Voice on")
     }
 
+    func test31_TML13_ReorderMenu() {
+        openProjectWithSamples()
+        // Press and hold the first clip (under the centre playhead) to open the menu.
+        let timeline = element("timeline")
+        let point = timeline.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: timeline.frame.width / 2 + 4, dy: 50))
+        point.press(forDuration: 1.0)
+        let right = app.buttons["Move Right"]
+        XCTAssertTrue(right.waitForExistence(timeout: 5), "reorder menu should open")
+        XCTAssertTrue(app.buttons["Move Left"].exists)
+        XCTAssertTrue(app.buttons["Move to End"].exists)
+        XCTAssertFalse(app.buttons["Move to Start"].isEnabled, "first clip can't move to the start")
+        snapshot("31-reorder-menu")
+        right.tap()
+        XCTAssertEqual(toastText, "Moved to position 2 of 3")
+        XCTAssertEqual(count(prefix: "clip."), 3)
+    }
+
     func test24_VideoNoiseReduction() {
         openProjectWithSamples()
         selectClip(0)

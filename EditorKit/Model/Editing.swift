@@ -4,6 +4,30 @@ public enum EditError: Error, Equatable, Sendable {
     case clipNotFound
     case tooShort
     case outOfRange
+    case invalidMove
+}
+
+/// A step in the timeline reorder menu (TML-13).
+public enum ClipMove: String, CaseIterable, Sendable {
+    case toStart, left, right, toEnd
+
+    public var title: String {
+        switch self {
+        case .toStart: return "Move to Start"
+        case .left: return "Move Left"
+        case .right: return "Move Right"
+        case .toEnd: return "Move to End"
+        }
+    }
+
+    public var systemImage: String {
+        switch self {
+        case .toStart: return "backward.end"
+        case .left: return "chevron.left"
+        case .right: return "chevron.right"
+        case .toEnd: return "forward.end"
+        }
+    }
 }
 
 /// Pure, value-type editing operations on a project.
@@ -164,6 +188,39 @@ public extension Project {
         let clip = clips.remove(at: index)
         clips.insert(clip, at: max(0, min(newIndex, clips.count)))
         if let last = clips.indices.last { clips[last].transitionOut = nil }
+    }
+
+    /// Indices of clips that can be reordered (TML-13): everything between the
+    /// opening and closing slides, which stay first and last.
+    var movableClipIndices: Range<Int> {
+        let lower = clips.first?.titleCard?.placement == .opening ? 1 : 0
+        let upper = clips.last?.titleCard?.placement == .closing ? clips.count - 1 : clips.count
+        return lower..<max(lower, upper)
+    }
+
+    /// Where `move` would put the clip, or nil if it can't move that way (a slide,
+    /// already at that end, or unknown clip).
+    func targetIndex(of clipID: UUID, _ move: ClipMove) -> Int? {
+        guard let index = clipIndex(clipID), clips[index].titleCard == nil else { return nil }
+        let range = movableClipIndices
+        guard range.contains(index), range.count > 1 else { return nil }
+        let target: Int
+        switch move {
+        case .toStart: target = range.lowerBound
+        case .left: target = index - 1
+        case .right: target = index + 1
+        case .toEnd: target = range.upperBound - 1
+        }
+        return range.contains(target) && target != index ? target : nil
+    }
+
+    /// Moves the clip as the reorder menu asks (TML-13). Returns its new index.
+    @discardableResult
+    mutating func moveClip(_ clipID: UUID, _ move: ClipMove) throws -> Int {
+        guard clipIndex(clipID) != nil else { throw EditError.clipNotFound }
+        guard let target = targetIndex(of: clipID, move) else { throw EditError.invalidMove }
+        try moveClip(clipID, to: target)
+        return target
     }
 
     // MARK: Speed / reverse / freeze

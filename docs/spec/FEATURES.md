@@ -116,6 +116,11 @@ A full-screen sheet; see `EXP-*`.
 - **TML-10 Move audio:** press and hold an audio bar for `0.25 s`, then drag it. The new start snaps to a frame at `30 fps`.
 - **TML-11 Scissors on music:** *(removed: music is cut with Cut in the toolbar, `MUS-4`.)*
 - **TML-12 Waveforms** are drawn on audio bars. Clip thumbnails load in the background.
+- **TML-13 Reorder menu:** press and hold a video or photo on the main track to open a menu, in this order:
+  - **Move to Start** (icon `backward.end`), **Move Left** (`chevron.left`), **Move Right** (`chevron.right`), **Move to End** (`forward.end`).
+  - The opening and closing slides (`TTL-4`) have no menu, and clips never move past them: Start puts the clip right after the opening slide, End right before the closing slide.
+  - A move that isn't possible is shown disabled (Start and Left on the first movable clip, Right and End on the last). With only one movable clip there's no menu.
+  - Each move is one undo step and selects the moved clip. Toast: "Moved to position N of M", counting only movable clips. The transition rule of `CLP-4` applies.
 
 ---
 
@@ -171,7 +176,7 @@ Deleting closes any open panel and clears the selection.
 - **CLP-1 Split:** splits the clip under the playhead. Toast: "Split at m:ss.f". The right-hand piece gets a new identity. A transition stays on the right-hand piece's cut. A split closer than `0.1 s` to either edge is refused ("Too close to the clip edge").
 - **CLP-2 Duplicate:** inserts a copy right after the clip.
 - **CLP-3 Delete:** removes the clip, and the following clips move up. Deleting the last clip also removes the transition on the new last clip.
-- **CLP-4 Reorder:** *(engine only; there's no interface yet.)* When clips are reordered, the clip that ends up last never keeps a transition.
+- **CLP-4 Reorder:** from the press-and-hold menu on the timeline (`TML-13`). When clips are reordered, the clip that ends up last never keeps a transition.
 - **CLP-5 Voice:** toggles the clip's own sound off and on (`isMuted`). The button shows a mic, or a slashed mic and is drawn active while the sound is off. Toast: "Voice off" / "Voice on". A clip whose media has no sound isn't changed (toast: "This clip has no sound"). The clip shows a 🔇 badge on the timeline while its voice is off. Music isn't ducked over a clip whose voice is off (IMPLEMENTATION §9.3).
 
 ### SPD: Speed
@@ -466,7 +471,7 @@ Keep this table current. ✅ = done, 🟡 = partly or differently (explain), ⬜
 | Area | iOS | Android | macOS | Windows | Notes |
 |---|---|---|---|---|---|
 | Library LIB-1…5 | ✅ | ⬜ | ⬜ | ⬜ | |
-| Timeline TML-1…12 | ✅ | ⬜ | ⬜ | ⬜ | Desktop: mouse wheel scrolls, ⌘/Ctrl+wheel zooms |
+| Timeline TML-1…13 | ✅ | ⬜ | ⬜ | ⬜ | Desktop: mouse wheel scrolls, ⌘/Ctrl+wheel zooms |
 | Clip editing CLP, SPD, REV, FRZ | ✅ | ⬜ | ⬜ | ⬜ | |
 | Denoise DNS | ✅ | ⬜ | ⬜ | ⬜ | Same algorithm (IMPLEMENTATION §9.4) |
 | Filters, Adjust, Crop FLT, ADJ, CRP | ✅ | ⬜ | ⬜ | ⬜ | Exact formulas |
@@ -507,6 +512,5 @@ These exist in the iOS engine and in older projects, but have no button. Other p
 - **Remove silences:** cuts long pauses out of speech, moving later text and captions to match.
 - **Beat sync:** moves cuts onto the beats of the music.
 - **Precise trim panel:** start and end sliders.
-- **Clip reordering** (`CLP-4`).
 - **Older text animations:** `animationIn` and `animationOut`, used when a text has no `animation` set.
 - **Extracted audio** on clips. (Muting is exposed as Voice, `CLP-5`.)

@@ -317,6 +317,15 @@ final class EditorModel {
         edit("Duplicate") { try $0.duplicateClip(id) }
     }
 
+    /// Reorder menu on the timeline (TML-13). One undo step; the moved clip is selected.
+    func moveClip(_ id: UUID, _ move: ClipMove) {
+        guard let target = project.targetIndex(of: id, move) else { return }
+        edit(move.title) { try $0.moveClip(id, move) }
+        session.selection = .clip(id)
+        let range = project.movableClipIndices
+        showToast("Moved to position \(target - range.lowerBound + 1) of \(range.count)", systemImage: move.systemImage)
+    }
+
     func freezeFrame() {
         edit("Freeze frame") { try $0.insertFreezeFrame(at: currentTime) }
         showToast("Freeze frame added", systemImage: "snowflake")
