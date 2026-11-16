@@ -852,7 +852,19 @@ Used by beat sync. The settings:
 - **Caption editor (CAP-5):** keep a local draft `[segmentId: text]`. Commit only the segments that changed, as one undo step labelled "Edit captions". Focus the starting caption about `450 ms` after the full-screen view opens, so the keyboard comes up with it.
 - **Busy work:** pause playback, show the overlay, and report progress (0…1) when it's known. Errors become toasts.
 - **Toasts:** last `2.2 s` (6 s in UI tests). A new toast replaces the current one.
+- **Layouts (LAY-1…3):**
+  - **Choosing:** `wide = horizontalSizeClass == .regular && windowWidth >= 840`. iOS reads the size class from the environment and the width from a `GeometryReader` around the editor. Android uses `WindowSizeClass` (Expanded, which starts at 840 dp).
+  - **One editor model, two views:** both layouts show the same `EditorModel` state (selection, `panel`, playhead, playback). Switching layout only changes which views are shown, so nothing is rebuilt.
+  - **Sidebar width:** `clamp(0.3 × width, 340, 420)`. Wide timeline height: `min(320, 170 + lanes × 38)`; the phone uses `min(250, 150 + lanes × 34)`.
+  - **Tool grid:** the same tool list as the toolbar, laid out in 3 flexible columns. Keep one source of truth for the tools, so the two layouts can't drift apart.
+  - **Panels in the sidebar:** the panel container gets a "sidebar" flag (an environment value on iOS). With it, the grabber is hidden and the swipe-down gesture isn't attached.
+- **Keyboard shortcuts (LAY-5):**
+  - On iOS, these are buttons with `.keyboardShortcut`. Space, the arrows and Delete are disabled while a text panel or the caption editor is open, because those keys belong to the text field there.
+  - A frame step is a seek to `currentTime ± 1/30 s`. The playback pauses first.
+  - On Android, handle `onPreviewKeyEvent` at the editor's root, with the same keys and the same rule about text fields.
+- **Orientation (LAY-4):** iOS sets `UISupportedInterfaceOrientations~iphone` to portrait and `UISupportedInterfaceOrientations~ipad` to all four. On Android, set `screenOrientation` to portrait only on phones (smallest width under 600 dp) and leave it unspecified on tablets.
 - **UI-test identifiers:** keep the same accessibility identifiers on every platform, so test scripts can be shared:
+  - Wide layout: the sidebar is `editor.sidebar`, its heading `sidebar.title`. The tool tiles keep the toolbar's `tool.<Title>` identifiers.
   - Tool buttons: `tool.<Title>`. Option chips: `chip.<Title>`. Swatches: `swatch.<n>`.
   - Panel close: `panel.done`. Timeline items: `clip.<n>`, `audio.<n>`, `caption.<n>`.
   - Editor: `editor.export`, `editor.close`, `editor.undo`, `editor.redo`, `editor.aspect`, `timeline.add`, `panel.<Title>`, `panel.done`.

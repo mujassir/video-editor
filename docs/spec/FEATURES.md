@@ -65,7 +65,7 @@ These apply to every feature on every platform.
   - **Relative modified time:** for example "5 min".
 - **LIB-3 Card actions:** long press opens Rename, Duplicate and Delete (destructive). Duplicate copies the whole project folder and names the copy "<name> Copy".
 - **LIB-4 Empty projects:** a project with no clips, audio, text or captions is deleted when the editor closes and on app start. The library never shows an empty "0:00" project.
-- **LIB-5 Privacy note:** at the bottom, a lock icon with "Everything runs on your iPhone. No account, no uploads, no watermark." Platforms use their own device word, such as "phone" or "computer".
+- **LIB-5 Privacy note:** at the bottom, a lock icon with "Everything runs on your iPhone. No account, no uploads, no watermark." Platforms use their own device word, such as "iPad", "phone" or "computer" (`LAY-8`).
 
 ### EDT: Editor layout (top to bottom)
 
@@ -83,6 +83,48 @@ These apply to every feature on every platform.
 Overlays:
 - **Toast:** appears at the top, about 2.2 s.
 - **Busy overlay:** dims the screen, shows a message ("Reducing noise…") and a progress ring when progress is known. Playback pauses.
+
+### LAY: Phone and wide (tablet) layouts
+
+The editor has two layouts. Which one is used depends on the **width of the app's window**, not on the device, so an iPad in Split View or Slide Over gets the phone layout when its window is narrow.
+
+- **LAY-1 Choosing the layout:**
+  - **Wide** when the window is at least `840 pt` wide **and** the platform reports a regular (non-compact) width. This is the Material "expanded" breakpoint, so Android tablets switch at the same width.
+  - **Phone** otherwise. This is the layout in `EDT` above.
+  - The choice is re-checked whenever the window changes size (rotation, Split View, Stage Manager). The playhead, selection, open panel and playback carry over unchanged; nothing is rebuilt or lost.
+  - In practice: every iPad in landscape and the 13-inch iPad Pro in portrait are wide. Smaller iPads in portrait, and every phone, use the phone layout.
+- **LAY-2 Wide editor, top to bottom:**
+  1. **Top bar:** the same as `EDT`.
+  2. **Middle row:**
+     - On the left, the **preview** with the **transport** under it, taking the remaining width.
+     - On the right, the **sidebar** (`LAY-3`): `clamp(0.3 × window width, 340, 420) pt` wide, the full height of the row, raised surface colour, with a hairline border on its left.
+  3. **Timeline:** full window width under the middle row. It's the same timeline (`TML-*`), with a taller lane area: height `min(320, 170 + lanes × 38) pt`.
+- **LAY-3 Sidebar:** replaces the bottom area of the phone layout.
+  - **No panel open:** a heading naming the selection, then that selection's tools as a **grid of 3 columns**. The heading is one of Project, Video Clip, Photo, Text, Music or Captions. The grid has the **same tools, order, names, highlights and visibility rules** as the phone toolbar (`TBR-*`).
+  - **A panel open:** the panel fills the sidebar from the top and scrolls vertically if it's taller. It has the same title, ✓, Undo and contents as on the phone.
+  - **No swipe-down:** there's no grabber and no swipe-down to close (`EDT-1` applies to the phone layout only). ✓, Esc on a keyboard, or picking another tool closes it.
+  - **Full-screen screens stay full screen:** Export and the caption text editor are centred, at most `720 pt` wide (`LAY-6`).
+- **LAY-4 Orientation:**
+  - **Phones:** portrait only (see *Decisions*).
+  - **Tablets:** all four orientations.
+  - **Desktop:** a resizable window, using the same width rule.
+- **LAY-5 Keyboard shortcuts:** these work with a hardware keyboard in **either** layout, and are listed in the system's shortcut overlay (holding ⌘ on iPad). Keys without a modifier (Space, arrows, Delete) are ignored while a text field has focus, so typing never triggers them.
+
+  | Key | Action |
+  |---|---|
+  | Space | Play / pause |
+  | ← / → | Step back / forward one frame (`1/30 s`) |
+  | ⇧← / ⇧→ | Step back / forward `1 s` |
+  | ⌘Z / ⇧⌘Z | Undo / Redo (only when possible, `PRJ-2`) |
+  | ⌘B | Split at the playhead (`CLP-1`) |
+  | Delete (⌫) | Delete the selection |
+  | Esc | Close the open panel; with no panel, clear the selection |
+  | ⌘E | Export (only when the Export button is shown) |
+- **LAY-6 Other screens on wide windows:**
+  - **Library:** the "Recent" grid uses as many columns as fit at least `220 pt` each, with a `14 pt` gap, and keeps cards at their phone size. The New Project card is at most `720 pt` wide, and the content is centred.
+  - **Export** and the **caption text editor** are centred, at most `720 pt` wide.
+- **LAY-7 Pointer:** with a mouse or trackpad, buttons, chips and tool tiles show the platform's standard hover highlight.
+- **LAY-8 Device word:** the library's privacy note (`LIB-5`) uses the device's own word: "iPhone" or "iPad".
 
 ### EXP: Export screen
 
@@ -459,7 +501,7 @@ Noise reduction is **one setting for the whole video**, not per clip. It's in th
   - Background `#0E0E11`, surface `#1C1C20`, raised surface `#29292E`.
   - Accent (coral) `#FF3C61` (1.0, 0.235, 0.38). Soft accent: the accent at 18%.
   - Secondary text: white at 60%. Hairline borders: white at 8%.
-- **Dark mode only.** Portrait only on phones; tablets and desktop may allow any orientation.
+- **Dark mode only.** Portrait only on phones; tablets use any orientation and desktop any window size (`LAY-4`).
 - **Option chips:** a capsule, accent when selected, raised surface otherwise, white text. They report "selected" to accessibility tools.
 - **Colour swatches** (shared by text, captions, cut-out): white, black, yellow (1, 0.86, 0.1), coral (1, 0.24, 0.38), blue (0.25, 0.55, 1), green (0.2, 0.8, 0.55), purple (0.65, 0.4, 0.95), orange (1, 0.55, 0.15).
 - **Panels:** a title on the left and an accent ✓ button on the right that closes the panel.
@@ -494,6 +536,7 @@ Keep this table current. ✅ = done, 🟡 = partly or differently (explain), ⬜
 | Music MUS | ✅ | ⬜ | ⬜ | ⬜ | |
 | Captions CAP | ✅ | ⬜ | ⬜ | ⬜ | Needs an on-device speech model |
 | Export EXP | ✅ | ⬜ | ⬜ | ⬜ | |
+| Layouts LAY-1…8 | ✅ iPad | ⬜ | ⬜ | ⬜ | Tablets and wide windows; Android tablets switch at the same 840 dp |
 
 ---
 
@@ -515,6 +558,8 @@ These were tried and removed on purpose. Don't add them back without changing th
 | 2026-11 | **No Media button in the main toolbar.** Media is added with the timeline "+", and a new project opens the Photos library (`LIB-1`). |
 | 2026-11 | **The timeline "+" opens the Photos library directly**, with no Add menu, so video and photo files can't be picked from Files any more. Own audio still comes from Music → Audio Tracks. UI tests and demos (`-sampleMedia` / `-demoMedia`) still get the Add menu with Sample Clips. |
 | 2026-11 | **No built-in music tracks in the Music panel.** It offers only Audio Tracks (Files) and From Video. The generator stays in the engine for UI tests and demos, which launch with `-sampleMedia` / `-demoMedia` and still see the tracks (§14 in IMPLEMENTATION). Projects that use them still play. |
+| 2026-11 | **No landscape editor on phones.** Phones stay portrait only. Wide windows (iPad, Android tablets, desktop later) get the wide layout instead (`LAY-*`). |
+| 2026-11 | **macOS is a separate app, built later.** It will reuse EditorKit and follow `LAY-*` for its window, but isn't the iPad app running on a Mac. |
 
 ### Engine features not exposed in the interface
 
