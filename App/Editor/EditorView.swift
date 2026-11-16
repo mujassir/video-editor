@@ -488,8 +488,12 @@ struct EditorShortcuts: View {
             shortcut("Redo", "z", [.command, .shift], enabled: !typing && model.session.canRedo) { model.redo() }
             shortcut("Split", "b", .command, enabled: model.duration > .zero) { model.split() }
             shortcut("Delete", .delete, [], enabled: !typing && model.session.selection != .none) { model.deleteSelection() }
-            shortcut("Close", .escape, [], enabled: model.panel != nil || model.session.selection != .none) {
-                if model.panel != nil { model.panel = nil } else { model.select(.none) }
+            // .cancelAction is the Esc key; a plain .escape shortcut isn't delivered on iPad.
+            if model.panel != nil || model.session.selection != .none {
+                Button("Close") {
+                    if model.panel != nil { model.panel = nil } else { model.select(.none) }
+                }
+                .keyboardShortcut(.cancelAction)
             }
             shortcut("Export", "e", .command, enabled: model.duration > .zero) { onExport() }
         }
@@ -504,11 +508,15 @@ struct EditorShortcuts: View {
         model.seek(to: model.currentTime + delta)
     }
 
+    /// Only present while it can act: a disabled shortcut could still capture its key (for
+    /// example the space bar while typing a caption).
+    @ViewBuilder
     private func shortcut(_ title: String, _ key: KeyEquivalent, _ modifiers: EventModifiers,
                           enabled: Bool, action: @escaping () -> Void) -> some View {
-        Button(title, action: action)
-            .keyboardShortcut(key, modifiers: modifiers)
-            .disabled(!enabled)
+        if enabled {
+            Button(title, action: action)
+                .keyboardShortcut(key, modifiers: modifiers)
+        }
     }
 }
 
