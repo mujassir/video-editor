@@ -468,6 +468,14 @@ fun Project.settingAudioSourceRange(id: UUID, range: MediaTimeRange): Project {
     return copy(audioClips = audioClips.replacing(i, a))
 }
 
+/** Slides the part of the song that plays, keeping its length (engine only). */
+fun Project.slidingAudioContent(id: UUID, toSourceStart: MediaTime): Project {
+    val (i, total) = audioIndex(id)
+    val length = audioClips[i].sourceRange.duration
+    val start = toSourceStart.clamped(MediaTime.ZERO, MediaTime.max(MediaTime.ZERO, total - length))
+    return copy(audioClips = audioClips.replacing(i, audioClips[i].copy(sourceRange = MediaTimeRange(start, length))))
+}
+
 fun Project.movingAudio(id: UUID, toTimelineStart: MediaTime): Project {
     val (i, _) = audioIndex(id)
     return copy(audioClips = audioClips.replacing(i, audioClips[i].copy(start = MediaTime.max(MediaTime.ZERO, toTimelineStart))))
