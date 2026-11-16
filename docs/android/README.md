@@ -95,6 +95,7 @@ Each milestone ends with its tests passing and the parity table updated. Feature
 | M6 | Filters, adjust, crop, transitions, animation | `FLT-*`, `ADJ-*`, `CRP-*`, `TRN-*`, `ANM-*` | The golden maths table matches (§5). |
 | M7 | Export and share | `EXP-*` | Same frames as the preview, same file naming, size estimate within 10%. |
 | M8 | On-device AI | `CAP-*`, `ENH-1`, `RFR-1`, `CUT-*` | Works in airplane mode. |
+| M9 | Tablet layout | `LAY-*` | Expanded windows (840 dp and up) show the sidebar layout; phones stay portrait. |
 
 Ship M0–M4 as the first internal build: that's a complete "photos and videos + music" editor.
 
