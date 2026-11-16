@@ -508,12 +508,17 @@ struct EditorShortcuts: View {
         model.seek(to: model.currentTime + delta)
     }
 
-    /// Only present while it can act: a disabled shortcut could still capture its key (for
-    /// example the space bar while typing a caption).
+    /// Shortcuts with ⌘ stay in place and are disabled when they can't act. Plain keys (Space,
+    /// arrows, Delete) are only present while they can act: a disabled one could still capture
+    /// its key, for example the space bar while typing a caption.
     @ViewBuilder
     private func shortcut(_ title: String, _ key: KeyEquivalent, _ modifiers: EventModifiers,
                           enabled: Bool, action: @escaping () -> Void) -> some View {
-        if enabled {
+        if modifiers.contains(.command) {
+            Button(title, action: action)
+                .keyboardShortcut(key, modifiers: modifiers)
+                .disabled(!enabled)
+        } else if enabled {
             Button(title, action: action)
                 .keyboardShortcut(key, modifiers: modifiers)
         }
