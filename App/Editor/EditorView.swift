@@ -162,8 +162,12 @@ struct EditorView: View {
                 .accessibilityIdentifier("time.total")
             if LaunchOptions.isUITesting {
                 Text(model.trimDebug).font(.system(size: 1)).opacity(0.01).accessibilityIdentifier("debug.trim")
+                // Reads previewRate so it refreshes when the speed changes.
+                Text(String(format: "%g/%g", model.previewRate == model.player.defaultRate ? model.player.defaultRate : -1, model.debugRate)).font(.system(size: 1)).opacity(0.01).accessibilityIdentifier("debug.rate")
             }
             Spacer()
+            // PRV-9: preview-only play speed (export is unaffected).
+            PreviewRatePicker(model: model)
         }
         // Play stays centred under the preview.
         .overlay {
@@ -177,6 +181,7 @@ struct EditorView: View {
         .foregroundStyle(.white)
         .padding(.horizontal, 16)
         .padding(.vertical, 4)
+        .zIndex(1)   // the speed picker opens upwards over the preview
     }
 
     // MARK: Bottom: tools or panel
@@ -210,7 +215,8 @@ struct EditorView: View {
         case .textPosition(let id): TextPositionPanel(model: model, textID: id)
         case .watermark: WatermarkPanel(model: model)
         case .titleCard(let placement): TitleCardPanel(model: model, placement: placement)
-        case .trim, .duration, .motion, .filters, .adjust, .speed, .denoise, .crop, .background:
+        case .denoise: NoiseReductionPanel(model: model)
+        case .trim, .duration, .motion, .filters, .adjust, .speed, .crop, .background:
             if let id = model.selectedClipID {
                 switch panel {
                 case .trim: TrimPanel(model: model, clipID: id)
@@ -219,7 +225,6 @@ struct EditorView: View {
                 case .filters: FiltersPanel(model: model, clipID: id)
                 case .adjust: AdjustPanel(model: model, clipID: id)
                 case .speed: SpeedPanel(model: model, clipID: id)
-                case .denoise: NoiseReductionPanel(model: model, clipID: id)
                 case .crop: CropPanel(model: model, clipID: id)
                 default: BackgroundPanel(model: model, clipID: id)
                 }
@@ -255,6 +260,11 @@ struct EditorView: View {
             // Captions transcribe speech, so they're only offered once there's a video clip (not just photos).
             if model.project.hasVideoClips {
                 ToolButton(title: "Captions", systemImage: "captions.bubble", badge: "AI") { model.panel = .captions }
+                // DNS-1: one Denoise setting for the whole video.
+                ToolButton(title: "Denoise", systemImage: "waveform",
+                           isActive: model.project.noiseReduction != nil || model.project.clips.contains { $0.noiseReduction != nil }) {
+                    model.select(.none); model.panel = .denoise
+                }
             }
             ToolButton(title: "Watermark", systemImage: "seal", isActive: model.project.watermark != nil) { model.select(.none); model.panel = .watermark }
             ToolButton(title: "Text", systemImage: "textformat") { model.addText() }
@@ -294,7 +304,6 @@ struct EditorView: View {
         ToolButton(title: "Speed", systemImage: "speedometer") { model.panel = .speed }
         ToolButton(title: "Animate", systemImage: "camera.metering.center.weighted",
                    isActive: !(model.selectedClip?.animation?.isEmpty ?? true)) { model.panel = .motion }
-        ToolButton(title: "Denoise", systemImage: "waveform", isActive: model.selectedClip?.noiseReduction != nil) { model.panel = .denoise }
         ToolButton(title: "Filters", systemImage: "camera.filters") { model.panel = .filters }
         ToolButton(title: "Adjust", systemImage: "slider.horizontal.3") { model.panel = .adjust }
         ToolButton(title: "Enhance", systemImage: "wand.and.stars", badge: "AI") { model.autoEnhance() }
@@ -377,5 +386,59 @@ enum PhotoImport {
             }
         }
         return urls
+    }
+}
+
+
+/// PRV-9: preview play speed. A small button shows the speed; tapping it opens a column of round
+/// buttons above it (fastest on top). Its own view, so it doesn't redraw with the playhead and
+/// taps aren't lost while playing.
+struct PreviewRatePicker: View {
+    @Bindable var model: EditorModel
+    @State private var isOpen = false
+
+    /// "0.5×", "1×", "1.25×".
+    static func title(_ rate: Float) -> String { String(format: "%g×", rate) }
+
+    var body: some View {
+        Button {
+            withAnimation(.spring(duration: 0.25)) { isOpen.toggle() }
+        } label: {
+            Text(Self.title(model.previewRate)).monospacedDigit()
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(Capsule().fill(.white.opacity(isOpen || model.previewRate != 1 ? 0.28 : 0.12)))
+        }
+        .accessibilityIdentifier("preview.rate")
+        .accessibilityLabel("Play speed \(Self.title(model.previewRate))")
+        .overlay(alignment: .bottom) {
+            if isOpen {
+                VStack(spacing: 8) {
+                    ForEach(EditorModel.previewRates.reversed(), id: \.self) { rate in
+                        let selected = rate == model.previewRate
+                        Button {
+                            model.previewRate = rate
+                            // Picked while paused: play at the new speed straight away.
+                            if !model.isPlaying { model.togglePlay() }
+                            withAnimation(.spring(duration: 0.25)) { isOpen = false }
+                        } label: {
+                            Text(Self.title(rate))
+                                .font(.system(size: 12, weight: .semibold)).monospacedDigit()
+                                .foregroundStyle(selected ? .black : .white)
+                                .frame(width: 44, height: 44)
+                                .background(Circle().fill(selected ? Color.white : Color.black.opacity(0.75)))
+                                .overlay(Circle().stroke(.white.opacity(0.35), lineWidth: 1))
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("rate.\(Self.title(rate))")
+                        .accessibilityAddTraits(selected ? .isSelected : [])
+                    }
+                }
+                .padding(6)
+                .background(Capsule().fill(.black.opacity(0.35)))
+                .offset(y: -34)
+                .transition(.scale(scale: 0.6, anchor: .bottom).combined(with: .opacity))
+            }
+        }
     }
 }

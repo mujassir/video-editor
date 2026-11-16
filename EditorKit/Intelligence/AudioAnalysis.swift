@@ -266,6 +266,49 @@ public enum NoiseReducer {
         try write(cleaned, leadingSilence: max(0, lead), sampleRate: sampleRate, to: destination)
     }
 
+    /// Frames that give the noise fingerprint (DNS-6, IMPLEMENTATION §9.4): the quietest 10% of
+    /// the frames that sit at or near the clip's real noise floor. `energies` are per frame of the
+    /// padded signal; `length` is the unpadded sample count.
+    ///
+    /// Frames quieter than the floor (the padding, digital silence, a fade-in, the mic starting up,
+    /// a muted moment) are left out. Before this, they could fill the quietest 10% on their own,
+    /// so the fingerprint was near zero and nothing was removed.
+    static func noiseFrames(energies: [Float], length: Int) -> [Int] {
+        let first = frameSize / hop, last = min(energies.count - 1, length / hop)
+        let inside = first <= last ? Array(first...last) : Array(energies.indices)
+        let audible = inside.filter { energies[$0] > silentEnergy }
+        guard !audible.isEmpty else { return Array(energies.indices) }
+        // The noise floor: the median of each second's quietest frame. A quiet stretch only
+        // drags a few seconds down, so it can't pass for the floor unless it lasts most of the clip.
+        let framesPerSecond = 48_000 / hop
+        var minima: [Float] = []
+        var second = audible[0] / framesPerSecond
+        var lowest = Float.infinity
+        for f in audible {
+            if f / framesPerSecond != second {
+                minima.append(lowest)
+                second = f / framesPerSecond
+                lowest = .infinity
+            }
+            lowest = min(lowest, energies[f])
+        }
+        minima.append(lowest)
+        let floor = minima.sorted()[minima.count / 2]
+        var usable = audible.filter { energies[$0] >= floor * 0.1 }
+        if usable.count < 5 { usable = audible }
+        return Array(usable.sorted { energies[$0] < energies[$1] }.prefix(max(5, usable.count / 10)))
+    }
+
+    /// Frame energy (Σ x² over `frameSize` samples) at or below which a frame counts as digital silence (≈ −100 dBFS).
+    static let silentEnergy = Float(frameSize) * 1e-10
+
+    /// Name of the cleaned file for `level`. Files from before the DNS-6 fix were named `nr-…`;
+    /// only `nr2-…` files are reused (IMPLEMENTATION §9.4, Reuse).
+    public static func fileName(level: NoiseReduction, base: String) -> String { "nr2-\(level.rawValue)-\(base).m4a" }
+
+    /// Whether a recorded cleaned file was made by the current rules and can be reused.
+    public static func isCurrent(fileName: String) -> Bool { fileName.hasPrefix("nr2-") }
+
     /// Pure DSP: one array per channel in, the same out (noise reduced).
     public static func reduce(channels: [[Float]], level: NoiseReduction,
                               progress: (@Sendable (Double) -> Void)? = nil) -> [[Float]] {
@@ -300,7 +343,7 @@ public enum NoiseReducer {
         mono.withUnsafeBufferPointer { p in
             for f in 0..<frameCount { vDSP_svesq(p.baseAddress! + f * hop, 1, &energies[f], vDSP_Length(n)) }
         }
-        let quiet = energies.indices.sorted { energies[$0] < energies[$1] }.prefix(max(5, frameCount / 10))
+        let quiet = noiseFrames(energies: energies, length: length)
         var noise = [Float](repeating: 0, count: half + 1)
         var mags = [Float](repeating: 0, count: half + 1)
         for f in quiet {

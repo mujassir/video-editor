@@ -636,12 +636,13 @@ struct ProjectFileContractTests {
         p.background = .blur
         p.defaultFit = .fill
         p.defaultAnchor = .center
+        p.noiseReduction = .medium
         var video = MediaItem(id: UUID(uuidString: "22222222-2222-2222-2222-222222222222")!, kind: .video,
                               fileName: "A1B2.mov", naturalSize: CGSize(width: 1080, height: 1920),
                               duration: MediaTime(seconds: 8), hasAudio: true, frameRate: 30, displayName: "Beach")
         video.sourceQuarterTurns = 1
         video.reversedFileName = "rev-A1B2.mov"
-        video.denoisedFileNames = [.medium: "nr-medium-A1B2.m4a"]
+        video.denoisedFileNames = [.medium: "nr2-medium-A1B2.m4a"]
         let photo = MediaItem(id: UUID(uuidString: "33333333-3333-3333-3333-333333333333")!, kind: .photo,
                               fileName: "C3D4.heic", naturalSize: CGSize(width: 4032, height: 3024),
                               duration: .zero, hasAudio: false, displayName: "Sunset")

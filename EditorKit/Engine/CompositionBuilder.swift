@@ -160,7 +160,7 @@ public final class CompositionBuilder: @unchecked Sendable {
                 }
 
                 // Noise reduction plays the cleaned copy of the sound (same timing as the original).
-                let audioAsset = clip.noiseReduction.flatMap { resolver.denoisedURL(for: media, level: $0) }.map { asset($0) } ?? a
+                let audioAsset = project.noiseReduction(for: clip).flatMap { resolver.denoisedURL(for: media, level: $0) }.map { asset($0) } ?? a
                 if !clip.isReversed, !clip.isMuted, clip.volume > 0, media.hasAudio,
                    let srcAudio = try await audioAsset.loadTracks(withMediaType: .audio).first,
                    let audio = audioTracks[lane] {

@@ -183,7 +183,7 @@
   "media" : [
     {
       "denoisedFileNames" : {
-        "medium" : "nr-medium-A1B2.m4a"
+        "medium" : "nr2-medium-A1B2.m4a"
       },
       "displayName" : "Beach",
       "duration" : 480000,
@@ -230,6 +230,7 @@
   ],
   "modifiedAt" : 800000000,
   "name" : "Sample",
+  "noiseReduction" : "medium",
   "textOverlays" : [
     {
       "anchor" : "top",

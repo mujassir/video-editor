@@ -844,6 +844,128 @@ struct NoiseReductionTests {
         #expect(abs(Double(onset) / 48_000 - 0.5) < 0.02, "tone starts at \(Double(onset) / 48_000) s")
     }
 
+    /// DNS-6 (IMPLEMENTATION §9.4): a quiet start (0.5 s of silence, then 0.5 s at 0.1×) used to
+    /// fill the quietest 10% of frames, so the fingerprint was ~0 and nothing was removed.
+    @Test(arguments: NoiseReduction.allCases)
+    func DNS_6_quietStartDoesNotStopNoiseRemoval(level: NoiseReduction) {
+        let (signal, hiss, tone) = signal(seconds: 4)
+        let lead = [Float](repeating: 0, count: 24_000) + signal[0..<24_000].map { $0 * 0.1 }
+        let mix = lead + signal
+        let out = NoiseReducer.reduce(channels: [mix], level: level)[0]
+        let shift = lead.count
+        let h = (hiss.lowerBound + shift)..<(hiss.upperBound + shift), t = (tone.lowerBound + shift)..<(tone.upperBound + shift)
+        let hissDrop = rmsDB(mix[h]) - rmsDB(out[h])
+        let toneChange = abs(rmsDB(mix[t]) - rmsDB(out[t]))
+        #expect(hissDrop > 8, "hiss reduced by \(hissDrop) dB at \(level) after a quiet start")
+        #expect(toneChange < 1.5, "tone changed by \(toneChange) dB at \(level) after a quiet start")
+    }
+
+    /// DNS-6: the fingerprint never uses the zero padding or digitally silent frames.
+    @Test func DNS_6_fingerprintSkipsPaddingAndSilence() {
+        let length = 48_000 * 3
+        let frames = (length + 2 * NoiseReducer.frameSize + NoiseReducer.hop - NoiseReducer.frameSize) / NoiseReducer.hop + 1
+        // Padding frames and the first second are silent; the rest sits at the floor (1.0) or above.
+        let energies = (0..<frames).map { f -> Float in
+            let inside = f >= NoiseReducer.frameSize / NoiseReducer.hop && f <= length / NoiseReducer.hop
+            guard inside, f > 98 else { return 0 }
+            return f % 7 == 0 ? 1 : 50
+        }
+        let picked = NoiseReducer.noiseFrames(energies: energies, length: length)
+        #expect(!picked.isEmpty)
+        #expect(picked.allSatisfy { energies[$0] == 1 }, "picked \(picked.map { energies[$0] })")
+    }
+
+    /// DNS-3 + DNS-6: files from before the fix (`nr-…`) are not reused; new ones are `nr2-…`.
+    @Test func DNS_3_onlyCurrentFilesAreReused() {
+        #expect(NoiseReducer.fileName(level: .medium, base: "A1B2") == "nr2-medium-A1B2.m4a")
+        #expect(NoiseReducer.isCurrent(fileName: NoiseReducer.fileName(level: .high, base: "x")))
+        #expect(!NoiseReducer.isCurrent(fileName: "nr-medium-A1B2.m4a"))
+    }
+
+    /// DNS-2 / DNS-4 / DNS-6: a noisy video clip (AAC sound, like a phone recording) that starts
+    /// quietly is cleaned, and the preview / export composition plays the cleaned sound.
+    @Test func DNS_4_compositionPlaysTheCleanedSound() async throws {
+        var fx = try Fixture()
+        defer { fx.cleanup() }
+        let dir = fx.store.mediaDirectory(for: fx.project.id)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let videoOnly = dir.appendingPathComponent("noisy-v.mov")
+        try await SampleMedia.makeVideo(url: videoOnly, size: CGSize(width: 160, height: 120), duration: 4,
+                                        draw: SampleMedia.solid(.black))
+        let audio = dir.appendingPathComponent("noisy-a.m4a")
+        var seed: UInt32 = 777
+        try SampleMedia.makeAudio(url: audio, duration: 4) { s, sr in
+            for i in s.indices {
+                seed = seed &* 1_664_525 &+ 1_013_904_223
+                let hiss = 0.03 * (Float(seed) / Float(UInt32.max) * 2 - 1)
+                let t = Double(i) / sr
+                let toneOn = Int(t / 0.5) % 2 == 1
+                // A quiet start, like a fade-in or the mic starting up: silence, then 0.1×.
+                let gain: Float = t < 0.5 ? 0 : t < 1 ? 0.1 : 1
+                s[i] = gain * (hiss + (toneOn ? 0.3 * sin(2 * .pi * 300 * Float(t)) : 0))
+            }
+        }
+        try await SampleMedia.mux(video: videoOnly, audio: audio, to: dir.appendingPathComponent("noisy.mov"))
+        var item = try await MediaImporter.probeVideo(dir.appendingPathComponent("noisy.mov"), fileName: "noisy.mov")
+        try await NoiseReducer.process(source: fx.resolver.url(for: item),
+                                       destination: dir.appendingPathComponent("nr-medium-noisy.m4a"), level: .medium)
+        item.denoisedFileNames = [.medium: "nr-medium-noisy.m4a"]
+        fx.project.appendClip(for: item)
+
+        func rendered(_ project: Project) async throws -> [Float] {
+            let built = try await CompositionBuilder().build(project: project, resolver: fx.resolver,
+                                                             renderSize: CGSize(width: 64, height: 64))
+            let tracks = try await built.composition.loadTracks(withMediaType: .audio)
+            return try Waveform.readMixedMono(asset: built.composition, tracks: tracks, audioMix: built.audioMix,
+                                              sampleRate: 48_000)
+        }
+        let original = try await rendered(fx.project)
+        fx.project.setNoiseReduction(.medium)
+        let cleaned = try await rendered(fx.project)
+        // Hiss alone: 2.1–2.4 s. Tone + hiss: 2.6–2.9 s.
+        let hiss = 100_800..<115_200, tone = 124_800..<139_200
+        #expect(cleaned.count >= tone.upperBound && original.count >= tone.upperBound)
+        let hissDrop = rmsDB(original[hiss]) - rmsDB(cleaned[hiss])
+        let toneChange = abs(rmsDB(original[tone]) - rmsDB(cleaned[tone]))
+        #expect(hissDrop > 8, "hiss reduced by \(hissDrop) dB in the composition")
+        #expect(toneChange < 1.5, "tone changed by \(toneChange) dB in the composition")
+    }
+
+    /// DNS-1 / DNS-4 / DNS-8: one setting for the whole video; picking it (or Off) replaces older per-clip values.
+    @Test func DNS_1_oneSettingForTheWholeVideo() {
+        var p = Project(name: "P")
+        let a = MediaItem(kind: .video, fileName: "a.mov", naturalSize: CGSize(width: 10, height: 10), duration: MediaTime(seconds: 4), hasAudio: true)
+        let b = MediaItem(kind: .video, fileName: "b.mov", naturalSize: CGSize(width: 10, height: 10), duration: MediaTime(seconds: 4), hasAudio: false)
+        let photo = MediaItem(kind: .photo, fileName: "c.png", naturalSize: CGSize(width: 10, height: 10), duration: .zero, hasAudio: false)
+        p.appendClip(for: a); p.appendClip(for: b); p.appendClip(for: photo); p.appendClip(for: a)
+        // Only videos with sound are cleaned, each once.
+        #expect(p.denoiseSources.map(\.id) == [a.id])
+        // An older project: per-clip values play while the project setting is nil.
+        p.clips[0].noiseReduction = .low
+        #expect(p.noiseReduction(for: p.clips[0]) == .low)
+        #expect(p.noiseReduction(for: p.clips[3]) == nil)
+        p.setNoiseReduction(.high, files: [a.id: "nr2-high-a.m4a"])
+        #expect(p.noiseReduction == .high)
+        #expect(p.clips.allSatisfy { $0.noiseReduction == nil })
+        #expect(p.clips.allSatisfy { p.noiseReduction(for: $0) == .high })
+        #expect(p.mediaItem(a.id)?.denoisedFileNames?[.high] == "nr2-high-a.m4a")
+        p.setNoiseReduction(nil)
+        #expect(p.clips.allSatisfy { p.noiseReduction(for: $0) == nil })
+        // The cleaned file stays recorded, so turning it back on is instant (DNS-3).
+        #expect(p.mediaItem(a.id)?.denoisedFileNames?[.high] == "nr2-high-a.m4a")
+    }
+
+    @Test func DNS_1_projectsSavedWithoutTheFieldLoadWithDenoiseOff() throws {
+        let p = Project(name: "P")
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(p)) as! [String: Any]
+        json["noiseReduction"] = nil
+        let decoded = try JSONDecoder().decode(Project.self, from: JSONSerialization.data(withJSONObject: json))
+        #expect(decoded.noiseReduction == nil)
+        var on = p
+        on.noiseReduction = .medium
+        #expect(try JSONDecoder().decode(Project.self, from: JSONEncoder().encode(on)).noiseReduction == .medium)
+    }
+
     @Test func clipsSavedWithoutTheFieldLoadWithNoiseReductionOff() throws {
         let c = VideoClip(mediaID: UUID(), kind: .video, sourceRange: MediaTimeRange(start: .zero, duration: MediaTime(seconds: 2)))
         let decoded = try JSONDecoder().decode(VideoClip.self, from: JSONEncoder().encode(c))

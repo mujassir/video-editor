@@ -128,6 +128,7 @@ A full-screen sheet; see `EXP-*`.
 
 - **PRV-1 Play/pause:** tap the preview or the play button. Playback stops at the end of the video, and pressing play at the end starts again from 0. **Exception:** while an audio clip is selected, see `PRV-8`.
 - **PRV-8 Listen past the video:** while an audio clip is selected, Play continues past the end of the video to the end of the music (the end of the timeline), so the whole song can be heard and cut there (`MUS-4`, `MUS-11`). Pressing play with the playhead after the end of the video plays from there; only at the end of the music does play start again from 0. Past the end of the video the preview is dimmed with "Music only · not in export". Deselecting while playing past the end pauses where it is. Export is unchanged: it still stops at the end of the video.
+- **PRV-9 Play speed:** a button at the right end of the time row under the preview shows the play speed ("1×"). Tapping it opens a column of round buttons above it, over the preview, fastest on top: **2× · 1.5× · 1.25× · 1× · 0.75× · 0.5×**. The current speed is filled in. Tapping one sets it and closes the column; tapping the speed button again closes it too. Picked while playing, the new speed takes effect at once. Picked while paused, playback starts at the new speed (from 0 if the playhead is at the end, like `PRV-1`). It only changes how fast the preview plays, with the pitch kept. It isn't saved in the project, isn't an undo step, and doesn't change the export. It starts at 1× each time the editor opens and stays as picked until the editor closes. Clip speed (`SPD-1`) is separate and does change the export.
 - **PRV-7 Empty preview:** while the main track has no clips (a new project, or after deleting every clip), the preview shows a film icon and "Add videos or photos to start". Tapping the icon or the text opens the Photos library, the same as the timeline "+" (`IMP-1`).
 - **PRV-2 No black flash:** after an edit, the last frame stays on screen until the updated preview is ready.
 - **PRV-3 Animations only while playing:** animations play only during playback and export. This covers In/Out/Combo, photo motion and text animations. Paused or scrubbing, clips and text are shown at rest, so edits can be judged. Transitions always show.
@@ -146,8 +147,8 @@ The toolbar is one horizontally scrolling row of icon buttons with labels. The o
 
 | Selection | Buttons, in order |
 |---|---|
-| **TBR-1 Nothing** | With **no content** (the edit has no length, as for Export: no clips, slides or voiceover) only **Intro · Outro** show. Otherwise: Music · Captions (AI; **hidden** until the main track has a video clip: not shown for an empty project or one with only photos, slides or freeze frames) · Watermark (active if set) · Text · Intro · Outro |
-| **TBR-2 Video clip** | Split · Voice (`CLP-5`; active while the voice is off) · Speed · Animate (active if any animation) · Denoise (active if on) · Filters · Adjust · Enhance (AI) · Cutout (AI) · Reframe (AI) · Crop · Reverse (active if reversed) · Freeze · Duplicate · Delete |
+| **TBR-1 Nothing** | With **no content** (the edit has no length, as for Export: no clips, slides or voiceover) only **Intro · Outro** show. Otherwise: Music · Captions (AI; **hidden** until the main track has a video clip: not shown for an empty project or one with only photos, slides or freeze frames) · Denoise (`DNS-1`; active if on; **hidden** like Captions until the main track has a video clip) · Watermark (active if set) · Text · Intro · Outro |
+| **TBR-2 Video clip** | Split · Voice (`CLP-5`; active while the voice is off) · Speed · Animate (active if any animation) · Filters · Adjust · Enhance (AI) · Cutout (AI) · Reframe (AI) · Crop · Reverse (active if reversed) · Freeze · Duplicate · Delete |
 | **TBR-3 Photo or freeze frame** | Duration · Animate (active if motion or animation) · Filters · Adjust · Enhance (AI) · Cutout (AI) · Crop · Duplicate · Delete |
 | **TBR-4 Text** | Edit · Duration · Animate (active if set) · Position (active if a fixed spot) · Duplicate · Delete |
 | **TBR-5 Music** | Cut · Start Here (`MUS-11`; only while the playhead is inside the clip) · Duck · Move to Start (only when there's a gap before it) · Repeat (only when it ends before the video) · Delete |
@@ -182,7 +183,7 @@ Deleting closes any open panel and clears the selection.
 ### SPD: Speed
 
 - **SPD-1 Range:** speed runs from `0.1×` to `10×` on a logarithmic slider, rounded to `0.05`.
-  - **Quick picks:** `0.25×`, `0.5×`, `1×`, `2×`, `4×`.
+  - **Quick picks:** `0.25×`, `0.5×`, `1×`, `2×`, `3×`, `4×`.
   - **Readout:** the current value, for example "1.5×".
 - **SPD-2 Duration:** changing the speed changes how long the clip lasts on the timeline (source length ÷ speed). Stills ignore speed.
 - **SPD-3 Smooth slow motion:** below `1×`, consecutive source frames are blended, so motion looks smooth rather than stepped.
@@ -202,14 +203,19 @@ Deleting closes any open panel and clears the selection.
 
 ### DNS: Noise reduction (Denoise)
 
+Noise reduction is **one setting for the whole video**, not per clip. It's in the main toolbar (`TBR-1`), not the clip toolbar.
+
 - **DNS-1 Panel** "Noise Reduction":
-  - Text: "Removes background hiss, hum, wind and room noise from this clip's sound."
+  - Text: "Removes background hiss, hum, wind and room noise from the sound of every video clip."
   - Choices: **Off · Low · Medium · High**.
   - Note: "Stronger settings remove more noise but can make voices sound thinner."
-- **DNS-2 Processing:** picking a level cleans the clip's audio on the device, with a busy overlay "Reducing noise…" and a progress ring. Toast: "Noise reduced (Medium)".
-- **DNS-3 Reuse:** the cleaned audio is made once per media item and level. Later switches to an already-made level are instant. Split pieces of the same video share it.
-- **DNS-4 Scope:** it applies to this clip's own sound, in preview and export. Off restores the original sound.
-- **DNS-5 No sound:** a clip without sound shows the toast "This clip has no sound".
+- **DNS-2 Processing:** picking a level cleans the sound of every video in the edit on the device, with a busy overlay "Reducing noise…" and a progress ring. Toast: "Noise reduced (Medium)".
+- **DNS-3 Reuse:** the cleaned audio is made once per media item and level. Later switches to an already-made level are instant. Split pieces of the same video share it. Sound cleaned by an older version of the app is cleaned again the next time that level is picked.
+- **DNS-4 Scope:** it applies to the own sound of every video clip on the main track, in preview and export. Music, voiceover and other audio clips aren't changed. Off restores the original sound everywhere.
+- **DNS-7 New clips:** while it's on, videos added later are cleaned straight away (same busy overlay), so the whole edit stays at one level.
+- **DNS-8 Older projects:** a project saved with per-clip settings plays as saved until a level (or Off) is picked in the panel. Picking one replaces every per-clip setting.
+- **DNS-6 Quiet starts:** a silent or very quiet stretch, such as a fade-in, the mic starting up or a muted moment, doesn't stop the noise from being removed from the rest of the clip.
+- **DNS-5 No sound:** if no video in the edit has sound, picking a level shows the toast "This video has no sound".
 
 ### FLT: Filters
 
@@ -500,6 +506,7 @@ These were tried and removed on purpose. Don't add them back without changing th
 | 2026-11 | **Caption styles are Classic, Karaoke and Bold.** Minimal and Neon were removed (`CAP-8`). |
 | 2026-11 | **The caption text editor is full screen** and saves once on Done (`CAP-5`). Text editing isn't in the Style panel. |
 | 2026-11 | **No scissors on the music bar.** It first showed under the playhead, then only on the selected bar, and was then removed: music is cut with **Cut** (and **Start Here**, `MUS-11`) in the toolbar (`MUS-4`). |
+| 2026-11 | **Denoise is for the whole video, not per clip** (`DNS-1`). The per-clip Denoise button in the video clip toolbar was removed. Older per-clip settings still play until a level is picked (`DNS-8`). |
 | 2026-11 | **No Media button in the main toolbar.** Media is added with the timeline "+", and a new project opens the Photos library (`LIB-1`). |
 | 2026-11 | **The timeline "+" opens the Photos library directly**, with no Add menu, so video and photo files can't be picked from Files any more. Own audio still comes from Music → Audio Tracks. UI tests and demos (`-sampleMedia` / `-demoMedia`) still get the Add menu with Sample Clips. |
 | 2026-11 | **No built-in music tracks in the Music panel.** It offers only Audio Tracks (Files) and From Video. The generator stays in the engine for UI tests and demos, which launch with `-sampleMedia` / `-demoMedia` and still see the tracks (§14 in IMPLEMENTATION). Projects that use them still play. |

@@ -311,7 +311,7 @@ struct SpeedPanel: View {
                     model.editCoalescing("Speed", key: "speed-\(clipID)") { p in try? p.setSpeed(s, clipID: clipID) }
                 }), in: -1...1).tint(Theme.accent).accessibilityIdentifier("slider.Speed")
                 HStack {
-                    ForEach([0.25, 0.5, 1, 2, 4], id: \.self) { v in
+                    ForEach([0.25, 0.5, 1, 2, 3, 4], id: \.self) { v in
                         ChipButton(title: String(format: "%g×", v), isSelected: abs(speed - v) < 0.01) {
                             model.edit("Speed") { try $0.setSpeed(v, clipID: clipID) }
                         }
@@ -322,16 +322,15 @@ struct SpeedPanel: View {
     }
 }
 
-/// Noise reduction for a video clip's own sound: Off / Low / Medium / High.
+/// Denoise for the whole video (DNS-1): every video clip's own sound. Off / Low / Medium / High.
 struct NoiseReductionPanel: View {
     @Bindable var model: EditorModel
-    let clipID: UUID
-    private var level: NoiseReduction? { model.project.clipIndex(clipID).flatMap { model.project.clips[$0].noiseReduction } }
+    private var level: NoiseReduction? { model.project.noiseReduction }
 
     var body: some View {
         PanelContainer(title: "Noise Reduction", onDone: { model.panel = nil }) {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Removes background hiss, hum, wind and room noise from this clip's sound.")
+                Text("Removes background hiss, hum, wind and room noise from the sound of every video clip.")
                     .font(.caption).foregroundStyle(Theme.secondaryText)
                 HStack(spacing: 8) {
                     ChipButton(title: "Off", isSelected: level == nil) { model.setNoiseReduction(nil) }

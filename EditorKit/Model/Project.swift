@@ -339,7 +339,8 @@ public struct VideoClip: Codable, Hashable, Identifiable, Sendable {
     public var freezeAt: MediaTime?
     public var volume: Double = 1
     public var isMuted = false
-    /// Noise reduction on the clip's own sound. nil = off (also older projects).
+    /// Older per-clip noise reduction (DNS-8). New edits use `Project.noiseReduction`; this only
+    /// plays while the project-wide setting is nil, and picking a project level clears it.
     public var noiseReduction: NoiseReduction?
     public var transform = ClipTransform()
     public var filter: FilterSetting?
@@ -755,6 +756,9 @@ public struct Project: Codable, Hashable, Identifiable, Sendable {
     public var watermark: Watermark?
     public var defaultFit: ContentFit?
     public var defaultAnchor: ContentAnchor?
+    /// Denoise for the whole video (DNS-1): every main-track video clip's own sound. nil = off,
+    /// or, for older projects, each clip's own `noiseReduction`.
+    public var noiseReduction: NoiseReduction?
 
     public init(id: UUID = UUID(), name: String, createdAt: Date = Date()) {
         self.id = id
@@ -765,4 +769,40 @@ public struct Project: Codable, Hashable, Identifiable, Sendable {
 
     public func mediaItem(_ id: UUID) -> MediaItem? { media.first { $0.id == id } }
     public func clipIndex(_ id: UUID) -> Int? { clips.firstIndex { $0.id == id } }
+}
+
+// MARK: - Noise reduction (DNS)
+
+public extension Project {
+    /// The level that plays for `clip`'s own sound: the project's, else the clip's older one (DNS-8).
+    func noiseReduction(for clip: VideoClip) -> NoiseReduction? { noiseReduction ?? clip.noiseReduction }
+
+    /// Media whose sound Denoise cleans: used by a main-track video clip (not a still), with sound.
+    /// Each item once, in timeline order.
+    var denoiseSources: [MediaItem] {
+        var seen = Set<UUID>()
+        return clips.compactMap { clip in
+            guard clip.kind == .video, !clip.isStill, seen.insert(clip.mediaID).inserted,
+                  let item = mediaItem(clip.mediaID), item.hasAudio else { return nil }
+            return item
+        }
+    }
+
+    /// Sets Denoise for the whole video (nil = Off), records newly made files, and clears every
+    /// clip's older per-clip setting (DNS-8). One edit.
+    mutating func setNoiseReduction(_ level: NoiseReduction?, files: [UUID: String] = [:]) {
+        if let level { recordDenoisedFiles(files, level: level) }
+        noiseReduction = level
+        for i in clips.indices { clips[i].noiseReduction = nil }
+    }
+
+    /// Stores cleaned file names (by media ID) for `level`.
+    mutating func recordDenoisedFiles(_ files: [UUID: String], level: NoiseReduction) {
+        for (id, name) in files {
+            guard let i = media.firstIndex(where: { $0.id == id }) else { continue }
+            var names = media[i].denoisedFileNames ?? [:]
+            names[level] = name
+            media[i].denoisedFileNames = names
+        }
+    }
 }

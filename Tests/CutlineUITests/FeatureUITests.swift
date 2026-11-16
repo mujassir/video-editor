@@ -13,7 +13,7 @@ final class FeatureUITests: CutlineUITestCase {
         XCTAssertFalse(element("editor.undo").exists, "nothing to undo in a new project")
         XCTAssertFalse(element("editor.redo").exists, "nothing to redo in a new project")
         // TBR-1 with no content: only Intro and Outro.
-        for hidden in ["tool.Music", "tool.Captions", "tool.Watermark", "tool.Text"] {
+        for hidden in ["tool.Music", "tool.Captions", "tool.Denoise", "tool.Watermark", "tool.Text"] {
             XCTAssertFalse(element(hidden).exists, "\(hidden) should be hidden with no content")
         }
         XCTAssertTrue(element("tool.Intro").exists && element("tool.Outro").exists)
@@ -26,7 +26,7 @@ final class FeatureUITests: CutlineUITestCase {
         XCTAssertEqual(count(prefix: "clip."), 3)
         XCTAssertEqual(totalSeconds, 12, accuracy: 0.2)
         XCTAssertTrue(element("editor.export").exists, "Export appears once there's content")
-        for shown in ["tool.Music", "tool.Captions", "tool.Watermark", "tool.Text"] {
+        for shown in ["tool.Music", "tool.Captions", "tool.Denoise", "tool.Watermark", "tool.Text"] {
             XCTAssertTrue(element(shown).waitForExistence(timeout: 5), "\(shown) should appear once there's content")
         }
         snapshot("01-editor-imported")
@@ -120,6 +120,60 @@ final class FeatureUITests: CutlineUITestCase {
         // Video clips are trimmed with the timeline handles only (no Trim tool).
         XCTAssertFalse(element("tool.Trim").exists, "video toolbar should not offer Trim")
         waitFor("trim shortens the edit") { totalSeconds < before - 0.5 }
+    }
+
+    /// SPD-1: the 3× quick pick makes a 4 s clip last a third as long, and every pick fits on screen.
+    func test05b_SPD1_ThreeTimesSpeed() {
+        openProjectWithSamples()
+        selectClip(0)
+        tap("tool.Speed")
+        let width = app.windows.firstMatch.frame.width
+        for chip in ["chip.0.25×", "chip.0.5×", "chip.1×", "chip.2×", "chip.3×", "chip.4×"] {
+            let e = element(chip)
+            XCTAssertTrue(e.waitForExistence(timeout: 5), "\(chip) missing")
+            XCTAssertLessThanOrEqual(e.frame.maxX, width, "\(chip) runs off the screen")
+        }
+        tap("chip.3×")
+        waitFor("3× speed: clip 0 lasts 4 ÷ 3 s") { abs(totalSeconds - (8 + 4.0 / 3)) < 0.2 }
+        XCTAssertTrue(element("chip.3×").isSelected)
+        XCTAssertEqual(element("speed.value").label, "3×")
+    }
+
+    /// PRV-9: the preview play speed buttons play faster without changing the edit (no undo step, same length).
+    func test05c_PRV9_PreviewPlaySpeed() {
+        openProjectWithSamples()
+        let total = totalSeconds
+        let undoBefore = element("editor.undo").exists
+        tap("preview.rate")
+        // A vertical column of round buttons, fastest on top.
+        var lastY = -CGFloat.infinity
+        for rate in ["2×", "1.5×", "1.25×", "1×", "0.75×", "0.5×"] {
+            let e = element("rate.\(rate)")
+            XCTAssertTrue(e.waitForExistence(timeout: 5), "\(rate) missing")
+            XCTAssertGreaterThan(e.frame.minY, lastY, "\(rate) out of order")
+            XCTAssertLessThan(e.frame.maxY, element("preview.rate").frame.minY, "\(rate) should sit above the speed button")
+            lastY = e.frame.minY
+        }
+        XCTAssertTrue(element("rate.1×").isSelected)
+        snapshot("05c-play-speed-open")
+        // Picked while paused: playback starts at the new speed.
+        tap("rate.2×")
+        waitFor("column closed") { !element("rate.2×").exists }
+        waitFor("button shows 2×") { element("preview.rate").label.contains("2×") }
+        waitFor("playing at 2×") { element("debug.rate").label == "2/2" }
+        XCTAssertEqual(element("editor.play").label, "Pause")
+        // Changed while playing: takes effect at once and keeps playing.
+        tap("preview.rate")
+        tap("rate.1.5×")
+        waitFor("playing at 1.5×") { element("debug.rate").label == "1.5/1.5" }
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        XCTAssertEqual(element("debug.rate").label, "1.5/1.5", "still playing at 1.5×")
+        XCTAssertEqual(element("editor.play").label, "Pause", "still playing")
+        tap("editor.play")
+        waitFor("paused") { element("debug.rate").label == "1.5/0" }
+        // Preview only: the edit is unchanged.
+        XCTAssertEqual(totalSeconds, total, accuracy: 0.05)
+        XCTAssertEqual(element("editor.undo").exists, undoBefore, "play speed must not be an undo step")
     }
 
     func test05_SpeedReverseFreezeDuplicate() {
@@ -223,9 +277,9 @@ final class FeatureUITests: CutlineUITestCase {
 
     func test10_MainToolbarOrder() {
         openProjectWithSamples()
-        // TBR-1 main toolbar: Music, Captions, Watermark, Text, Intro, Outro – no Media, Silence or Beat Sync.
+        // TBR-1 main toolbar: Music, Captions, Denoise (DNS-1), Watermark, Text, Intro, Outro – no Media, Silence or Beat Sync.
         XCTAssertFalse(element("tool.Media").exists, "media is added with the timeline +")
-        let ids = ["tool.Music", "tool.Captions", "tool.Watermark", "tool.Text", "tool.Intro", "tool.Outro"]
+        let ids = ["tool.Music", "tool.Captions", "tool.Denoise", "tool.Watermark", "tool.Text", "tool.Intro", "tool.Outro"]
         var lastX = -CGFloat.infinity
         for id in ids {
             let e = element(id)
@@ -547,9 +601,13 @@ final class FeatureUITests: CutlineUITestCase {
         XCTAssertEqual(count(prefix: "clip."), 3)
     }
 
+    /// DNS-1: Denoise is one setting for the whole video, in the main toolbar.
     func test24_VideoNoiseReduction() {
         openProjectWithSamples()
         selectClip(0)
+        XCTAssertTrue(element("tool.Speed").waitForExistence(timeout: 5))
+        XCTAssertFalse(element("tool.Denoise").exists)   // not in the clip toolbar any more
+        element("clip.0").tap()   // deselect: back to the main tools
         tap("tool.Denoise")
         XCTAssertTrue(element("chip.Off").waitForExistence(timeout: 5))
         XCTAssertTrue(element("chip.Off").isSelected)
@@ -568,7 +626,7 @@ final class FeatureUITests: CutlineUITestCase {
         // Undo restores the previous setting.
         tap("editor.undo")
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-        if !element("tool.Denoise").exists { selectClip(0) }   // still selected after undo
+        if !element("tool.Denoise").exists { element("clip.0").tap() }   // deselect if undo selected it
         tap("tool.Denoise")
         waitFor("undone to off") { element("chip.Off").isSelected }
     }

@@ -113,6 +113,7 @@ All types are value types, and all IDs are UUIDs. The complete field list, with 
 | `textOverlays` | [TextOverlay] | | Drawn in array order |
 | `captions` | CaptionTrack | | |
 | `watermark` | Watermark? | nil | |
+| `noiseReduction` | `NoiseReduction`? | nil | Denoise for the whole video (DNS). nil = use each clip's older `noiseReduction` |
 | `defaultFit` | `fit`, `fill`, `stretch`? | nil | Canvas fit for new clips |
 | `defaultAnchor` | `center`, `top`, `bottom`, `left`, `right`? | nil | |
 
@@ -169,7 +170,7 @@ All types are value types, and all IDs are UUIDs. The complete field list, with 
     Media/              every file the project uses; names are stored in project.json
         <UUID>.<ext>                imported media (always a new unique name)
         rev-<base>.mov              reversed copy of a video (REV-1)
-        nr-<level>-<base>.m4a       noise-reduced audio (DNS-3)
+        nr2-<level>-<base>.m4a      noise-reduced audio (DNS-3); older apps wrote nr-<level>-<base>.m4a
         music-<trackid>-<secs>.m4a  generated built-in music
         title-<placement>-<8hex>.png  rendered slide image
         watermark-<8hex>.png        watermark image
@@ -377,7 +378,7 @@ The total length is the last entry's end. `entry(at: t)` returns the **last** en
   - **Smooth slow motion** (`speed < 1`): add the same footage one source frame ahead on a "blend" track. The compositor draws it over the main frame with weight `frac(fileTime × fps)` when that weight is over `0.02`.
 - **Clip audio** (on the A/B audio lanes):
   - **When it plays:** only for clips that aren't reversed, aren't muted, have `volume > 0` and whose media has sound.
-  - **Source:** if `noiseReduction` is set and the cleaned file exists (§9.4), use that file instead.
+  - **Source:** the level is `project.noiseReduction ?? clip.noiseReduction` (the clip field only matters for older projects). If there's a level and its cleaned file exists (§9.4), use that file instead.
   - **Speed:** time-scaled like the video. Pitch is kept (spectral time-stretch).
   - **Volume:** `clip.volume`.
   - **At transitions:** ramp `0 → volume` across `overlapIn` and `volume → 0` across `overlapOut`.
@@ -567,6 +568,8 @@ The filter thumbnails in the panel run the same function on the CPU over a 120 p
    - pans: `scale = 1.18`, and the offset moves from `+pan` to `−pan` (panLeft and panUp) or from `−pan` to `+pan` (panRight and panDown).
    - kenBurns: `scale = 1.08 + 0.2e`, `offset = (−0.035 + 0.07e, 0.025 − 0.05e)`.
 
+**Preview play speed** (PRV-9): the preview player's playback rate (on iOS, `AVPlayer.defaultRate`; picked while playing, the player is paused and restarted at the new rate with `playImmediately(atRate:)`, so it switches at once and keeps playing) is one of `0.5, 0.75, 1, 1.25, 1.5, 2`. The player item keeps pitch (spectral time-pitch). Editor state only: not in `Project`, not an undo step, never passed to export.
+
 **Animations only while playing** (PRV-3): In/Out/Combo, photo motion and text animation are skipped unless the player is playing or exporting. Transitions always apply.
 
 ### 8.6 Text overlays
@@ -689,7 +692,10 @@ Ports must produce comparable results. The settings:
 - **Noise fingerprint:**
   - Mix to mono, which is the average of the channels.
   - Compute each frame's energy, `Σ x²` over the frame.
-  - Take the **quietest 10% of frames** (at least 5) and average their magnitude spectra. That gives `noise[k]` for bins `0…N/2`.
+  - **Candidate frames:** only frames that lie fully inside the real audio (none of the padding), and that aren't digitally silent (energy > `N × 10⁻¹⁰`, about −100 dBFS).
+  - **Noise floor:** group the candidates by second (`frame index ÷ 93`, integer division; 93 = 48000 / hop rounded down, and frame indices count from the start of the padded signal), take each second's lowest energy, and take the median of those (`sorted[count / 2]`). Drop candidates whose energy is below `floor × 0.1` (more than 10 dB under it). If fewer than 5 remain, keep all candidates. If there are no candidates, use every frame.
+  - Take the **quietest 10%** of what remains (at least 5) and average their magnitude spectra. That gives `noise[k]` for bins `0…N/2`.
+  - Why: a quiet lead-in, a fade-in, a muted moment or the padding is quieter than the real noise. If it fills the quietest 10%, the fingerprint drops to near zero and nothing is removed. Older apps had this bug, which is why their files are made again (below). The per-second median ignores stretches like that unless they last most of the clip.
 - **Gain per frame and bin**, from the mono magnitude `m`:
   ```
   g = clamp(1 − α × noise[k] / m, floor, 1)     (g = 0 → floor when m = 0)
@@ -708,12 +714,16 @@ Ports must produce comparable results. The settings:
   - Trim off the padding.
   - Add `round(offset × 48000)` samples of silence at the start, so timing matches the original file.
   - Clamp to ±1 and write **lossless** audio: Apple Lossless `.m4a` on iOS; FLAC or WAV elsewhere. Avoid AAC, whose start-up delay shifts the timing.
-- **Recording it:** store the file name in `media.denoisedFileNames[level]` and set `clip.noiseReduction = level` in one undo step. If the file is missing, play the original audio.
+- **What gets cleaned:** every media item used by a main-track video clip (not a photo or freeze frame) that has sound. Items are processed one after another; progress is `(items done + this item's progress) ÷ items`.
+- **Recording it:** in one undo step, store each file name (`nr2-<level>-<base>.m4a`) in `media.denoisedFileNames[level]`, set `project.noiseReduction = level`, and clear `noiseReduction` on every clip. Off sets `project.noiseReduction = nil` and also clears every clip's value. If a file is missing, play the original audio.
+- **Media added later:** while `project.noiseReduction` is set, cleaning runs for newly added videos as soon as they're added, and records their file names in its own undo step.
+- **Reuse:** picking a level reuses the recorded file only if it exists and its name starts with `nr2-`. A file from the older fingerprint rule (`nr-…`) is made again. Until then, playback keeps using whatever file is recorded.
 - **Required results** (test signal: hiss at `0.03` amplitude, and a 300 Hz tone at `0.3` amplitude that's on every other 0.5 s):
   - The hiss drops by **more than 8 dB** at every level.
   - The tone changes by **less than 1.5 dB**.
   - Low < Medium < High in how much hiss they remove.
   - The cleaned tone starts within **20 ms** of its original start.
+  - With **0.5 s of silence and then 0.5 s of the signal at 0.1×** placed before it, the hiss still drops by more than 8 dB and the tone changes by less than 1.5 dB at every level.
 
 ### 9.5 Waveforms
 
@@ -846,7 +856,7 @@ Used by beat sync. The settings:
   - Export: `export.start`, `export.startShare`, `export.share`, `export.save`, `export.done`.
   - Caption editor: `captionEditor.done`, `captionEditor.cancel`, `caption.field.<n>`, `caption.time.<n>`.
   - Animations: `anim.<In|Out>.<kind>`, `anim.combo.<kind>`, `motion.<kind>`.
-  - Preview: `preview` (the video surface), `preview.addMedia` (empty state, `PRV-7`), `preview.pastEnd` (music only, `PRV-8`), `toast`, `busy`.
+  - Preview: `preview` (the video surface), `preview.addMedia` (empty state, `PRV-7`), `preview.pastEnd` (music only, `PRV-8`), `preview.rate` (play speed button, `PRV-9`), `rate.<speed>` (its round buttons, e.g. `rate.0.5×`, `rate.2×`), `toast`, `busy`.
   - Music panel: `music.source.files` (Audio Tracks), `music.source.video` (From Video), `music.recent.<n>` (`MUS-10`), `music.use.<trackId>` (test-only sample tracks).
   - Other: `filter.<id>`, `projects.new`, `project.card`, `mix.*`, `duck.needsCaptions`.
 

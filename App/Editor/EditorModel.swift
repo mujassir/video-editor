@@ -131,6 +131,11 @@ final class EditorModel {
                 }
             }
         }
+        if LaunchOptions.isUITesting {
+            NotificationCenter.default.addObserver(forName: AVPlayer.rateDidChangeNotification, object: player, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { if let self { self.debugRate = self.player.rate } }
+            }
+        }
         scheduleRebuild(immediate: true)
         loadWaveforms()
     }
@@ -200,6 +205,25 @@ final class EditorModel {
             lastError = "Preview failed: \(error.localizedDescription)"
         }
     }
+
+    /// PRV-9: preview play speeds. Editor state only: not saved, not undoable, not exported.
+    static let previewRates: [Float] = [0.5, 0.75, 1, 1.25, 1.5, 2]
+
+    /// How fast the preview plays (PRV-9). Starts at 1× for each editor session.
+    var previewRate: Float = 1 {
+        didSet {
+            player.defaultRate = previewRate
+            // While playing, restart at the new rate the same way Play does. Setting `rate` on
+            // the running player didn't take effect on the device.
+            if isPlaying {
+                player.pause()
+                player.playImmediately(atRate: previewRate)
+            }
+        }
+    }
+
+    /// UI tests: the player's actual rate, refreshed on every rate change (PRV-9).
+    var debugRate: Float = 0
 
     func togglePlay() {
         if player.rate != 0 {
@@ -364,37 +388,60 @@ final class EditorModel {
         showToast(muting ? "Voice off" : "Voice on", systemImage: muting ? "mic.slash" : "mic")
     }
 
-    /// Turns noise reduction on (at `level`) or off for the selected clip. The cleaned sound is
-    /// made once per video and strength, then reused (also by split pieces of the same video).
+    /// Turns Denoise on (at `level`) or off for the whole video (DNS-1, DNS-2). Every video in the
+    /// edit with sound is cleaned once per strength, then reused (also by split pieces and copies).
     func setNoiseReduction(_ level: NoiseReduction?) {
-        guard let clip = selectedClip, let media = project.mediaItem(clip.mediaID) else { return }
         guard let level else {
-            edit("Noise reduction") { try $0.updateClip(clip.id) { $0.noiseReduction = nil } }
+            edit("Noise reduction") { $0.setNoiseReduction(nil) }
             return
         }
-        guard media.hasAudio else { showToast("This clip has no sound", systemImage: "speaker.slash"); return }
-        if resolver.denoisedURL(for: media, level: level) != nil {
-            edit("Noise reduction") { try $0.updateClip(clip.id) { $0.noiseReduction = level } }
+        let sources = project.denoiseSources
+        guard !sources.isEmpty else { showToast("This video has no sound", systemImage: "speaker.slash"); return }
+        let missing = sources.filter { !hasCurrentDenoisedFile($0, level: level) }
+        guard !missing.isEmpty else {
+            edit("Noise reduction") { $0.setNoiseReduction(level) }
             showToast("Noise reduced (\(level.title))", systemImage: "waveform")
             return
         }
         runBusy("Reducing noise…") { model in
-            let base = media.fileName.split(separator: ".").first.map(String.init) ?? "clip"
-            let name = "nr-\(level.rawValue)-\(base).m4a"
-            let destination = model.resolver.mediaDirectory.appendingPathComponent(name)
-            try await NoiseReducer.process(source: model.resolver.url(for: media), destination: destination, level: level) { p in
-                Task { @MainActor in model.busyProgress = p }
-            }
-            model.edit("Noise reduction") { project in
-                if let i = project.media.firstIndex(where: { $0.id == media.id }) {
-                    var names = project.media[i].denoisedFileNames ?? [:]
-                    names[level] = name
-                    project.media[i].denoisedFileNames = names
-                }
-                try project.updateClip(clip.id) { $0.noiseReduction = level }
-            }
+            let files = try await model.makeDenoisedFiles(missing, level: level)
+            model.edit("Noise reduction") { $0.setNoiseReduction(level, files: files) }
             model.showToast("Noise reduced (\(level.title))", systemImage: "waveform")
         }
+    }
+
+    /// DNS-7: while Denoise is on, videos added later are cleaned straight away.
+    func denoiseNewMedia() {
+        guard let level = project.noiseReduction else { return }
+        let missing = project.denoiseSources.filter { !hasCurrentDenoisedFile($0, level: level) }
+        guard !missing.isEmpty else { return }
+        runBusy("Reducing noise…") { model in
+            let files = try await model.makeDenoisedFiles(missing, level: level)
+            model.edit("Noise reduction") { $0.recordDenoisedFiles(files, level: level) }
+        }
+    }
+
+    /// A cleaned file for `level` exists and was made by the current rules (an older one, from
+    /// before the DNS-6 fix, is made again).
+    private func hasCurrentDenoisedFile(_ item: MediaItem, level: NoiseReduction) -> Bool {
+        guard resolver.denoisedURL(for: item, level: level) != nil, let name = item.denoisedFileNames?[level] else { return false }
+        return NoiseReducer.isCurrent(fileName: name)
+    }
+
+    /// Cleans each item's sound in turn; returns the new file names by media ID.
+    private func makeDenoisedFiles(_ items: [MediaItem], level: NoiseReduction) async throws -> [UUID: String] {
+        var files: [UUID: String] = [:]
+        for (done, item) in items.enumerated() {
+            let base = item.fileName.split(separator: ".").first.map(String.init) ?? "clip"
+            let name = NoiseReducer.fileName(level: level, base: base)
+            let destination = resolver.mediaDirectory.appendingPathComponent(name)
+            let count = Double(items.count)
+            try await NoiseReducer.process(source: resolver.url(for: item), destination: destination, level: level) { p in
+                Task { @MainActor in self.busyProgress = (Double(done) + p) / count }
+            }
+            files[item.id] = name
+        }
+        return files
     }
 
     /// Removes um, uh, ah… from the captions (text only; the video is not cut).
@@ -609,6 +656,7 @@ final class EditorModel {
             for item in items { p.appendClip(for: item) }
         }
         loadWaveforms()
+        denoiseNewMedia()
     }
 
     func addMusic(_ track: SampleMedia.Track) {
