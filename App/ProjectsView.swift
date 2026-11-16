@@ -46,16 +46,38 @@ struct ProjectsView: View {
     @State private var renaming: Project?
     @State private var newName = ""
 
-    private let columns = [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)]
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @State private var width: CGFloat = 0
+
+    /// LIB-2 on phones: 2 columns. LAY-6 on wide windows: as many 220 pt columns as fit.
+    private func columns(wide: Bool) -> [GridItem] {
+        wide ? [GridItem(.adaptive(minimum: 220), spacing: 14)]
+             : [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)]
+    }
 
     var body: some View {
         NavigationStack {
+            // Reading the width without a GeometryReader keeps the large title's scroll behaviour.
+            library(wide: sizeClass == .regular && width >= EditorView.wideMinWidth)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+            .background(Theme.background.ignoresSafeArea())
+            .navigationTitle("Cutline")
+            .alert("Rename project", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+                TextField("Name", text: $newName)
+                Button("Save") { if let p = renaming { app.rename(p, to: newName) }; renaming = nil }
+                Button("Cancel", role: .cancel) { renaming = nil }
+            }
+        }
+    }
+
+    private func library(wide: Bool) -> some View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     newProjectCard
+                        .frame(maxWidth: wide ? 720 : .infinity, alignment: .leading)
                     if !app.projects.isEmpty {
                         Text("Recent").font(.title3.weight(.bold))
-                        LazyVGrid(columns: columns, spacing: 14) {
+                        LazyVGrid(columns: columns(wide: wide), spacing: 14) {
                             ForEach(app.projects) { project in
                                 ProjectCard(project: project, thumbnail: app.store.thumbnailURL(for: project.id))
                                     .onTapGesture { onOpen(project) }
@@ -70,15 +92,10 @@ struct ProjectsView: View {
                     privacyNote
                 }
                 .padding(18)
+                // LAY-6: on wide windows the page stays a readable width, centred.
+                .frame(maxWidth: wide ? 1200 : .infinity)
+                .frame(maxWidth: .infinity)
             }
-            .background(Theme.background.ignoresSafeArea())
-            .navigationTitle("Cutline")
-            .alert("Rename project", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
-                TextField("Name", text: $newName)
-                Button("Save") { if let p = renaming { app.rename(p, to: newName) }; renaming = nil }
-                Button("Cancel", role: .cancel) { renaming = nil }
-            }
-        }
     }
 
     private var newProjectCard: some View {
@@ -109,7 +126,8 @@ struct ProjectsView: View {
     private var privacyNote: some View {
         HStack(spacing: 10) {
             Image(systemName: "lock.shield.fill").foregroundStyle(Theme.accent)
-            Text("Everything runs on your iPhone. No account, no uploads, no watermark.")
+            // LAY-8: the device's own word.
+            Text("Everything runs on your \(UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone"). No account, no uploads, no watermark.")
                 .font(.footnote).foregroundStyle(Theme.secondaryText)
         }
         .padding(.top, 8)

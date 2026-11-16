@@ -20,6 +20,8 @@ struct PanelContainer<Content: View>: View {
     var canUndo = true
     @ViewBuilder var content: Content
     @State private var dragOffset: CGFloat = 0
+    /// Wide layout (LAY-3): no grabber and no swipe-down; ✓ or Esc closes.
+    @Environment(\.inSidebar) private var inSidebar
 
     /// Distance (pt) or predicted distance that closes the panel when the finger lifts.
     static var closeDistance: CGFloat { 30 }
@@ -29,13 +31,15 @@ struct PanelContainer<Content: View>: View {
         VStack(spacing: 10) {
             PanelHeader(title: title, onDone: onDone, onUndo: onUndo, canUndo: canUndo)
                 .overlay(alignment: .top) {
-                    Capsule().fill(Theme.secondaryText.opacity(0.6))
-                        .frame(width: 36, height: 5)
-                        .padding(.top, 4)
-                        .accessibilityHidden(true)
+                    if !inSidebar {
+                        Capsule().fill(Theme.secondaryText.opacity(0.6))
+                            .frame(width: 36, height: 5)
+                            .padding(.top, 4)
+                            .accessibilityHidden(true)
+                    }
                 }
                 .contentShape(Rectangle())
-                .gesture(swipeDown, including: swipeAnywhere ? .none : .all)
+                .gesture(swipeDown, including: inSidebar ? .subviews : (swipeAnywhere ? .none : .all))
             content
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
@@ -44,7 +48,7 @@ struct PanelContainer<Content: View>: View {
         .background(Theme.surface)
         .contentShape(Rectangle())
         // Simultaneous, so buttons and horizontal sliders inside keep working.
-        .simultaneousGesture(swipeDown, including: swipeAnywhere ? .all : .none)
+        .simultaneousGesture(swipeDown, including: inSidebar ? .subviews : (swipeAnywhere ? .all : .none))
         .offset(y: dragOffset)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("panel.\(title)")

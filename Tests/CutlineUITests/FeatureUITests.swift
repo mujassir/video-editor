@@ -841,3 +841,77 @@ final class CaptionUITests: CutlineUITestCase {
         snapshot("14-captions")
     }
 }
+
+/// LAY-*: the wide layout on iPad. Runs only on an iPad simulator (CI's iPad step).
+final class TabletUITests: CutlineUITestCase {
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        guard UIDevice.current.userInterfaceIdiom == .pad else { throw XCTSkip("iPad only (LAY-*)") }
+        XCUIDevice.shared.orientation = .landscapeLeft
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+    }
+
+    override func tearDown() {
+        XCUIDevice.shared.orientation = .portrait
+        super.tearDown()
+    }
+
+    func testLAY1to3_WideLayoutSidebar() {
+        // LAY-6 / LAY-8: library on a wide window.
+        XCTAssertTrue(element("projects.new").waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Everything runs on your iPad. No account, no uploads, no watermark."].exists)
+        snapshot("lay-library")
+        openProjectWithSamples()
+        // LAY-2/3: the sidebar replaces the bottom toolbar.
+        XCTAssertTrue(element("editor.sidebar").waitForExistence(timeout: 5), "wide layout should show the sidebar")
+        XCTAssertFalse(element("toolbar").exists, "the phone toolbar is not used in the wide layout")
+        XCTAssertEqual(element("sidebar.title").label, "Project")
+        for id in ["tool.Music", "tool.Text", "tool.Intro", "tool.Outro"] { XCTAssertTrue(element(id).exists, "\(id) missing") }
+        snapshot("lay-editor-project")
+        // Selecting a clip switches the grid to its tools.
+        selectClip(0)
+        waitFor("clip heading") { ["Video Clip", "Photo"].contains(element("sidebar.title").label) }
+        // A panel opens in the sidebar, without a swipe-to-close grabber, and ✓ closes it.
+        tap("tool.Filters")
+        XCTAssertTrue(element("panel.Filters").waitForExistence(timeout: 5))
+        snapshot("lay-editor-filters")
+        let panel = element("panel.Filters")
+        let top = panel.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05))
+        top.press(forDuration: 0.05, thenDragTo: top.withOffset(CGVector(dx: 0, dy: 160)))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+        XCTAssertTrue(element("panel.Filters").exists, "no swipe-down to close in the sidebar (LAY-3)")
+        tap("panel.done")
+        waitFor("panel closed") { !element("panel.Filters").exists }
+        // LAY-1: rotating keeps the editor state (the clip stays selected).
+        XCUIDevice.shared.orientation = .portrait
+        RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+        XCTAssertTrue(element("tool.Filters").waitForExistence(timeout: 5), "selection survives a layout change")
+        snapshot("lay-editor-portrait")
+    }
+
+    func testLAY5_KeyboardShortcuts() {
+        openProjectWithSamples()
+        XCTAssertTrue(element("editor.sidebar").waitForExistence(timeout: 5))
+        let start = element("time.current").label
+        // ⇧→ steps forward one second.
+        app.typeKey(.rightArrow, modifierFlags: .shift)
+        waitFor("one second forward") { element("time.current").label != start }
+        XCTAssertEqual(element("time.current").label, "0:01.0")
+        // ⌘B splits at the playhead, ⌘Z undoes it.
+        let clips = count(prefix: "clip.")
+        app.typeKey("b", modifierFlags: .command)
+        waitFor("split") { count(prefix: "clip.") == clips + 1 }
+        app.typeKey("z", modifierFlags: .command)
+        waitFor("undo") { count(prefix: "clip.") == clips }
+        // Esc closes a panel.
+        tap("tool.Music")
+        XCTAssertTrue(element("panel.Music").waitForExistence(timeout: 5))
+        app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
+        waitFor("Esc closes the panel") { !element("panel.Music").exists }
+        // Space plays.
+        app.typeKey(" ", modifierFlags: [])
+        let t0 = element("time.current").label
+        waitFor("Space starts playback") { element("time.current").label != t0 }
+        app.typeKey(" ", modifierFlags: [])
+    }
+}

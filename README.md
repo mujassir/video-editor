@@ -1,10 +1,10 @@
 # Cutline
 
-A fast, private video editor for iPhone. It's built natively in Swift, SwiftUI, UIKit and Metal, and all AI features run **on the device**: no account, no uploads, no watermark (unless you add your own).
+A fast, private video editor for iPhone and iPad. It's built natively in Swift, SwiftUI, UIKit and Metal, and all AI features run **on the device**: no account, no uploads, no watermark (unless you add your own).
 
 > "Cutline" is a working name.
 
-- **Platform:** iOS 26+, iPhone 15 and newer (Mac is planned next).
+- **Platform:** iOS / iPadOS 26+, iPhone 15 and newer (portrait), and iPad in any orientation with a wide layout: preview beside a tools sidebar, plus keyboard shortcuts (`LAY-*`). Mac is planned as a separate app.
 - **Stack:**
   - Swift 6 with strict concurrency.
   - SwiftUI screens plus a UIKit timeline.
@@ -104,7 +104,7 @@ cd video-editor
 open Cutline.xcodeproj
 ```
 
-Choose the **Cutline** scheme and an iPhone simulator or your iPhone, then Run (⌘R).
+Choose the **Cutline** scheme and an iPhone or iPad simulator (or your device), then Run (⌘R).
 - **Signing:** the team is set in `project.yml` (`DEVELOPMENT_TEAM`) and in the committed project. To use your own, change it under *Signing & Capabilities* for the **Cutline** target, and change the bundle ID if needed.
 
 ### Regenerating the Xcode project
@@ -156,7 +156,7 @@ AI agents start from [AGENTS.md](AGENTS.md).
 
 ## Tests and CI
 
-GitHub Actions (`.github/workflows/ios.yml`) builds the app and runs every test on an iPhone 17 Pro simulator, for every push:
+GitHub Actions (`.github/workflows/ios.yml`) builds the app and runs every test on an iPhone 17 Pro simulator, and the iPad layout tests (`TabletUITests`) on an iPad simulator, for every push:
 
 - **100 unit tests:**
   - Editing rules, timing and layout.

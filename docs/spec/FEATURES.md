@@ -97,10 +97,10 @@ The editor has two layouts. Which one is used depends on the **width of the app'
   1. **Top bar:** the same as `EDT`.
   2. **Middle row:**
      - On the left, the **preview** with the **transport** under it, taking the remaining width.
-     - On the right, the **sidebar** (`LAY-3`): `clamp(0.3 × window width, 340, 420) pt` wide, the full height of the row, raised surface colour, with a hairline border on its left.
+     - On the right, the **sidebar** (`LAY-3`): `clamp(0.3 × window width, 340, 420) pt` wide, the full height of the row, surface colour, with a hairline border on its left. Tool tiles inside it use the raised surface colour.
   3. **Timeline:** full window width under the middle row. It's the same timeline (`TML-*`), with a taller lane area: height `min(320, 170 + lanes × 38) pt`.
 - **LAY-3 Sidebar:** replaces the bottom area of the phone layout.
-  - **No panel open:** a heading naming the selection, then that selection's tools as a **grid of 3 columns**. The heading is one of Project, Video Clip, Photo, Text, Music or Captions. The grid has the **same tools, order, names, highlights and visibility rules** as the phone toolbar (`TBR-*`).
+  - **No panel open:** a heading naming the selection, then that selection's tools as a **grid of 3 columns**. The heading is one of Project, Video Clip, Photo, Text, Music, Audio (a voiceover or other non-music audio) or Captions. The grid has the **same tools, order, names, highlights and visibility rules** as the phone toolbar (`TBR-*`).
   - **A panel open:** the panel fills the sidebar from the top and scrolls vertically if it's taller. It has the same title, ✓, Undo and contents as on the phone.
   - **No swipe-down:** there's no grabber and no swipe-down to close (`EDT-1` applies to the phone layout only). ✓, Esc on a keyboard, or picking another tool closes it.
   - **Full-screen screens stay full screen:** Export and the caption text editor are centred, at most `720 pt` wide (`LAY-6`).
@@ -121,7 +121,7 @@ The editor has two layouts. Which one is used depends on the **width of the app'
   | Esc | Close the open panel; with no panel, clear the selection |
   | ⌘E | Export (only when the Export button is shown) |
 - **LAY-6 Other screens on wide windows:**
-  - **Library:** the "Recent" grid uses as many columns as fit at least `220 pt` each, with a `14 pt` gap, and keeps cards at their phone size. The New Project card is at most `720 pt` wide, and the content is centred.
+  - **Library:** the "Recent" grid uses as many columns as fit at least `220 pt` each, with a `14 pt` gap, and keeps cards at their phone size. The New Project card is at most `720 pt` wide, and the page content is at most `1200 pt` wide, centred.
   - **Export** and the **caption text editor** are centred, at most `720 pt` wide.
 - **LAY-7 Pointer:** with a mouse or trackpad, buttons, chips and tool tiles show the platform's standard hover highlight.
 - **LAY-8 Device word:** the library's privacy note (`LIB-5`) uses the device's own word: "iPhone" or "iPad".

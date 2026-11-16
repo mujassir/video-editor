@@ -13,20 +13,21 @@ struct EditorView: View {
     @State private var showPicker = false
     @State private var showExport = false
     @State private var showAddMenu = false
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    /// LAY-1: the wide layout needs a regular-width window at least this wide (pt).
+    static let wideMinWidth: CGFloat = 840
 
     var body: some View {
-        VStack(spacing: 0) {
-            topBar
-            PreviewView(model: model, onAddMedia: addMedia)
-                .padding(.horizontal, 8)
-                .frame(minHeight: 150, maxHeight: .infinity)
-            transport
-            TimelineRepresentable(model: model, onAddMedia: addMedia)
-                .frame(height: timelineHeight)
-            bottomArea
-                .layoutPriority(1)
+        GeometryReader { geo in
+            if sizeClass == .regular && geo.size.width >= Self.wideMinWidth {
+                wideLayout(width: geo.size.width)
+            } else {
+                phoneLayout
+            }
         }
         .background(Theme.background.ignoresSafeArea())
+        .background { EditorShortcuts(model: model, onExport: openExport) }
         .overlay(alignment: .top) {
             if let toast = model.toast {
                 ToastView(toast: toast).padding(.top, 56).transition(.move(edge: .top).combined(with: .opacity))
@@ -78,19 +79,107 @@ struct EditorView: View {
             }
         }
         .fullScreenCover(isPresented: $showExport) {
-            ExportView(model: model)
+            ExportView(model: model).centeredOnWideScreens()
         }
         .fullScreenCover(isPresented: Binding(get: { model.panel == .captionText },
                                               set: { if !$0, model.panel == .captionText { model.panel = nil } })) {
-            CaptionTextEditor(model: model)
+            CaptionTextEditor(model: model).centeredOnWideScreens()
         }
         .preferredColorScheme(.dark)
         .statusBarHidden(false)
     }
 
-    private var timelineHeight: CGFloat {
-        let lanes = (model.project.audioClips.map(\.lane).max() ?? 0) + 1
-        return min(250, 150 + CGFloat(lanes) * 34)
+    // MARK: Layouts (LAY-1…3)
+
+    /// Phone layout (EDT): preview, transport, timeline, then the toolbar or the open panel.
+    private var phoneLayout: some View {
+        VStack(spacing: 0) {
+            topBar
+            PreviewView(model: model, onAddMedia: addMedia)
+                .padding(.horizontal, 8)
+                .frame(minHeight: 150, maxHeight: .infinity)
+            transport
+            TimelineRepresentable(model: model, onAddMedia: addMedia)
+                .frame(height: timelineHeight)
+            bottomArea
+                .layoutPriority(1)
+        }
+    }
+
+    /// Wide layout (LAY-2): preview and transport beside the sidebar, the timeline full width below.
+    private func wideLayout(width: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            topBar
+            HStack(spacing: 0) {
+                VStack(spacing: 0) {
+                    PreviewView(model: model, onAddMedia: addMedia)
+                        .padding(8)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    transport
+                }
+                sidebar
+                    .frame(width: min(420, max(340, width * 0.3)))
+            }
+            TimelineRepresentable(model: model, onAddMedia: addMedia)
+                .frame(height: wideTimelineHeight)
+        }
+    }
+
+    private var laneCount: Int { (model.project.audioClips.map(\.lane).max() ?? 0) + 1 }
+
+    private var timelineHeight: CGFloat { min(250, 150 + CGFloat(laneCount) * 34) }
+
+    private var wideTimelineHeight: CGFloat { min(320, 170 + CGFloat(laneCount) * 38) }
+
+    /// LAY-3: the selection's tools as a grid, or the open panel (no grabber, no swipe-down).
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let panel = model.panel, panel != .captionText, panel != .export {
+                ScrollView {
+                    panelView(panel)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .transition(.opacity)
+            } else {
+                Text(sidebarTitle)
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 10)
+                    .accessibilityIdentifier("sidebar.title")
+                ScrollView {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+                        currentTools
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 12)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Theme.surface)
+        .overlay(alignment: .leading) { Rectangle().fill(Color.white.opacity(0.08)).frame(width: 1) }
+        .environment(\.inSidebar, true)
+        .animation(.easeOut(duration: 0.2), value: model.panel)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("editor.sidebar")
+    }
+
+    /// The sidebar heading: what the tools act on.
+    private var sidebarTitle: String {
+        switch model.session.selection {
+        case .none: return "Project"
+        case .clip: return model.selectedClip?.isStill == true ? "Photo" : "Video Clip"
+        case .text: return "Text"
+        case .audio: return model.selectedAudio?.role == .music ? "Music" : "Audio"
+        case .captions: return "Captions"
+        }
+    }
+
+    private func openExport() {
+        guard model.duration > .zero else { return }
+        model.pause()
+        showExport = true
     }
 
     /// The timeline "+" and the empty preview open the Photos library directly (IMP-1, PRV-7). UI tests and demos
@@ -135,8 +224,7 @@ struct EditorView: View {
             // Hidden while there's nothing to export (the edit has no length yet).
             if model.duration > .zero {
                 Button {
-                    model.pause()
-                    showExport = true
+                    openExport()
                 } label: {
                     Text("Export").font(.subheadline.weight(.bold))
                         .padding(.horizontal, 16).frame(height: 34)
@@ -235,16 +323,21 @@ struct EditorView: View {
         }
     }
 
+    /// The tools for the current selection: one list for the phone toolbar and the wide sidebar grid.
+    @ViewBuilder private var currentTools: some View {
+        switch model.session.selection {
+        case .clip: clipTools
+        case .text(let id): textTools(id)
+        case .audio: audioTools
+        case .captions: captionTools
+        case .none: mainTools
+        }
+    }
+
     private var toolbar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
-                switch model.session.selection {
-                case .clip: clipTools
-                case .text(let id): textTools(id)
-                case .audio: audioTools
-                case .captions: captionTools
-                case .none: mainTools
-                }
+                currentTools
             }
             .padding(.horizontal, 10)
         }
@@ -353,6 +446,69 @@ struct EditorView: View {
         ToolButton(title: "Style", systemImage: "paintbrush") { model.panel = .captions }
         ToolButton(title: "Fillers", systemImage: "text.badge.minus") { model.removeCaptionFillers() }
         ToolButton(title: "Delete", systemImage: "trash") { model.deleteSelection() }
+    }
+}
+
+// MARK: - Wide screens and keyboard (LAY-5, LAY-6)
+
+extension View {
+    /// Full-screen sheets (Export, caption editor) stay at most 720 pt wide, centred (LAY-6).
+    func centeredOnWideScreens() -> some View {
+        frame(maxWidth: 720)
+            .frame(maxWidth: .infinity)
+            .background(Theme.background.ignoresSafeArea())
+    }
+}
+
+/// LAY-5: hardware-keyboard shortcuts. Invisible buttons, so they also show in the system's
+/// shortcut overlay. Keys without a modifier (and undo / redo) are off while a panel with a text
+/// field is open, so typing never triggers them.
+struct EditorShortcuts: View {
+    @Bindable var model: EditorModel
+    let onExport: () -> Void
+
+    private var typing: Bool {
+        switch model.panel {
+        case .text, .captionText, .watermark, .titleCard: return true
+        default: return false
+        }
+    }
+
+    private static let frame = MediaTime(seconds: 1.0 / 30)
+    private static let second = MediaTime(seconds: 1)
+
+    var body: some View {
+        ZStack {
+            shortcut("Play / Pause", .space, [], enabled: !typing) { model.togglePlay() }
+            shortcut("Previous Frame", .leftArrow, [], enabled: !typing) { step(by: .zero - Self.frame) }
+            shortcut("Next Frame", .rightArrow, [], enabled: !typing) { step(by: Self.frame) }
+            shortcut("Back 1 Second", .leftArrow, .shift, enabled: !typing) { step(by: .zero - Self.second) }
+            shortcut("Forward 1 Second", .rightArrow, .shift, enabled: !typing) { step(by: Self.second) }
+            shortcut("Undo", "z", .command, enabled: !typing && model.session.canUndo) { model.undo() }
+            shortcut("Redo", "z", [.command, .shift], enabled: !typing && model.session.canRedo) { model.redo() }
+            shortcut("Split", "b", .command, enabled: model.duration > .zero) { model.split() }
+            shortcut("Delete", .delete, [], enabled: !typing && model.session.selection != .none) { model.deleteSelection() }
+            shortcut("Close", .escape, [], enabled: model.panel != nil || model.session.selection != .none) {
+                if model.panel != nil { model.panel = nil } else { model.select(.none) }
+            }
+            shortcut("Export", "e", .command, enabled: model.duration > .zero) { onExport() }
+        }
+        .frame(width: 0, height: 0)
+        .opacity(0)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private func step(by delta: MediaTime) {
+        model.pause()
+        model.seek(to: model.currentTime + delta)
+    }
+
+    private func shortcut(_ title: String, _ key: KeyEquivalent, _ modifiers: EventModifiers,
+                          enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(title, action: action)
+            .keyboardShortcut(key, modifiers: modifiers)
+            .disabled(!enabled)
     }
 }
 
