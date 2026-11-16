@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "Cutline"
-include(":core")
+include(":core", ":engine", ":app")
