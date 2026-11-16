@@ -35,12 +35,12 @@ class Exporter(private val context: Context, private val builder: CompositionBui
     private var transformer: Transformer? = null
     private val main = Handler(Looper.getMainLooper())
 
-    fun start(project: Project, resolution: ResolutionChoice, onState: (State) -> Unit) {
-        val built = builder.build(project, resolution.resolution.shortEdge, preview = false)
+    fun start(project: Project, resolution: ExportResolution, fps: Int, wantHevc: Boolean, onState: (State) -> Unit) {
+        val built = builder.build(project.copy(frameRate = fps), resolution.shortEdge, preview = false)
         val dir = Files.createTempDirectory(context.cacheDir.toPath(), "export").toFile()
         val out = File(dir, fileName(project.name))
-        val hevc = supportsHevc()
-        val bitrate = targetBitrate(resolution.resolution, project.frameRate, hevc)
+        val hevc = wantHevc && supportsHevc()
+        val bitrate = targetBitrate(resolution, fps, hevc)
         val encoder = DefaultEncoderFactory.Builder(context)
             .setRequestedVideoEncoderSettings(VideoEncoderSettings.Builder().setBitrate(bitrate.toInt()).build())
             .build()
@@ -78,8 +78,6 @@ class Exporter(private val context: Context, private val builder: CompositionBui
         transformer = null
     }
 
-    data class ResolutionChoice(val resolution: ExportResolution)
-
     companion object {
         /** `<project name>.mp4` without / \ : ? % * | " < >, trimmed; "Cutline Video" when empty. */
         fun fileName(name: String): String {
@@ -92,8 +90,8 @@ class Exporter(private val context: Context, private val builder: CompositionBui
         fun targetBitrate(r: ExportResolution, fps: Int, hevc: Boolean) = r.baseBitsPerSecond * fpsFactor(fps) * (if (hevc) 0.55 else 1.0)
 
         /** EXP estimate: (base × fps × codec + 256 000) × seconds ÷ 8 bytes. */
-        fun estimatedBytes(project: Project, r: ExportResolution, hevc: Boolean): Long =
-            ((targetBitrate(r, project.frameRate, hevc) + 256_000) * project.duration.seconds / 8).toLong()
+        fun estimatedBytes(project: Project, r: ExportResolution, fps: Int, hevc: Boolean): Long =
+            ((targetBitrate(r, fps, hevc) + 256_000) * project.duration.seconds / 8).toLong()
 
         fun supportsHevc(): Boolean = runCatching {
             MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.any { info ->

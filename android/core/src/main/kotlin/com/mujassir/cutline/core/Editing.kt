@@ -659,3 +659,36 @@ fun Project.removingCaptionFillers(): Pair<Project, Int> {
     val (track, n) = captions.removingFillers()
     return copy(captions = track) to n
 }
+
+// MARK: - Captions (CAP-2, CAP-5)
+
+/** CAP-5: edited text split on whitespace; each word gets an equal share of the caption's original range. */
+fun retimeCaption(text: String, like: CaptionSegment): List<CaptionWord> {
+    val words = text.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+    if (words.isEmpty()) return emptyList()
+    val r = like.range
+    val share = r.duration.ticks / words.size
+    return words.mapIndexed { i, w ->
+        val start = MediaTime(r.start.ticks + share * i)
+        val end = if (i == words.lastIndex) r.end else MediaTime(r.start.ticks + share * (i + 1))
+        CaptionWord(w, MediaTimeRange.of(start, end))
+    }
+}
+
+/**
+ * CAP-2: groups words into captions; a new one starts at 5 words, past 2.6 s, after a pause over
+ * 0.55 s, or after a word ending in . ! ?
+ */
+fun groupCaptions(words: List<CaptionWord>): List<CaptionSegment> {
+    val out = ArrayList<CaptionSegment>()
+    var current = ArrayList<CaptionWord>()
+    for (w in words) {
+        val last = current.lastOrNull()
+        val split = last != null && (current.size >= 5 || (w.range.end - current.first().range.start) > MediaTime.seconds(2.6) ||
+            (w.range.start - last.range.end) > MediaTime.seconds(0.55) || last.text.trimEnd().lastOrNull() in setOf('.', '!', '?'))
+        if (split) { out += CaptionSegment(words = current); current = ArrayList() }
+        current += w
+    }
+    if (current.isNotEmpty()) out += CaptionSegment(words = current)
+    return out
+}
