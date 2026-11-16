@@ -903,15 +903,12 @@ final class TabletUITests: CutlineUITestCase {
         waitFor("split") { count(prefix: "clip.") == clips + 1 }
         app.typeKey("z", modifierFlags: .command)
         waitFor("undo") { count(prefix: "clip.") == clips }
-        // Esc closes a panel.
-        tap("tool.Music")
-        XCTAssertTrue(element("panel.Music").waitForExistence(timeout: 5))
-        app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
-        waitFor("Esc closes the panel") { !element("panel.Music").exists }
-        // Space plays.
-        app.typeKey(" ", modifierFlags: [])
-        let t0 = element("time.current").label
-        waitFor("Space starts playback") { element("time.current").label != t0 }
-        app.typeKey(" ", modifierFlags: [])
+        // ⌘E opens Export.
+        app.typeKey("e", modifierFlags: .command)
+        XCTAssertTrue(element("export.start").waitForExistence(timeout: 5), "⌘E opens Export")
+        tap("export.close")
+        // Space, Esc, plain arrows and Delete aren't tested here: XCUITest's typeKey with no
+        // modifier never reaches the app as a hardware key (it needs a focused text field).
+        // Check those by hand on an iPad with a keyboard.
     }
 }
