@@ -898,8 +898,8 @@ struct StartHereTests {
     }
 }
 
-@Suite("TML-13 Reorder menu")
-struct ReorderMenuTests {
+@Suite("TML-13 Drag to reorder")
+struct DragReorderTests {
     private func withSlides(_ lengths: [Double]) -> Project {
         var p = makeProject(lengths)
         let img = MediaItem(kind: .photo, fileName: "card.png", naturalSize: CGSize(width: 1080, height: 1080),
@@ -909,48 +909,51 @@ struct ReorderMenuTests {
         return p
     }
 
-    @Test func TML13_movesStepAndToEnds() throws {
-        var p = makeProject([1, 2, 3])
-        let ids = p.clips.map(\.id)
-        #expect(try p.moveClip(ids[0], .right) == 1)
-        #expect(p.clips.map(\.id) == [ids[1], ids[0], ids[2]])
-        #expect(try p.moveClip(ids[2], .toStart) == 0)
-        #expect(p.clips.map(\.id) == [ids[2], ids[1], ids[0]])
-        #expect(try p.moveClip(ids[2], .toEnd) == 2)
-        #expect(try p.moveClip(ids[2], .left) == 1)
-        #expect(p.clips.map(\.id) == [ids[1], ids[2], ids[0]])
+    @Test func TML13_stripGeometry() {
+        #expect(ReorderStrip.pitch == 58)
+        #expect(ReorderStrip.tileX(3) == 174)
+        #expect(ReorderStrip.width(count: 4) == 226)
+        #expect(ReorderStrip.width(count: 0) == 0)
     }
 
-    @Test func TML13_impossibleMovesAreDisabled() {
-        let p = makeProject([1, 2])
-        #expect(p.targetIndex(of: p.clips[0].id, .toStart) == nil)
-        #expect(p.targetIndex(of: p.clips[0].id, .left) == nil)
-        #expect(p.targetIndex(of: p.clips[1].id, .right) == nil)
-        #expect(p.targetIndex(of: p.clips[1].id, .toEnd) == nil)
-        let single = makeProject([1])
-        #expect(ClipMove.allCases.allSatisfy { single.targetIndex(of: single.clips[0].id, $0) == nil })
+    @Test func TML13_slotFromTileCentre() {
+        let all = 0..<5
+        #expect(ReorderStrip.slot(centreX: 26, movable: all) == 0)        // centre of tile 0
+        #expect(ReorderStrip.slot(centreX: 26 + 28, movable: all) == 0)   // just under half a pitch
+        #expect(ReorderStrip.slot(centreX: 26 + 30, movable: all) == 1)
+        #expect(ReorderStrip.slot(centreX: 26 + 58 * 3, movable: all) == 3)
+        #expect(ReorderStrip.slot(centreX: -500, movable: all) == 0)
+        #expect(ReorderStrip.slot(centreX: 5000, movable: all) == 4)
+        // Slides at both ends: nothing lands before slot 1 or after slot 3.
+        #expect(ReorderStrip.slot(centreX: 0, movable: 1..<4) == 1)
+        #expect(ReorderStrip.slot(centreX: 5000, movable: 1..<4) == 3)
     }
 
-    @Test func TML13_slidesStayFirstAndLast() throws {
-        var p = withSlides([1, 2, 3])
+    @Test func TML13_slidesCantBeDragged() {
+        let p = withSlides([1, 2, 3])
         #expect(p.movableClipIndices == 1..<4)
-        let opening = p.clips[0].id, closing = p.clips[4].id
-        #expect(ClipMove.allCases.allSatisfy { p.targetIndex(of: opening, $0) == nil })
-        #expect(ClipMove.allCases.allSatisfy { p.targetIndex(of: closing, $0) == nil })
-        #expect(throws: EditError.invalidMove) { try p.moveClip(opening, .right) }
-        let middle = p.clips[2].id
-        #expect(try p.moveClip(middle, .toStart) == 1)
-        #expect(try p.moveClip(middle, .toEnd) == 3)
+        #expect(!p.canReorder(p.clips[0].id))
+        #expect(!p.canReorder(p.clips[4].id))
+        #expect(p.canReorder(p.clips[2].id))
+        let single = makeProject([1])
+        #expect(!single.canReorder(single.clips[0].id))
+        #expect(withSlides([1]).movableClipIndices.count == 1)
+    }
+
+    @Test func TML13_dropKeepsSlidesAtTheEnds() throws {
+        var p = withSlides([1, 2, 3])
+        let opening = p.clips[0].id, closing = p.clips[4].id, moved = p.clips[1].id
+        let slot = ReorderStrip.slot(centreX: 5000, movable: p.movableClipIndices)
+        try p.moveClip(moved, to: slot)
+        #expect(p.clips[3].id == moved)
         #expect(p.clips.first?.id == opening && p.clips.last?.id == closing)
-        #expect(p.targetIndex(of: p.clips[1].id, .left) == nil)
-        #expect(p.targetIndex(of: p.clips[3].id, .right) == nil)
     }
 
     @Test func TML13_lastClipLosesTransition() throws {
         var p = makeProject([2, 2, 2])
         p.clips[0].transitionOut = Transition(kind: .fade, duration: s(0.5))
         let id = p.clips[0].id
-        try p.moveClip(id, .toEnd)
+        try p.moveClip(id, to: 2)
         #expect(p.clips.last?.id == id)
         #expect(p.clips.last?.transitionOut == nil)
     }

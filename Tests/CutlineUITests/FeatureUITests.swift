@@ -584,21 +584,18 @@ final class FeatureUITests: CutlineUITestCase {
         XCTAssertEqual(toastText, "Voice on")
     }
 
-    func test31_TML13_ReorderMenu() {
+    func test31_TML13_DragToReorder() {
         openProjectWithSamples()
-        // Press and hold the first clip (under the centre playhead) to open the menu.
+        // Hold the first clip (under the centre playhead): the main track turns into a thumbnail
+        // strip with that tile under the finger. Dragging ~2 tiles (58 pt each) right lands it last.
         let timeline = element("timeline")
-        let point = timeline.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: timeline.frame.width / 2 + 4, dy: 50))
-        point.press(forDuration: 1.0)
-        let right = app.buttons["Move Right"]
-        XCTAssertTrue(right.waitForExistence(timeout: 5), "reorder menu should open")
-        XCTAssertTrue(app.buttons["Move Left"].exists)
-        XCTAssertTrue(app.buttons["Move to End"].exists)
-        XCTAssertFalse(app.buttons["Move to Start"].isEnabled, "first clip can't move to the start")
-        snapshot("31-reorder-menu")
-        right.tap()
-        XCTAssertEqual(toastText, "Moved to position 2 of 3")
+        let start = timeline.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: timeline.frame.width / 2 + 4, dy: 50))
+        start.press(forDuration: 0.6, thenDragTo: start.withOffset(CGVector(dx: 130, dy: 0)),
+                    withVelocity: .slow, thenHoldForDuration: 0.5)
+        XCTAssertEqual(toastText, "Moved to position 3 of 3")
         XCTAssertEqual(count(prefix: "clip."), 3)
+        waitFor("strip closed") { !element("reorder.lifted").exists }
+        snapshot("31-drag-reorder")
     }
 
     /// DNS-1: Denoise is one setting for the whole video, in the main toolbar.

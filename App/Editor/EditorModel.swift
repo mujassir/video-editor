@@ -341,13 +341,16 @@ final class EditorModel {
         edit("Duplicate") { try $0.duplicateClip(id) }
     }
 
-    /// Reorder menu on the timeline (TML-13). One undo step; the moved clip is selected.
-    func moveClip(_ id: UUID, _ move: ClipMove) {
-        guard let target = project.targetIndex(of: id, move) else { return }
-        edit(move.title) { try $0.moveClip(id, move) }
+    /// Drag-to-reorder drop on the timeline (TML-13). One undo step; the moved clip is
+    /// selected and the playhead goes to its start.
+    func dropClip(_ id: UUID, to index: Int) {
+        guard project.canReorder(id), project.clipIndex(id) != index else { return }
+        pause()
+        edit("Move clip") { try $0.moveClip(id, to: index) }
         session.selection = .clip(id)
+        if let entry = project.layout.entry(for: id) { seek(to: entry.range.start) }
         let range = project.movableClipIndices
-        showToast("Moved to position \(target - range.lowerBound + 1) of \(range.count)", systemImage: move.systemImage)
+        showToast("Moved to position \(index - range.lowerBound + 1) of \(range.count)", systemImage: "arrow.left.and.right")
     }
 
     func freezeFrame() {

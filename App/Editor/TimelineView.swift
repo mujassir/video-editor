@@ -25,8 +25,13 @@ final class TimelineUIView: UIView, UIScrollViewDelegate, UIGestureRecognizerDel
     var onAddMedia: (() -> Void)?
     /// A music / audio bar was dragged to a new timeline start.
     var onAudioMove: ((UUID, MediaTime) -> Void)?
-    /// A main-track clip was moved from the press-and-hold menu (TML-13).
-    var onClipMove: ((UUID, ClipMove) -> Void)?
+    /// A main-track clip was dragged and dropped at a new index (TML-13).
+    var onClipDrop: ((UUID, Int) -> Void)?
+    fileprivate var reorderHold: UILongPressGestureRecognizer!
+    fileprivate let reorderBand = UIView()
+    fileprivate let reorderStrip = UIView()
+    fileprivate var reorder: ReorderState?
+    fileprivate var autoScrollLink: CADisplayLink?
     private var audioDragOrigin: CGFloat = 0
 
     private let scrollView = TimelineScrollView()
@@ -92,7 +97,17 @@ final class TimelineUIView: UIView, UIScrollViewDelegate, UIGestureRecognizerDel
         scrollView.addGestureRecognizer(tap)
         let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
         addGestureRecognizer(pinch)
-        content.addInteraction(UIContextMenuInteraction(delegate: self))
+        // Press and hold a clip, then drag, to reorder it in a thumbnail strip (TML-13).
+        reorderHold = UILongPressGestureRecognizer(target: self, action: #selector(handleReorder(_:)))
+        reorderHold.minimumPressDuration = 0.3
+        reorderHold.delegate = self
+        scrollView.addGestureRecognizer(reorderHold)
+        tap.require(toFail: reorderHold)
+        reorderBand.backgroundColor = UIColor(Theme.background)
+        reorderBand.isHidden = true
+        reorderBand.accessibilityIdentifier = "reorder.strip"
+        reorderBand.addSubview(reorderStrip)
+        addSubview(reorderBand)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -366,47 +381,224 @@ final class TimelineUIView: UIView, UIScrollViewDelegate, UIGestureRecognizerDel
     }
 }
 
-// MARK: - Reorder menu (TML-13)
+// MARK: - Drag to reorder (TML-13)
 
-extension TimelineUIView: UIContextMenuInteractionDelegate {
-    /// The movable main-track clip under `point` (content coordinates); slides have no menu.
-    private func movableClip(at point: CGPoint) -> VideoClip? {
+/// One drag in the thumbnail strip. `slot` is the landing index after removing the clip.
+fileprivate final class ReorderState {
+    let clipID: UUID
+    let originalIndex: Int
+    let movable: Range<Int>
+    let count: Int
+    var others: [UUID]                 // every other clip, in project order
+    var tiles: [UUID: UIView] = [:]
+    var lifted: UIView!
+    var stripStart: CGFloat = 0        // strip's left edge, in the timeline view
+    var fingerX: CGFloat = 0
+    var slot: Int
+
+    init(clipID: UUID, project: Project) {
+        self.clipID = clipID
+        originalIndex = project.clipIndex(clipID) ?? 0
+        movable = project.movableClipIndices
+        count = project.clips.count
+        others = project.clips.map(\.id).filter { $0 != clipID }
+        slot = originalIndex
+    }
+}
+
+extension TimelineUIView {
+    static let autoScrollEdge: CGFloat = 60
+    static let autoScrollMaxSpeed: CGFloat = 600   // pt/s
+    private static let tile = CGFloat(ReorderStrip.tileSize)
+    private static let liftScale: CGFloat = 1.25
+
+    /// The draggable main-track clip under `point` (content coordinates); slides can't be dragged.
+    fileprivate func movableClip(at point: CGPoint) -> VideoClip? {
         guard let project, let layout, point.y >= Layout.mainTop, point.y <= Layout.mainTop + Layout.mainHeight,
               let entry = layout.entry(at: MediaTime(seconds: Double(point.x / pointsPerSecond))) else { return nil }
         let clip = project.clips[entry.index]
-        guard clip.titleCard == nil, project.movableClipIndices.count > 1 else { return nil }
-        return clip
+        return project.canReorder(clip.id) ? clip : nil
     }
 
-    func contextMenuInteraction(_ interaction: UIContextMenuInteraction,
-                                configurationForMenuAtLocation location: CGPoint) -> UIContextMenuConfiguration? {
-        guard let clip = movableClip(at: location), let project else { return nil }
-        let id = clip.id
-        return UIContextMenuConfiguration(identifier: id.uuidString as NSString, previewProvider: nil) { [weak self] _ in
-            let actions = ClipMove.allCases.map { move in
-                let action = UIAction(title: move.title, image: UIImage(systemName: move.systemImage)) { _ in
-                    self?.onClipMove?(id, move)
-                }
-                action.accessibilityIdentifier = "clipMove.\(move.rawValue)"
-                if project.targetIndex(of: id, move) == nil { action.attributes = .disabled }
-                return action
-            }
-            return UIMenu(children: actions)
+    override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+        if g === reorderHold { return movableClip(at: g.location(in: content)) != nil }
+        return super.gestureRecognizerShouldBegin(g)
+    }
+
+    @objc fileprivate func handleReorder(_ g: UILongPressGestureRecognizer) {
+        let x = g.location(in: self).x
+        switch g.state {
+        case .began:
+            guard let clip = movableClip(at: g.location(in: content)) else { return }
+            scrollView.isDraggingItem = true
+            scrollView.panGestureRecognizer.isEnabled = false   // cancel any pan that already started
+            scrollView.panGestureRecognizer.isEnabled = true
+            beginReorder(clip, fingerX: x)
+        case .changed:
+            reorder?.fingerX = x
+            updateReorder()
+            updateAutoScroll()
+        case .ended:
+            endReorder(commit: true)
+        default:
+            endReorder(commit: false)
         }
     }
 
-    func contextMenuInteraction(_ interaction: UIContextMenuInteraction,
-                                previewForHighlightingMenuWithConfiguration configuration: UIContextMenuConfiguration) -> UITargetedPreview? {
-        guard let idString = configuration.identifier as? String, let id = UUID(uuidString: idString),
-              let view = clipViews[id], view.window != nil else { return nil }
-        let params = UIPreviewParameters()
-        params.visiblePath = UIBezierPath(roundedRect: view.bounds, cornerRadius: 6)
-        return UITargetedPreview(view: view, parameters: params)
+    private func makeTile(for clip: VideoClip, project: Project) -> UIView {
+        let t = Self.tile
+        let wrapper = UIView(frame: CGRect(x: 0, y: 0, width: t, height: t))
+        wrapper.layer.shadowColor = UIColor.black.cgColor
+        wrapper.layer.shadowOpacity = 0
+        wrapper.layer.shadowRadius = 8
+        wrapper.layer.shadowOffset = CGSize(width: 0, height: 4)
+        let image = UIImageView(frame: wrapper.bounds)
+        image.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        image.contentMode = .scaleAspectFill
+        image.clipsToBounds = true
+        image.layer.cornerRadius = 8
+        image.layer.borderColor = UIColor.white.withAlphaComponent(0.25).cgColor
+        image.layer.borderWidth = 1
+        image.backgroundColor = UIColor(Theme.clipVideo).withAlphaComponent(0.35)
+        if let cg = clipViews[clip.id]?.representativeImage { image.image = UIImage(cgImage: cg) }
+        wrapper.addSubview(image)
+        if clip.titleCard != nil { wrapper.alpha = 0.5 }
+        // A sharper frame from the middle of the clip (the timeline's filmstrip is small).
+        if let media = project.mediaItem(clip.mediaID), let resolver, let thumbnails {
+            let url = resolver.url(for: media)
+            if media.kind == .photo {
+                if let cg = MediaImporter.loadImage(url, maxPixelSize: 320) { image.image = UIImage(cgImage: cg) }
+            } else {
+                let mid = clip.sourceTime(atClipTime: MediaTime(seconds: clip.timelineDuration.seconds / 2))
+                Task { @MainActor [weak image] in
+                    let images = await thumbnails.thumbnails(url, times: [mid], height: 320)
+                    if let cg = images[mid] { image?.image = UIImage(cgImage: cg) }
+                }
+            }
+        }
+        return wrapper
     }
 
-    func contextMenuInteraction(_ interaction: UIContextMenuInteraction,
-                                previewForDismissingMenuWithConfiguration configuration: UIContextMenuConfiguration) -> UITargetedPreview? {
-        self.contextMenuInteraction(interaction, previewForHighlightingMenuWithConfiguration: configuration)
+    private var bandMidY: CGFloat { reorderBand.bounds.midY }
+
+    private func clampedStripStart(_ start: CGFloat, count: Int) -> CGFloat {
+        let width = CGFloat(ReorderStrip.width(count: count))
+        return min(bounds.width / 2, max(bounds.width / 2 - width, start))
+    }
+
+    private func beginReorder(_ clip: VideoClip, fingerX: CGFloat) {
+        guard let project else { return }
+        let state = ReorderState(clipID: clip.id, project: project)
+        reorder = state
+        reorderBand.frame = CGRect(x: 0, y: Layout.mainTop - 8, width: bounds.width, height: Layout.mainHeight + 16)
+        reorderBand.isHidden = false
+        reorderStrip.subviews.forEach { $0.removeFromSuperview() }
+        reorderBand.subviews.filter { $0 !== reorderStrip }.forEach { $0.removeFromSuperview() }
+        for c in project.clips {
+            let tile = makeTile(for: c, project: project)
+            if c.id == clip.id {
+                tile.accessibilityIdentifier = "reorder.lifted"
+                state.lifted = tile
+            } else {
+                state.tiles[c.id] = tile
+                reorderStrip.addSubview(tile)
+            }
+        }
+        reorderBand.addSubview(state.lifted)
+        state.fingerX = fingerX
+        let pickedCentre = CGFloat(ReorderStrip.tileX(state.originalIndex)) + Self.tile / 2
+        state.stripStart = clampedStripStart(fingerX - pickedCentre, count: state.count)
+        layoutStrip(animated: false)
+        state.lifted.center = CGPoint(x: state.stripStart + pickedCentre, y: bandMidY)
+        // Lift: grow, shadow, then glide under the finger.
+        UIView.animate(withDuration: 0.2) {
+            self.scrollView.alpha = 0.4
+            self.playhead.alpha = 0
+            state.lifted.transform = CGAffineTransform(scaleX: Self.liftScale, y: Self.liftScale)
+            state.lifted.layer.shadowOpacity = 0.6
+            state.lifted.center = CGPoint(x: fingerX, y: self.bandMidY - 2)
+        }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    /// Places the other tiles around the gap at `slot`; the strip itself moves with auto-scroll.
+    private func layoutStrip(animated: Bool) {
+        guard let state = reorder else { return }
+        reorderStrip.frame = CGRect(x: state.stripStart, y: 0, width: CGFloat(ReorderStrip.width(count: state.count)),
+                                    height: reorderBand.bounds.height)
+        let place = {
+            for (k, id) in state.others.enumerated() {
+                let slot = k < state.slot ? k : k + 1
+                state.tiles[id]?.center = CGPoint(x: CGFloat(ReorderStrip.tileX(slot)) + Self.tile / 2, y: self.bandMidY)
+            }
+        }
+        if animated {
+            UIView.animate(withDuration: 0.2, delay: 0, options: [.beginFromCurrentState, .curveEaseOut], animations: place)
+        } else {
+            place()
+        }
+    }
+
+    private func updateReorder() {
+        guard let state = reorder else { return }
+        state.lifted.center = CGPoint(x: state.fingerX, y: bandMidY - 2)
+        reorderStrip.frame.origin.x = state.stripStart
+        let slot = ReorderStrip.slot(centreX: Double(state.fingerX - state.stripStart), movable: state.movable)
+        guard slot != state.slot else { return }
+        state.slot = slot
+        UISelectionFeedbackGenerator().selectionChanged()
+        layoutStrip(animated: true)
+    }
+
+    /// Scrolls the strip while the finger is within `autoScrollEdge` of either side, faster nearer the edge.
+    private func updateAutoScroll() {
+        guard let state = reorder,
+              state.fingerX < Self.autoScrollEdge || state.fingerX > bounds.width - Self.autoScrollEdge else {
+            autoScrollLink?.invalidate()
+            autoScrollLink = nil
+            return
+        }
+        guard autoScrollLink == nil else { return }
+        let link = CADisplayLink(target: self, selector: #selector(autoScrollTick(_:)))
+        link.add(to: .main, forMode: .common)
+        autoScrollLink = link
+    }
+
+    @objc private func autoScrollTick(_ link: CADisplayLink) {
+        guard let state = reorder else { return }
+        let edge = Self.autoScrollEdge
+        let x = state.fingerX
+        let depth = x < edge ? (edge - x) / edge : -(x - (bounds.width - edge)) / edge
+        let speed = max(-1, min(1, depth)) * Self.autoScrollMaxSpeed
+        let dt = CGFloat(link.targetTimestamp - link.timestamp)
+        state.stripStart = clampedStripStart(state.stripStart + speed * dt, count: state.count)
+        updateReorder()
+    }
+
+    private func endReorder(commit: Bool) {
+        autoScrollLink?.invalidate()
+        autoScrollLink = nil
+        scrollView.isDraggingItem = false
+        guard let state = reorder else { return }
+        reorder = nil
+        let slot = commit ? state.slot : state.originalIndex
+        if !commit { state.slot = slot }
+        let landing = CGPoint(x: state.stripStart + CGFloat(ReorderStrip.tileX(slot)) + Self.tile / 2, y: bandMidY)
+        UIView.animate(withDuration: 0.18, animations: {
+            state.lifted.transform = .identity
+            state.lifted.layer.shadowOpacity = 0
+            state.lifted.center = landing
+        }, completion: { _ in
+            UIView.animate(withDuration: 0.15, animations: {
+                self.scrollView.alpha = 1
+                self.playhead.alpha = 1
+                self.reorderBand.alpha = 0
+            }, completion: { _ in
+                self.reorderBand.isHidden = true
+                self.reorderBand.alpha = 1
+            })
+            if commit, slot != state.originalIndex { self.onClipDrop?(state.clipID, slot) }
+        })
     }
 }
 
@@ -446,6 +638,11 @@ final class RulerView: UIView {
 
 final class ClipStripView: UIView {
     private var tiles: [CALayer] = []
+    /// The frame from the middle of the filmstrip, for the reorder strip (TML-13).
+    var representativeImage: CGImage? {
+        guard !tiles.isEmpty, let c = tiles[tiles.count / 2].contents else { return nil }
+        return (c as! CGImage)
+    }
     private let badge = UILabel()
     private var configuredKey = ""
     private var loadTask: Task<Void, Never>?
@@ -688,7 +885,7 @@ struct TimelineRepresentable: UIViewRepresentable {
         view.onAudioMove = { [weak model] id, start in
             model?.edit("Move audio") { try $0.moveAudio(id, toTimelineStart: start) }
         }
-        view.onClipMove = { [weak model] id, move in model?.moveClip(id, move) }
+        view.onClipDrop = { [weak model] id, index in model?.dropClip(id, to: index) }
         view.onTransitionTap = { [weak model] id in
             model?.select(.clip(id))
             model?.panel = .transition(id)

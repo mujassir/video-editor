@@ -116,11 +116,15 @@ A full-screen sheet; see `EXP-*`.
 - **TML-10 Move audio:** press and hold an audio bar for `0.25 s`, then drag it. The new start snaps to a frame at `30 fps`.
 - **TML-11 Scissors on music:** *(removed: music is cut with Cut in the toolbar, `MUS-4`.)*
 - **TML-12 Waveforms** are drawn on audio bars. Clip thumbnails load in the background.
-- **TML-13 Reorder menu:** press and hold a video or photo on the main track to open a menu, in this order:
-  - **Move to Start** (icon `backward.end`), **Move Left** (`chevron.left`), **Move Right** (`chevron.right`), **Move to End** (`forward.end`).
-  - The opening and closing slides (`TTL-4`) have no menu, and clips never move past them: Start puts the clip right after the opening slide, End right before the closing slide.
-  - A move that isn't possible is shown disabled (Start and Left on the first movable clip, Right and End on the last). With only one movable clip there's no menu.
-  - Each move is one undo step and selects the moved clip. Toast: "Moved to position N of M", counting only movable clips. The transition rule of `CLP-4` applies.
+- **TML-13 Drag to reorder:** press and hold a video or photo on the main track for `0.3 s`, then drag it left or right.
+  - **Thumbnail strip:** while dragging, the main track turns into a row of square thumbnails, one per clip (`52 pt`, `6 pt` apart, rounded `8 pt`), so any number of clips fits at a glance. Each shows the frame from the middle of the clip (a photo shows the photo). The other rows dim to `40%`.
+  - **The picked clip** floats under the finger as a larger thumbnail (`1.25×`, with a shadow). The other thumbnails slide aside (`0.2 s`) to open the gap where it will land.
+  - **Landing slot:** from the floating thumbnail's centre, `round((x − 26) / 58)` along the strip, kept inside the movable range (IMPLEMENTATION §6.2).
+  - **Slides:** the opening and closing slides (`TTL-4`) show in the strip but dimmed to `50%`, can't be picked up, and nothing lands before the opening or after the closing slide.
+  - **Auto-scroll:** within `60 pt` of either screen edge the strip scrolls by itself, faster closer to the edge, up to `600 pt/s`.
+  - **Letting go** drops the clip, and the timeline returns to normal. Dropping where it started changes nothing.
+  - A move is one undo step, selects the moved clip and moves the playhead to its start. Toast: "Moved to position N of M", counting only movable clips. The transition rule of `CLP-4` applies.
+  - There's no menu on press and hold (see *Decisions*).
 
 ---
 
@@ -177,7 +181,7 @@ Deleting closes any open panel and clears the selection.
 - **CLP-1 Split:** splits the clip under the playhead. Toast: "Split at m:ss.f". The right-hand piece gets a new identity. A transition stays on the right-hand piece's cut. A split closer than `0.1 s` to either edge is refused ("Too close to the clip edge").
 - **CLP-2 Duplicate:** inserts a copy right after the clip.
 - **CLP-3 Delete:** removes the clip, and the following clips move up. Deleting the last clip also removes the transition on the new last clip.
-- **CLP-4 Reorder:** from the press-and-hold menu on the timeline (`TML-13`). When clips are reordered, the clip that ends up last never keeps a transition.
+- **CLP-4 Reorder:** by dragging on the timeline (`TML-13`). When clips are reordered, the clip that ends up last never keeps a transition.
 - **CLP-5 Voice:** toggles the clip's own sound off and on (`isMuted`). The button shows a mic, or a slashed mic and is drawn active while the sound is off. Toast: "Voice off" / "Voice on". A clip whose media has no sound isn't changed (toast: "This clip has no sound"). The clip shows a 🔇 badge on the timeline while its voice is off. Music isn't ducked over a clip whose voice is off (IMPLEMENTATION §9.3).
 
 ### SPD: Speed
@@ -506,6 +510,7 @@ These were tried and removed on purpose. Don't add them back without changing th
 | 2026-11 | **Caption styles are Classic, Karaoke and Bold.** Minimal and Neon were removed (`CAP-8`). |
 | 2026-11 | **The caption text editor is full screen** and saves once on Done (`CAP-5`). Text editing isn't in the Style panel. |
 | 2026-11 | **No scissors on the music bar.** It first showed under the playhead, then only on the selected bar, and was then removed: music is cut with **Cut** (and **Start Here**, `MUS-11`) in the toolbar (`MUS-4`). |
+| 2026-11 | **No reorder menu on main-track clips.** A press-and-hold menu (Move to Start, Left, Right, End) was built and replaced by dragging in a thumbnail strip (`TML-13`), which works better with many clips. |
 | 2026-11 | **Denoise is for the whole video, not per clip** (`DNS-1`). The per-clip Denoise button in the video clip toolbar was removed. Older per-clip settings still play until a level is picked (`DNS-8`). |
 | 2026-11 | **No Media button in the main toolbar.** Media is added with the timeline "+", and a new project opens the Photos library (`LIB-1`). |
 | 2026-11 | **The timeline "+" opens the Photos library directly**, with no Add menu, so video and photo files can't be picked from Files any more. Own audio still comes from Music → Audio Tracks. UI tests and demos (`-sampleMedia` / `-demoMedia`) still get the Add menu with Sample Clips. |

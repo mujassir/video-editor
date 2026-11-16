@@ -288,6 +288,9 @@ The total length is the last entry's end. `entry(at: t)` returns the **last** en
 - **delete:** remove the clip. If it was the last clip, clear the `transitionOut` of the new last clip.
 - **duplicate:** insert a copy with a new id right after.
 - **move:** after moving, clear the `transitionOut` of the clip that's now last.
+- **Movable range (TML-13):** indices `[lo, hi)`, where `lo = 1` if clip 0 is an opening slide (else 0) and `hi = count − 1` if the last clip is a closing slide (else `count`). Slides never move; nothing moves when the range holds fewer than 2 clips.
+- **Reorder strip (drag):** tile `52`, gap `6`, pitch `p = 58`. Tile `k` (in the strip's current order) has its left edge at `k × p` from the strip start. The landing slot is `clamp(round((cx − 26) / p), lo, hi − 1)`, where `cx` is the floating tile's centre measured from the strip start; the other clips keep their order and fill the remaining slots. The slot is an index after removing the dragged clip; equal to its old index means no change.
+- **Strip placement:** on lift, the strip's start is put so the picked tile is under the finger, then clamped to `[w/2 − stripWidth, w/2]` (`w` = timeline width), the same range auto-scroll keeps it in.
 - **setSpeed:** clamped to `0.1…10`. Stills are ignored.
 - **setReversed:** only for video clips that aren't freeze frames.
 - **insertFreezeFrame(at t):**
