@@ -29,9 +29,12 @@ import java.nio.file.Files
 abstract class CutlineUiTest {
     @get:Rule val rule = createComposeRule()
     protected val root: File = Files.createTempDirectory("cutline").toFile()
+    private var launched = false
 
     protected fun launch() {
+        if (launched) return
         rule.setContent { CutlineTheme { CutlineApp(sampleMedia = true, rootDir = root, playerFactory = { ClockPlayer() }) } }
+        launched = true
     }
 
     protected fun shot(name: String) = rule.onRoot().captureRoboImage("build/screens/$name.png")

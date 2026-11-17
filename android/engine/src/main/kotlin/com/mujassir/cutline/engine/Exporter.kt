@@ -2,6 +2,7 @@ package com.mujassir.cutline.engine
 
 import android.content.Context
 import android.media.MediaCodecList
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.MimeTypes
@@ -14,16 +15,10 @@ import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
 import androidx.media3.transformer.VideoEncoderSettings
 import com.mujassir.cutline.core.Project
-import com.mujassir.cutline.core.duration
 import java.io.File
 import java.nio.file.Files
 
-/** Export resolution (EXP). */
-enum class ExportResolution(val title: String, val shortEdge: Int, val baseBitsPerSecond: Double) {
-    P720("720p", 720, 8e6), P1080("1080p", 1080, 16e6), P2160("4K", 2160, 45e6)
-}
-
-/** Export (IMPLEMENTATION §11): size estimate, file naming, Media3 Transformer. */
+/** Export (IMPLEMENTATION §11): Media3 Transformer. Estimates live in [ExportEstimate]. */
 @UnstableApi
 class Exporter(private val context: Context, private val builder: CompositionBuilder, private val toggles: RenderToggles) {
     sealed interface State {
@@ -38,9 +33,9 @@ class Exporter(private val context: Context, private val builder: CompositionBui
     fun start(project: Project, resolution: ExportResolution, fps: Int, wantHevc: Boolean, onState: (State) -> Unit) {
         val built = builder.build(project.copy(frameRate = fps), resolution.shortEdge, preview = false)
         val dir = Files.createTempDirectory(context.cacheDir.toPath(), "export").toFile()
-        val out = File(dir, fileName(project.name))
+        val out = File(dir, ExportEstimate.fileName(project.name))
         val hevc = wantHevc && supportsHevc()
-        val bitrate = targetBitrate(resolution, fps, hevc)
+        val bitrate = ExportEstimate.targetBitrate(resolution, fps, hevc)
         val encoder = DefaultEncoderFactory.Builder(context)
             .setRequestedVideoEncoderSettings(VideoEncoderSettings.Builder().setBitrate(bitrate.toInt()).build())
             .build()
@@ -79,25 +74,21 @@ class Exporter(private val context: Context, private val builder: CompositionBui
     }
 
     companion object {
-        /** `<project name>.mp4` without / \ : ? % * | " < >, trimmed; "Cutline Video" when empty. */
-        fun fileName(name: String): String {
-            val clean = name.filterNot { it in "/\\:?%*|\"<>" }.trim()
-            return (clean.ifEmpty { "Cutline Video" }) + ".mp4"
+        // Compatibility wrappers so call sites can keep using Exporter.* for estimates.
+        fun fileName(name: String) = ExportEstimate.fileName(name)
+        fun fpsFactor(fps: Int) = ExportEstimate.fpsFactor(fps)
+        fun targetBitrate(r: ExportResolution, fps: Int, hevc: Boolean) = ExportEstimate.targetBitrate(r, fps, hevc)
+        fun estimatedBytes(project: Project, r: ExportResolution, fps: Int, hevc: Boolean) =
+            ExportEstimate.estimatedBytes(project, r, fps, hevc)
+
+        fun supportsHevc(): Boolean {
+            // Robolectric has no real codecs; MediaCodecList can hang and freeze the export screen.
+            if (Build.FINGERPRINT.contains("robolectric", ignoreCase = true)) return false
+            return runCatching {
+                MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.any { info ->
+                    info.isEncoder && info.supportedTypes.any { it.equals(MimeTypes.VIDEO_H265, ignoreCase = true) }
+                }
+            }.getOrDefault(false)
         }
-
-        fun fpsFactor(fps: Int) = when { fps >= 60 -> 1.5; fps <= 24 -> 0.85; else -> 1.0 }
-
-        fun targetBitrate(r: ExportResolution, fps: Int, hevc: Boolean) = r.baseBitsPerSecond * fpsFactor(fps) * (if (hevc) 0.55 else 1.0)
-
-        /** EXP estimate: (base × fps × codec + 256 000) × seconds ÷ 8 bytes. */
-        fun estimatedBytes(project: Project, r: ExportResolution, fps: Int, hevc: Boolean): Long =
-            ((targetBitrate(r, fps, hevc) + 256_000) * project.duration.seconds / 8).toLong()
-
-        fun supportsHevc(): Boolean = runCatching {
-            MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.any { info ->
-                info.isEncoder && info.supportedTypes.any { it.equals(MimeTypes.VIDEO_H265, ignoreCase = true) }
-            }
-        }.getOrDefault(false)
-
     }
 }

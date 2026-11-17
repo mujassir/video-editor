@@ -57,10 +57,15 @@ class MediaImporter(private val context: Context, private val store: ProjectStor
     companion object {
         fun probe(file: File, fileName: String, displayName: String, mime: String): MediaItem? {
             if (mime.startsWith("image/") || isImageExtension(file.extension)) return probeImage(file, fileName, displayName)
+            // WAV: read the header ourselves. MediaMetadataRetriever often fails on Robolectric and some devices.
+            if (isWav(file.extension, mime)) return probeWav(file, fileName, displayName) ?: runCatching { probeAV(file, fileName, displayName) }.getOrNull()
             return probeAV(file, fileName, displayName)
         }
 
         private fun isImageExtension(ext: String) = ext.lowercase() in setOf("jpg", "jpeg", "png", "heic", "heif", "webp", "gif", "bmp")
+
+        private fun isWav(ext: String, mime: String) =
+            ext.equals("wav", ignoreCase = true) || mime.equals("audio/wav", ignoreCase = true) || mime.equals("audio/x-wav", ignoreCase = true)
 
         private fun probeImage(file: File, fileName: String, displayName: String): MediaItem? {
             val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -80,6 +85,27 @@ class MediaImporter(private val context: Context, private val store: ProjectStor
             ExifInterface.ORIENTATION_ROTATE_270, ExifInterface.ORIENTATION_TRANSVERSE -> 3
             else -> 0
         }
+
+        /** PCM WAV from a standard 44-byte header (sample tracks for UI tests / demos). */
+        fun probeWav(file: File, fileName: String, displayName: String): MediaItem? = runCatching {
+            file.inputStream().use { input ->
+                val hdr = ByteArray(44)
+                if (input.read(hdr) < 44) return null
+                if (String(hdr, 0, 4) != "RIFF" || String(hdr, 8, 4) != "WAVE") return null
+                fun le16(i: Int) = (hdr[i].toInt() and 0xff) or ((hdr[i + 1].toInt() and 0xff) shl 8)
+                fun le32(i: Int) = le16(i) or (le16(i + 2) shl 16)
+                val channels = le16(22)
+                val rate = le32(24)
+                val bits = le16(34)
+                val dataBytes = le32(40)
+                val bytesPerFrame = channels * (bits / 8)
+                if (rate <= 0 || bytesPerFrame <= 0 || dataBytes <= 0) return null
+                val duration = MediaTime.seconds(dataBytes.toDouble() / (rate * bytesPerFrame))
+                if (duration <= MediaTime.ZERO) return null
+                MediaItem(kind = MediaKind.AUDIO, fileName = fileName, naturalSize = Size.ZERO, duration = duration,
+                    hasAudio = true, displayName = displayName)
+            }
+        }.getOrNull()
 
         private fun probeAV(file: File, fileName: String, displayName: String): MediaItem? {
             val r = MediaMetadataRetriever()

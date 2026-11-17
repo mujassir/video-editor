@@ -9,6 +9,7 @@ import android.provider.MediaStore
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -43,19 +45,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
-import androidx.media3.common.util.UnstableApi
 import com.mujassir.cutline.app.ui.ChipButton
 import com.mujassir.cutline.app.ui.Palette
 import com.mujassir.cutline.core.duration
-import com.mujassir.cutline.engine.CompositionBuilder
+import com.mujassir.cutline.engine.ExportEstimate
 import com.mujassir.cutline.engine.ExportResolution
-import com.mujassir.cutline.engine.Exporter
 import java.io.File
 import java.text.NumberFormat
 import java.util.Locale
 
 /** EXP-1…7. Full screen, at most 720 dp wide on wide windows (LAY-6). */
-@androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 fun ExportScreen(model: EditorModel, onClose: () -> Unit) {
     val context = LocalContext.current
@@ -68,7 +67,6 @@ fun ExportScreen(model: EditorModel, onClose: () -> Unit) {
     var saved by remember { mutableStateOf(false) }
     var startedAt by remember { mutableStateOf(0L) }
     var tookSeconds by remember { mutableStateOf(0.0) }
-    val exporter = remember { Exporter(context, CompositionBuilder(model.store, model.player.toggles), model.player.toggles) }
     val project = model.project
     val running = progress != null && done == null && error == null
     BackHandler { if (!running) onClose() }
@@ -76,21 +74,26 @@ fun ExportScreen(model: EditorModel, onClose: () -> Unit) {
     fun start(share: Boolean) {
         progress = 0.0; error = null; done = null; saved = false
         startedAt = System.nanoTime()
-        exporter.start(project, resolution, fps, hevc) { s ->
+        // Media3 Transformer is loaded only here so the options form stays testable on the JVM.
+        startMedia3Export(context, model, project, resolution, fps, hevc) { s ->
             when (s) {
-                is Exporter.State.Running -> progress = s.progress
-                is Exporter.State.Done -> {
+                is ExportRunState.Running -> progress = s.progress
+                is ExportRunState.Done -> {
                     done = s.file; progress = 1.0
                     tookSeconds = (System.nanoTime() - startedAt) / 1e9
                     model.player.toggles.animate.set(false)
                     if (share) share(context, s.file)
                 }
-                is Exporter.State.Failed -> { error = s.message; progress = null; model.player.toggles.animate.set(false) }
+                is ExportRunState.Failed -> { error = s.message; progress = null; model.player.toggles.animate.set(false) }
             }
         }
     }
 
-    Box(Modifier.fillMaxSize().background(Palette.background).clickable(enabled = false) {}, contentAlignment = Alignment.TopCenter) {
+    // pointerInput (not clickable) blocks taps to the editor without merging child test tags (EXP-1).
+    Box(
+        Modifier.fillMaxSize().background(Palette.background).pointerInput(Unit) { detectTapGestures { } }.testTag("export.screen"),
+        contentAlignment = Alignment.TopCenter,
+    ) {
         Column(Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Export", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
@@ -128,7 +131,8 @@ fun ExportScreen(model: EditorModel, onClose: () -> Unit) {
                     val n = NumberFormat.getIntegerInstance(Locale.US)
                     Text("${n.format(size.width.toLong())}×${n.format(size.height.toLong())} · ${project.duration.timecode} · hardware encoded",
                         color = Palette.secondaryText, fontSize = 13.sp)
-                    val bytes = Exporter.estimatedBytes(project, resolution, fps, hevc && Exporter.supportsHevc())
+                    // Estimate from the selected format; start() still falls back to H.264 when HEVC isn't available.
+                    val bytes = ExportEstimate.estimatedBytes(project, resolution, fps, hevc)
                     Text("Estimated size: ${String.format(Locale.US, "%.1f", bytes / 1e6)} MB", color = Color.White, modifier = Modifier.testTag("export.estimate"))
                     error?.let { Text(it, color = Palette.accent, fontSize = 13.sp) }
                     Spacer(Modifier.height(8.dp))
