@@ -1,0 +1,289 @@
+{
+  "aspectRatio" : "9:16",
+  "audioClips" : [
+    {
+      "autoDuck" : true,
+      "beats" : [
+
+      ],
+      "duckLevel" : 0.25,
+      "fadeIn" : 0,
+      "fadeOut" : 90000,
+      "fitsVideo" : true,
+      "id" : "77777777-7777-7777-7777-777777777777",
+      "lane" : 0,
+      "mediaID" : "44444444-4444-4444-4444-444444444444",
+      "name" : "Sunrise Drive",
+      "role" : "music",
+      "sourceRange" : {
+        "duration" : 3600000,
+        "start" : 0
+      },
+      "start" : 0,
+      "volume" : 0.7
+    }
+  ],
+  "background" : {
+    "blur" : {
+
+    }
+  },
+  "captions" : {
+    "highlightColor" : {
+      "a" : 1,
+      "b" : 0.1,
+      "g" : 0.86,
+      "r" : 1
+    },
+    "isVisible" : true,
+    "positionY" : 0.78,
+    "preset" : "karaoke",
+    "segments" : [
+      {
+        "id" : "99999999-9999-9999-9999-999999999999",
+        "words" : [
+          {
+            "range" : {
+              "duration" : 24000,
+              "start" : 30000
+            },
+            "text" : "Hello"
+          },
+          {
+            "range" : {
+              "duration" : 24000,
+              "start" : 54000
+            },
+            "text" : "there"
+          }
+        ]
+      }
+    ]
+  },
+  "clips" : [
+    {
+      "adjustments" : {
+        "contrast" : 0,
+        "exposure" : 0.2,
+        "highlights" : 0,
+        "saturation" : 0,
+        "shadows" : 0,
+        "sharpen" : 0,
+        "vignette" : 0.3,
+        "warmth" : 0
+      },
+      "animation" : {
+        "combo" : "pulse",
+        "entrance" : "zoomIn",
+        "inDuration" : 0.6,
+        "outDuration" : 0.6
+      },
+      "backgroundRemoval" : {
+        "color" : {
+          "_0" : {
+            "a" : 1,
+            "b" : 0,
+            "g" : 0,
+            "r" : 0
+          }
+        }
+      },
+      "filter" : {
+        "filterID" : "teal_orange",
+        "intensity" : 0.8
+      },
+      "id" : "55555555-5555-5555-5555-555555555555",
+      "isMuted" : false,
+      "isReversed" : false,
+      "kind" : "video",
+      "mediaID" : "22222222-2222-2222-2222-222222222222",
+      "noiseReduction" : "medium",
+      "reframe" : [
+        {
+          "centerX" : 0.5,
+          "centerY" : 0.4,
+          "time" : 60000
+        }
+      ],
+      "sourceRange" : {
+        "duration" : 240000,
+        "start" : 60000
+      },
+      "speed" : 1.5,
+      "transform" : {
+        "anchor" : "center",
+        "crop" : {
+          "height" : 0.8,
+          "width" : 1,
+          "x" : 0,
+          "y" : 0.1
+        },
+        "fit" : "fill",
+        "flipHorizontal" : false,
+        "flipVertical" : false,
+        "offsetX" : 0,
+        "offsetY" : 0,
+        "quarterTurns" : 0,
+        "scale" : 1
+      },
+      "transitionOut" : {
+        "duration" : 30000,
+        "kind" : "dissolve"
+      },
+      "volume" : 1
+    },
+    {
+      "adjustments" : {
+        "contrast" : 0,
+        "exposure" : 0,
+        "highlights" : 0,
+        "saturation" : 0,
+        "shadows" : 0,
+        "sharpen" : 0,
+        "vignette" : 0,
+        "warmth" : 0
+      },
+      "id" : "66666666-6666-6666-6666-666666666666",
+      "isMuted" : false,
+      "isReversed" : false,
+      "kind" : "photo",
+      "mediaID" : "33333333-3333-3333-3333-333333333333",
+      "photoMotion" : "kenBurns",
+      "reframe" : [
+
+      ],
+      "sourceRange" : {
+        "duration" : 180000,
+        "start" : 0
+      },
+      "speed" : 1,
+      "transform" : {
+        "crop" : {
+          "height" : 1,
+          "width" : 1,
+          "x" : 0,
+          "y" : 0
+        },
+        "fit" : "fit",
+        "flipHorizontal" : false,
+        "flipVertical" : false,
+        "offsetX" : 0,
+        "offsetY" : 0,
+        "quarterTurns" : 0,
+        "scale" : 1
+      },
+      "volume" : 1
+    }
+  ],
+  "createdAt" : 800000000,
+  "defaultAnchor" : "center",
+  "defaultFit" : "fill",
+  "frameRate" : 30,
+  "id" : "11111111-1111-1111-1111-111111111111",
+  "media" : [
+    {
+      "denoisedFileNames" : {
+        "medium" : "nr2-medium-A1B2.m4a"
+      },
+      "displayName" : "Beach",
+      "duration" : 480000,
+      "fileName" : "A1B2.mov",
+      "frameRate" : 30,
+      "hasAudio" : true,
+      "id" : "22222222-2222-2222-2222-222222222222",
+      "kind" : "video",
+      "naturalSize" : [
+        1080,
+        1920
+      ],
+      "reversedFileName" : "rev-A1B2.mov",
+      "sourceQuarterTurns" : 1
+    },
+    {
+      "displayName" : "Sunset",
+      "duration" : 0,
+      "fileName" : "C3D4.heic",
+      "frameRate" : 30,
+      "hasAudio" : false,
+      "id" : "33333333-3333-3333-3333-333333333333",
+      "kind" : "photo",
+      "naturalSize" : [
+        4032,
+        3024
+      ],
+      "sourceQuarterTurns" : 0
+    },
+    {
+      "displayName" : "Sunrise Drive",
+      "duration" : 3600000,
+      "fileName" : "music-sunrise-10.m4a",
+      "frameRate" : 30,
+      "hasAudio" : true,
+      "id" : "44444444-4444-4444-4444-444444444444",
+      "kind" : "audio",
+      "naturalSize" : [
+        0,
+        0
+      ],
+      "sourceQuarterTurns" : 0
+    }
+  ],
+  "modifiedAt" : 800000000,
+  "name" : "Sample",
+  "noiseReduction" : "medium",
+  "textOverlays" : [
+    {
+      "anchor" : "top",
+      "animation" : {
+        "entrance" : "pop",
+        "exit" : "fade",
+        "inDuration" : 0.4,
+        "outDuration" : 0.4
+      },
+      "animationIn" : "none",
+      "animationOut" : "none",
+      "centerX" : 0.5,
+      "centerY" : 0.5,
+      "id" : "88888888-8888-8888-8888-888888888888",
+      "range" : {
+        "duration" : 180000,
+        "start" : 0
+      },
+      "rotation" : 0,
+      "scale" : 1,
+      "style" : {
+        "color" : {
+          "a" : 1,
+          "b" : 1,
+          "g" : 1,
+          "r" : 1
+        },
+        "fontName" : "HelveticaNeue-Bold",
+        "outlineColor" : {
+          "a" : 1,
+          "b" : 0,
+          "g" : 0,
+          "r" : 0
+        },
+        "outlineWidth" : 0.08,
+        "shadow" : true,
+        "size" : 0.06
+      },
+      "text" : "Hello"
+    }
+  ],
+  "version" : 1,
+  "watermark" : {
+    "anchor" : "bottomRight",
+    "color" : {
+      "a" : 1,
+      "b" : 1,
+      "g" : 1,
+      "r" : 1
+    },
+    "kind" : "text",
+    "opacity" : 0.7,
+    "size" : 0.22,
+    "text" : "@cutline"
+  }
+}

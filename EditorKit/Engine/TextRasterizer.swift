@@ -146,9 +146,7 @@ public enum TextRasterizer {
             switch track.preset {
             case .karaoke, .bold:
                 color = isActive ? track.highlightColor : .white
-            case .neon:
-                color = isActive ? RGBAColor(r: 1, g: 1, b: 1) : RGBAColor(r: 0.55, g: 0.95, b: 1)
-            case .classic, .minimal:
+            case .classic:
                 color = .white
             }
             runs.append(Run(text: text + (i < words.count - 1 ? " " : ""), color: color))
@@ -164,11 +162,6 @@ public enum TextRasterizer {
         case .bold:
             style = Style(fontName: "Futura-CondensedExtraBold", fontSize: base * 0.055, outlineColor: .black,
                           outlineWidth: base * 0.006, shadow: true, maxWidth: canvas.width * 0.86)
-        case .minimal:
-            style = Style(fontName: "HelveticaNeue", fontSize: base * 0.032, shadow: true, maxWidth: canvas.width * 0.86)
-        case .neon:
-            style = Style(fontName: "AvenirNext-Heavy", fontSize: base * 0.045, shadow: false,
-                          glowColor: RGBAColor(r: 0.2, g: 0.9, b: 1), maxWidth: canvas.width * 0.86)
         }
         return render(runs, style: style)
     }

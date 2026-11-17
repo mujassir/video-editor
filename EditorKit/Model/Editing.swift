@@ -6,6 +6,26 @@ public enum EditError: Error, Equatable, Sendable {
     case outOfRange
 }
 
+/// Geometry of the drag-to-reorder thumbnail strip (TML-13, IMPLEMENTATION §6.2).
+public enum ReorderStrip {
+    public static let tileSize: Double = 52
+    public static let spacing: Double = 6
+    public static var pitch: Double { tileSize + spacing }
+
+    /// Left edge of tile `slot`, from the strip start.
+    public static func tileX(_ slot: Int) -> Double { Double(slot) * pitch }
+
+    /// Width of a strip of `count` tiles.
+    public static func width(count: Int) -> Double { count > 0 ? Double(count) * pitch - spacing : 0 }
+
+    /// Landing slot for a floating tile whose centre is `centreX` from the strip start.
+    public static func slot(centreX: Double, movable: Range<Int>) -> Int {
+        guard !movable.isEmpty else { return movable.lowerBound }
+        let raw = Int(((centreX - tileSize / 2) / pitch).rounded())
+        return min(max(raw, movable.lowerBound), movable.upperBound - 1)
+    }
+}
+
 /// Pure, value-type editing operations on a project.
 ///
 /// Every operation returns a new project (or throws) so the editor can keep
@@ -166,12 +186,81 @@ public extension Project {
         if let last = clips.indices.last { clips[last].transitionOut = nil }
     }
 
+    /// Indices of clips that can be reordered (TML-13): everything between the
+    /// opening and closing slides, which stay first and last.
+    var movableClipIndices: Range<Int> {
+        let lower = clips.first?.titleCard?.placement == .opening ? 1 : 0
+        let upper = clips.last?.titleCard?.placement == .closing ? clips.count - 1 : clips.count
+        return lower..<max(lower, upper)
+    }
+
+    /// True if the clip can be picked up and dragged (TML-13).
+    func canReorder(_ clipID: UUID) -> Bool {
+        guard let index = clipIndex(clipID) else { return false }
+        return clips[index].titleCard == nil && movableClipIndices.contains(index) && movableClipIndices.count > 1
+    }
+
     // MARK: Speed / reverse / freeze
 
     mutating func setSpeed(_ speed: Double, clipID: UUID) throws {
         guard let index = clipIndex(clipID) else { throw EditError.clipNotFound }
         guard !clips[index].isStill else { return }
-        clips[index].speed = min(max(speed, 0.1), 10)
+        let before = layout
+        clips[index].speed = Self.clampedSpeed(speed)
+        retimeOverlays(from: before)
+    }
+
+    /// SPD-4: sets the speed on every main-track clip that has one (not photos,
+    /// title slides or freeze frames), with one re-timing pass (SPD-5).
+    mutating func setSpeedForAllClips(_ speed: Double) {
+        let before = layout
+        let s = Self.clampedSpeed(speed)
+        for i in clips.indices where !clips[i].isStill { clips[i].speed = s }
+        retimeOverlays(from: before)
+    }
+
+    /// Main-track clips the Speed panel's "Apply to all" changes (SPD-4).
+    var speedAdjustableClipCount: Int { clips.filter { !$0.isStill }.count }
+
+    private static func clampedSpeed(_ speed: Double) -> Double { min(max(speed, 0.1), 10) }
+
+    /// SPD-5 (IMPLEMENTATION §6.2): maps a time on the `old` timeline to the current one,
+    /// so whatever sat on a clip stays on the same moment of that clip.
+    static func retimedTime(_ t: MediaTime, from old: TimelineLayout, to new: TimelineLayout) -> MediaTime {
+        if t <= .zero { return t }
+        if t >= old.duration { return t + (new.duration - old.duration) }
+        guard let i = old.entries.lastIndex(where: { $0.range.start <= t }) else { return t }
+        let o = old.entries[i]
+        guard let n = new.entry(for: o.clipID) else { return t }
+        let ratio = o.range.duration.ticks > 0 ? Double(n.range.duration.ticks) / Double(o.range.duration.ticks) : 1
+        var mapped = n.range.start + (t - o.range.start).multiplied(by: ratio)
+        if i + 1 < old.entries.count, let next = new.entry(for: old.entries[i + 1].clipID) {
+            mapped = min(mapped, next.range.start)
+        }
+        return mapped
+    }
+
+    /// SPD-5: moves captions, text, voiceovers and extracted audio after a clip's length changed.
+    private mutating func retimeOverlays(from old: TimelineLayout) {
+        let new = layout
+        guard new.entries.map(\.range) != old.entries.map(\.range) else { return }
+        func map(_ t: MediaTime) -> MediaTime { Self.retimedTime(t, from: old, to: new) }
+        for s in captions.segments.indices {
+            captions.segments[s].words = captions.segments[s].words.compactMap { word in
+                let r = MediaTimeRange(start: map(word.range.start), end: map(word.range.end))
+                return r.isEmpty ? nil : CaptionWord(text: word.text, range: r)
+            }
+        }
+        captions.segments.removeAll { $0.words.isEmpty }
+        for i in textOverlays.indices {
+            let r = textOverlays[i].range
+            let start = map(r.start)
+            let duration = (map(r.end) - start).clamped(to: Self.textDurationRange)
+            textOverlays[i].range = MediaTimeRange(start: start, duration: duration)
+        }
+        for i in audioClips.indices where audioClips[i].role == .voiceover || audioClips[i].role == .extracted {
+            audioClips[i].start = map(audioClips[i].start)
+        }
     }
 
     mutating func setReversed(_ reversed: Bool, clipID: UUID) throws {
@@ -305,6 +394,43 @@ public extension Project {
         for i in audioClips.indices where audioClips[i].role == .voiceover || audioClips[i].role == .extracted {
             audioClips[i].start = shifted(audioClips[i].start)
         }
+    }
+
+    /// Where music ducks: each caption segment widened to `[start − 0.15 s, end + 0.25 s]`
+    /// and merged, minus the parts over main-track clips whose own sound is off (Voice off,
+    /// CLP-5), so music isn't lowered over a muted clip. Where a voiceover or extracted
+    /// audio clip plays, or another clip's sound plays (transition overlap), ducking stays.
+    var duckingSpeechRanges: [MediaTimeRange] {
+        let speech = Self.merge(captions.segments.map { seg in
+            MediaTimeRange(start: seg.range.start - MediaTime(seconds: 0.15), end: seg.range.end + MediaTime(seconds: 0.25))
+        })
+        guard !speech.isEmpty else { return [] }
+        var silent: [MediaTimeRange] = [], voiced: [MediaTimeRange] = []
+        for entry in layout.entries {
+            let clip = clips[entry.index]
+            let hasSound = mediaItem(clip.mediaID)?.hasAudio ?? false
+            let plays = clip.hasAudio && hasSound && !clip.isMuted && !clip.isReversed && clip.volume > 0
+            if plays { voiced.append(entry.range) } else if clip.isMuted { silent.append(entry.range) }
+        }
+        for a in audioClips where a.role == .voiceover || a.role == .extracted { voiced.append(a.timelineRange) }
+        let quiet = Self.subtract(Self.merge(silent), Self.merge(voiced))
+        return Self.subtract(speech, quiet)
+    }
+
+    /// `ranges` with every part covered by `cuts` removed (both sorted, non-overlapping or not).
+    static func subtract(_ ranges: [MediaTimeRange], _ cuts: [MediaTimeRange]) -> [MediaTimeRange] {
+        guard !cuts.isEmpty else { return ranges }
+        let cuts = merge(cuts)
+        var result: [MediaTimeRange] = []
+        for r in ranges {
+            var start = r.start
+            for c in cuts where c.end > start && c.start < r.end {
+                if c.start > start { result.append(MediaTimeRange(start: start, end: c.start)) }
+                start = max(start, c.end)
+            }
+            if start < r.end { result.append(MediaTimeRange(start: start, end: r.end)) }
+        }
+        return result
     }
 
     static func merge(_ ranges: [MediaTimeRange]) -> [MediaTimeRange] {
@@ -457,17 +583,14 @@ public extension Project {
 
     // MARK: Audio clip editing
 
-    /// Re-fits music that follows the video so it ends with the video (or with the
-    /// song, if the song is shorter). Called after every edit.
+    /// Music that hasn't been cut runs to the end of the song, however long the
+    /// video is: the timeline shows all of it, and preview / export stop at the end
+    /// of the video. Called after every edit (older projects stored music trimmed to the video).
     mutating func refitMusic() {
-        let videoEnd = layout.duration
-        guard videoEnd > .zero else { return }
-        for i in audioClips.indices where audioClips[i].followsVideo {
+        for i in audioClips.indices where audioClips[i].followsVideo && !audioClips[i].hasSectionEdits {
             guard let item = mediaItem(audioClips[i].mediaID) else { continue }
             let clip = audioClips[i]
-            let available = item.duration - clip.sourceRange.start
-            let wanted = videoEnd - clip.start
-            let length = max(Self.minimumAudioDuration, min(available, wanted))
+            let length = max(Self.minimumAudioDuration, item.duration - clip.sourceRange.start)
             if length != clip.sourceRange.duration { audioClips[i].sourceRange.duration = length }
         }
     }
@@ -504,27 +627,165 @@ public extension Project {
         audioClips[i].start = max(.zero, start)
     }
 
+    /// Where the blank space before an audio clip begins on its lane: the end of the
+    /// previous clip there, or 0:00. nil when the clip already sits right after it.
+    func audioGapStart(_ id: UUID) -> MediaTime? {
+        guard let clip = audioClips.first(where: { $0.id == id }) else { return nil }
+        let before = audioClips
+            .filter { $0.id != id && $0.lane == clip.lane && $0.timelineRange.end <= clip.start }
+            .map(\.timelineRange.end).max() ?? .zero
+        return clip.start - before >= Self.minimumAudioDuration ? before : nil
+    }
+
+    /// Moves an audio clip back so it starts where the blank space before it begins.
+    /// Returns false when there is no gap to close.
+    @discardableResult
+    mutating func moveAudioToGapStart(_ id: UUID) throws -> Bool {
+        let (i, _) = try audioIndex(id)
+        guard let start = audioGapStart(id) else { return false }
+        audioClips[i].start = start
+        return true
+    }
+
+    /// Fade-in given to music that no longer starts at the beginning of its song (MUS-11).
+    static let startHereFadeIn = MediaTime(seconds: 0.3)
+
+    /// "Start here" (MUS-11): the audio plays from `time` on. Cuts the clip there, removes
+    /// the part before, and moves the rest back to where the clip started on its lane
+    /// (the end of the previous clip there, or 0:00), with a short fade-in.
+    /// One edit, so one undo step. Returns the remaining clip's id.
+    @discardableResult
+    mutating func startAudioHere(_ id: UUID, at time: MediaTime) throws -> UUID {
+        let (i, _) = try audioIndex(id)
+        let original = audioClips[i]
+        let before = audioClips
+            .filter { $0.id != id && $0.lane == original.lane && $0.timelineRange.end <= original.start }
+            .map(\.timelineRange.end).max() ?? .zero
+        let rightID = try splitAudio(id, at: time)
+        audioClips.removeAll { $0.id == id }
+        guard let r = audioClips.firstIndex(where: { $0.id == rightID }) else { throw EditError.clipNotFound }
+        audioClips[r].start = before
+        audioClips[r].fadeIn = min(Self.startHereFadeIn, MediaTime(ticks: audioClips[r].playedDuration.ticks / 2))
+        return rightID
+    }
+
     /// Splits an audio clip at a timeline time. Returns the new right-hand clip's id.
     @discardableResult
     mutating func splitAudio(_ id: UUID, at time: MediaTime) throws -> UUID {
         let (i, _) = try audioIndex(id)
         let clip = audioClips[i]
         let local = time - clip.start
-        guard local >= Self.minimumAudioDuration, clip.sourceRange.duration - local >= Self.minimumAudioDuration else {
+        guard local >= Self.minimumAudioDuration, clip.playedDuration - local >= Self.minimumAudioDuration else {
             throw EditError.tooShort
+        }
+        // Played time → song time (older clips can have deleted sections cut out).
+        var cut = clip.sourceRange.start + local
+        if clip.hasSectionEdits {
+            var played = MediaTime.zero
+            for s in clip.resolvedSections where !s.deleted {
+                if local <= played + s.duration { cut = s.start + (local - played); break }
+                played += s.duration
+            }
         }
         var left = clip, right = clip
         right.id = UUID()
         left.fitsVideo = false
         right.fitsVideo = false
-        left.sourceRange.duration = local
+        left.sourceRange = MediaTimeRange(start: clip.sourceRange.start, end: cut)
         left.fadeOut = .zero
-        right.sourceRange = MediaTimeRange(start: clip.sourceRange.start + local, end: clip.sourceRange.end)
+        right.sourceRange = MediaTimeRange(start: cut, end: clip.sourceRange.end)
         right.start = time
         right.fadeIn = .zero
         audioClips[i] = left
         audioClips.insert(right, at: i + 1)
         return right.id
+    }
+
+    // MARK: Audio markers & sections
+
+    /// Adds a marker at a song (source) time, splitting the section that contains it.
+    mutating func addAudioMarker(_ id: UUID, at time: MediaTime) throws {
+        let (i, _) = try audioIndex(id)
+        var secs = audioClips[i].resolvedSections
+        guard let k = secs.firstIndex(where: { time > $0.start + Self.minimumAudioDuration && time < $0.end - Self.minimumAudioDuration })
+        else { throw EditError.tooShort }
+        let s = secs[k]
+        secs[k].end = time
+        secs.insert(AudioSection(start: time, end: s.end, volume: s.volume, deleted: s.deleted), at: k + 1)
+        audioClips[i].sections = secs
+        audioClips[i].fitsVideo = false
+    }
+
+    /// Removes the marker after section `index` (merges it with the next section).
+    mutating func removeAudioMarker(_ id: UUID, after index: Int) throws {
+        let (i, _) = try audioIndex(id)
+        var secs = audioClips[i].resolvedSections
+        guard index >= 0, index + 1 < secs.count else { throw EditError.outOfRange }
+        secs[index].end = secs[index + 1].end
+        secs.remove(at: index + 1)
+        audioClips[i].sections = secs.count == 1 && secs[0].volume == 1 && !secs[0].deleted ? nil : secs
+    }
+
+    mutating func clearAudioMarkers(_ id: UUID) throws {
+        let (i, _) = try audioIndex(id)
+        audioClips[i].sections = nil
+    }
+
+    mutating func setAudioSectionVolume(_ id: UUID, index: Int, _ volume: Double) throws {
+        let (i, _) = try audioIndex(id)
+        var secs = audioClips[i].resolvedSections
+        guard secs.indices.contains(index) else { throw EditError.outOfRange }
+        secs[index].volume = min(max(volume, 0), 2)
+        audioClips[i].sections = secs
+        audioClips[i].fitsVideo = false
+    }
+
+    /// Deletes (cuts out) or restores a section. At least one section always remains.
+    mutating func setAudioSectionDeleted(_ id: UUID, index: Int, _ deleted: Bool) throws {
+        let (i, _) = try audioIndex(id)
+        var secs = audioClips[i].resolvedSections
+        guard secs.indices.contains(index) else { throw EditError.outOfRange }
+        if deleted, secs.filter({ !$0.deleted }).count <= 1 { throw EditError.tooShort }
+        secs[index].deleted = deleted
+        audioClips[i].sections = secs
+        audioClips[i].fitsVideo = false
+    }
+
+    /// Repeats an audio clip's section back to back until the end of the video.
+    /// The last copy is cut at the video's end and carries the original fade-out.
+    /// Returns how many copies were added (0 when it already reaches the end).
+    @discardableResult
+    mutating func repeatAudio(_ id: UUID) throws -> Int {
+        let (i, _) = try audioIndex(id)
+        let videoEnd = layout.duration
+        var original = audioClips[i]
+        let length = original.playedDuration
+        guard length >= Self.minimumAudioDuration, original.timelineRange.end < videoEnd - Self.minimumAudioDuration else {
+            return 0
+        }
+        let fadeOut = original.fadeOut
+        original.fitsVideo = false
+        original.fadeOut = .zero
+        audioClips[i] = original
+        var cursor = original.timelineRange.end
+        var copies: [AudioClip] = []
+        while videoEnd - cursor >= Self.minimumAudioDuration {
+            var copy = original
+            copy.id = UUID()
+            copy.start = cursor
+            copy.fadeIn = .zero
+            // Sectioned clips keep their structure; the composition stops them at the video end.
+            if !original.hasSectionEdits { copy.sourceRange.duration = min(length, videoEnd - cursor) }
+            copies.append(copy)
+            cursor = copy.timelineRange.end
+        }
+        guard !copies.isEmpty else { return 0 }
+        copies[copies.count - 1].fadeOut = fadeOut
+        for copy in copies {
+            let collides = audioClips.contains { $0.lane == copy.lane && $0.timelineRange.intersection(copy.timelineRange) != nil }
+            if collides { addAudio(copy) } else { audioClips.append(copy) }
+        }
+        return copies.count
     }
 
     /// Copies an audio clip and places it right after the original (same lane when free).

@@ -21,6 +21,12 @@ public struct ClipRenderInfo: @unchecked Sendable {
     /// Transition into this clip (owned by the previous clip).
     public var transitionIn: Transition?
     public var transitionOut: Transition?
+    /// Slow motion: a second track carrying the next source frame, cross-faded by
+    /// the playback phase between frames (smooth slow motion by frame blending).
+    public var blendTrackID: CMPersistentTrackID?
+    /// File time (s) at the clip's start and the source frame rate, to compute the phase.
+    public var blendFileStart: Double = 0
+    public var blendFPS: Double = 30
 }
 
 /// Immutable description of a whole edit for rendering. Shared by every
@@ -72,7 +78,7 @@ public final class RenderInstruction: NSObject, AVVideoCompositionInstructionPro
         self.timeRange = timeRange
         self.scene = scene
         self.clipIndices = clipIndices
-        let ids = clipIndices.compactMap { scene.clips[$0].trackID }
+        let ids = clipIndices.flatMap { [scene.clips[$0].trackID, scene.clips[$0].blendTrackID].compactMap { $0 } }
         self.requiredSourceTrackIDs = ids.isEmpty ? nil : ids.map { NSNumber(value: $0) }
         super.init()
     }

@@ -15,12 +15,19 @@ enum Theme {
     static let clipCaption = Color(red: 0.7, green: 0.45, blue: 0.95)
 }
 
+extension EnvironmentValues {
+    /// True inside the wide layout's sidebar (LAY-3): tools draw as grid tiles and
+    /// panels lose their grabber and swipe-down gesture.
+    @Entry var inSidebar = false
+}
+
 struct ToolButton: View {
     let title: String
     let systemImage: String
     var isActive = false
     var badge: String? = nil
     let action: () -> Void
+    @Environment(\.inSidebar) private var inSidebar
 
     var body: some View {
         Button(action: action) {
@@ -44,9 +51,12 @@ struct ToolButton: View {
             }
             .foregroundStyle(isActive ? Theme.accent : .white)
             .frame(minWidth: 58)
+            .frame(maxWidth: inSidebar ? .infinity : nil, minHeight: inSidebar ? 66 : nil)
+            .background(inSidebar ? Theme.surfaceRaised : .clear, in: RoundedRectangle(cornerRadius: 12))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .hoverEffect(.highlight)
         .accessibilityIdentifier("tool.\(title)")
     }
 }
@@ -121,7 +131,9 @@ struct ChipButton: View {
                 .foregroundStyle(.white)
         }
         .buttonStyle(.plain)
+        .hoverEffect(.highlight)
         .accessibilityIdentifier("chip.\(title)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

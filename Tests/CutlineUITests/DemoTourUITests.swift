@@ -68,7 +68,7 @@ final class DemoTourUITests: CutlineUITestCase {
         chapter(1) {
             tap("projects.new")
             pause(0.8)
-            tap("tool.Media")
+            tap("timeline.add")
             pause(0.6)
             app.buttons["Sample Clips"].tap()
             waitFor("demo clips", timeout: 120) { count(prefix: "clip.") >= 4 }
@@ -115,7 +115,7 @@ final class DemoTourUITests: CutlineUITestCase {
             pause(0.6)
             tap("chip.2×")
             pause(1.2)
-            tap("chip.0.5×")
+            tap("chip..5×")
             pause(1.2)
             tap("chip.1×")
             tap("panel.done")
@@ -197,7 +197,6 @@ final class DemoTourUITests: CutlineUITestCase {
             tap("music.use.sunrise")
             waitUntilIdle()
             pause(0.8)
-            tap("tool.Beat Sync")
             pause(1.5)
             seekStart()
             play(3)
@@ -206,7 +205,6 @@ final class DemoTourUITests: CutlineUITestCase {
         // 10 – Remove silence.
         chapter(10) {
             selectNone()
-            tap("tool.Silence")
             waitUntilIdle(timeout: 300)
             pause(1.5)
         }

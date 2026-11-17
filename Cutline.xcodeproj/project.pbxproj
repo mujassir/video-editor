@@ -21,6 +21,7 @@
 		281D89B0DA3A58FD504D2D7A /* TimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7F47D4DB6A46EB94C743170 /* TimelineView.swift */; };
 		2A2B5E5B1C948C9BC8DBCF7E /* MediaTime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8804AFEC67C6FD37F59EB41A /* MediaTime.swift */; };
 		2CAEBD4E3563EA55AEE6CEFF /* ProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACC7050340D9433948F938FB /* ProjectStore.swift */; };
+		6FF8ED295C2AD58EE09C74BE /* RecentAudioStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C2E1E95DB99A6A1D9229C89 /* RecentAudioStore.swift */; };
 		311AC51769F3A65523FB9FE7 /* CutlineApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85A940976638D2263C373B9D /* CutlineApp.swift */; };
 		3CB558D04769B2042F9D7F05 /* Exporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D933A2D075A1EAEC9FE5854 /* Exporter.swift */; };
 		4B7E03CBA52BFE11A23B9CF4 /* EngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 319F569BE73FB1F9FCB2A9AC /* EngineTests.swift */; };
@@ -132,6 +133,7 @@
 		A7F47D4DB6A46EB94C743170 /* TimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineView.swift; sourceTree = "<group>"; };
 		ABD2EDA89B6EDB608C7CEF86 /* Shaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Shaders.metal; sourceTree = "<group>"; };
 		ACC7050340D9433948F938FB /* ProjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStore.swift; sourceTree = "<group>"; };
+		0C2E1E95DB99A6A1D9229C89 /* RecentAudioStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentAudioStore.swift; sourceTree = "<group>"; };
 		AF3195C312C6E064E91CD463 /* EditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorView.swift; sourceTree = "<group>"; };
 		BF8135E4E018CC3AABE9902E /* EditorModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorModel.swift; sourceTree = "<group>"; };
 		CCBEB65245B37DE68820013F /* LaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchTests.swift; sourceTree = "<group>"; };
@@ -231,6 +233,7 @@
 				8804AFEC67C6FD37F59EB41A /* MediaTime.swift */,
 				5367329CECB85052B88ED8A1 /* Project.swift */,
 				ACC7050340D9433948F938FB /* ProjectStore.swift */,
+				0C2E1E95DB99A6A1D9229C89 /* RecentAudioStore.swift */,
 				DAC8B5D5D48534BBB00809A8 /* TimelineLayout.swift */,
 			);
 			path = Model;
@@ -481,6 +484,7 @@
 				A03FF1605B8722A96C0CFFC2 /* MetalRenderer.swift in Sources */,
 				556AE9C9A7BC25AD2D7EF1DA /* Project.swift in Sources */,
 				2CAEBD4E3563EA55AEE6CEFF /* ProjectStore.swift in Sources */,
+				6FF8ED295C2AD58EE09C74BE /* RecentAudioStore.swift in Sources */,
 				55A70A4855BD38268564190B /* RenderInstruction.swift in Sources */,
 				71DE44B5DFADAAF0C58C02E5 /* SampleMedia.swift in Sources */,
 				84DAC8072CAC0A48A4AE276A /* Shaders.metal in Sources */,
@@ -632,7 +636,8 @@
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleLightContent;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -710,7 +715,7 @@
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
@@ -746,7 +751,8 @@
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleLightContent;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -817,7 +823,7 @@
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};

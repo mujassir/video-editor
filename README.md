@@ -1,10 +1,10 @@
 # Cutline
 
-A fast, private video editor for iPhone. It's built natively in Swift, SwiftUI, UIKit and Metal, and all AI features run **on the device**: no account, no uploads, no watermark (unless you add your own).
+A fast, private video editor for iPhone and iPad. It's built natively in Swift, SwiftUI, UIKit and Metal, and all AI features run **on the device**: no account, no uploads, no watermark (unless you add your own).
 
 > "Cutline" is a working name.
 
-- **Platform:** iOS 26+, iPhone 15 and newer (Mac is planned next).
+- **Platform:** iOS / iPadOS 26+, iPhone 15 and newer (portrait), and iPad in any orientation with a wide layout: preview beside a tools sidebar, plus keyboard shortcuts (`LAY-*`). Mac is planned as a separate app.
 - **Stack:**
   - Swift 6 with strict concurrency.
   - SwiftUI screens plus a UIKit timeline.
@@ -18,19 +18,22 @@ A fast, private video editor for iPhone. It's built natively in Swift, SwiftUI, 
 - Project library with thumbnails: rename, duplicate, delete.
 - Autosave, plus undo and redo of up to 200 steps.
 - Empty projects aren't kept.
-- Import from Photos or Files: video, photos and audio.
+- Import videos and photos from the Photos library: a new project opens it straight away, and the timeline **+** opens it again to add more. Audio comes from Music (Audio Tracks or From Video).
+- Tool panels (Music, Captions, Text, …) close with ✓ or by swiping down.
 
 ### Timeline and preview
 - Live preview rendered by the Metal compositor, with no black flash after edits.
 - UIKit timeline:
   - Centre playhead, pinch to zoom, filmstrip thumbnails.
-  - Audio waveforms with beat marks.
+  - Audio waveforms.
   - Lanes for text, captions and music.
 - Animations play only during playback. Paused or scrubbing, the preview shows clips at rest, so edits are easy to judge.
 
 ### Video clips
-- Split, trim (drag the handles or use precise sliders), duplicate, reorder and delete.
-- Speed from 0.1× to 10×, reverse, freeze frame, volume, extract audio.
+- Split, trim (drag the clip's handles on the timeline), duplicate and delete.
+- **Voice:** turn the clip's own sound off and on (mic button, right after Split).
+- Speed from 0.1× to 10×, reverse, freeze frame.
+- **Denoise:** removes background hiss, hum and wind from the sound of the whole video (Off, Low, Medium, High).
 - 20 filters (3D lookup tables), plus adjustments: exposure, contrast, saturation, warmth, highlights, shadows, vignette, sharpen.
 - Crop, rotate, flip, zoom; Fit, Fill or Stretch per clip.
 - 8 transitions: fade, dissolve, slide, push, zoom, wipe, blur, glitch.
@@ -52,15 +55,14 @@ A fast, private video editor for iPhone. It's built natively in Swift, SwiftUI, 
 - Drag the text on the video to place it anywhere (Custom position).
 
 ### Music and audio
-- 4 built-in royalty-free tracks, synthesized on the device.
-- Your own music from **Files**, or the soundtrack of a video (**From Video**).
-- **Trim Audio:**
-  - One range slider over the song's waveform.
-  - Play the selected section, with a moving cursor.
-  - Trim, Undo, and ✓ to save.
-- Split, duplicate, and **To Playhead**. Press and hold a music bar, then drag it, to move it.
-- Music follows the video's length as you add or remove content. Choosing an End yourself switches this off, and **Match video** switches it back on.
-- Fade-out, and automatic ducking of music under speech.
+- Your own music from **Audio Tracks** (Files), or the soundtrack of a video (**From Video**).
+- **Recent:** the last 5 tracks you used, in any project, one tap to add again.
+- **Start Here:** put the playhead anywhere in the song (also past the end of the video) and tap Start Here: the part before is removed and the music moves to the start, with a short fade-in.
+- **Music toolbar:** Cut, Duck (music level under speech, 25% by default), Move to Start (when there's a gap before it), Repeat (when it ends before the video), Delete.
+- **Whole song on the timeline:** a 3-minute song on a 1-minute video shows all 3 minutes. The part past the end of the video is dimmed; preview and export stop at the end of the video.
+- **Cut:** select the music and tap **Cut** in the toolbar to cut it at the playhead. Each piece is its own clip that you can select, move, repeat or delete.
+- Press and hold a music bar, then drag it, to move it.
+- New music plays at 70% with a fade-out, and dips automatically while someone speaks (uses captions).
 
 ### Canvas
 - 9:16, 3:4, 1:1, 4:5 and 16:9, with a blurred background.
@@ -76,9 +78,9 @@ A fast, private video editor for iPhone. It's built natively in Swift, SwiftUI, 
 - Drawn over the whole video, including exports.
 
 ### On-device AI
-- **Auto captions:** Apple's on-device speech recognition, with word timing and 5 animated styles. It never falls back to server recognition.
-- **Remove silence:** finds pauses and cuts them in one step.
-- **Beat detection and Beat Sync:** moves cuts onto the music's beats.
+- **Auto captions:** Apple's on-device speech recognition, with word timing and 3 styles (Classic, Karaoke, Bold). It never falls back to server recognition.
+  - **Edit:** a full-screen editor that opens on the caption at the playhead.
+  - **Fillers:** removes um, uh, ah and similar words in one tap.
 - **Auto enhance:** corrects exposure, contrast, colour and white balance.
 - **Auto reframe:** follows faces and subjects so a wide shot fits a vertical canvas.
 - **Background removal (Cutout):** person segmentation with blur, colour or transparent background.
@@ -86,7 +88,7 @@ A fast, private video editor for iPhone. It's built natively in Swift, SwiftUI, 
 ### Export
 - 720p, 1080p or 4K at 24, 30 or 60 fps, in HEVC or H.264, using the hardware encoder.
 - An estimated file size before export, and the real size after it.
-- Save to Photos, or share.
+- Save to Photos, or **Export & Share** straight to WhatsApp, Instagram, Messages and other apps.
 
 ## Open in Xcode
 
@@ -102,7 +104,7 @@ cd video-editor
 open Cutline.xcodeproj
 ```
 
-Choose the **Cutline** scheme and an iPhone simulator or your iPhone, then Run (⌘R).
+Choose the **Cutline** scheme and an iPhone or iPad simulator (or your device), then Run (⌘R).
 - **Signing:** the team is set in `project.yml` (`DEVELOPMENT_TEAM`) and in the committed project. To use your own, change it under *Signing & Capabilities* for the **Cutline** target, and change the bundle ID if needed.
 
 ### Regenerating the Xcode project
@@ -137,11 +139,24 @@ Tests/
   EditorKitTests/         unit tests (Swift Testing)
   CutlineUITests/         one UI test per feature (XCTest)
 project.yml               XcodeGen project definition
+docs/spec/                cross-platform specs (features, implementation, project file format)
+docs/android/             kick-start guide for the Android app
 ```
+
+## Specs for other platforms
+
+The Android, macOS and Windows apps are built from the specs in [`docs/spec`](docs/spec), so they behave the same as this app:
+
+- [Feature spec](docs/spec/FEATURES.md): what the user sees, with feature IDs and the platform parity table.
+- [Implementation spec](docs/spec/IMPLEMENTATION.md): algorithms, formulas, numbers and the project file format.
+- [Sample project file](docs/spec/project.sample.json): the shared `project.json` format. The `ProjectFileContractTests` test checks that it still loads.
+- [Android kick-start guide](docs/android/README.md): suggested stack and modules, iOS → Android file map, milestones by feature ID, tests to port first, and pitfalls found on iOS.
+
+AI agents start from [AGENTS.md](AGENTS.md).
 
 ## Tests and CI
 
-GitHub Actions (`.github/workflows/ios.yml`) builds the app and runs every test on an iPhone 17 Pro simulator, for every push:
+GitHub Actions (`.github/workflows/ios.yml`) builds the app and runs every test on an iPhone 17 Pro simulator, and the iPad layout tests (`TabletUITests`) on an iPad simulator, for every push:
 
 - **100 unit tests:**
   - Editing rules, timing and layout.

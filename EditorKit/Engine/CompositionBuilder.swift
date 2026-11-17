@@ -11,6 +11,12 @@ public struct MediaResolver: Sendable {
     public func reversedURL(for item: MediaItem) -> URL? {
         item.reversedFileName.map { mediaDirectory.appendingPathComponent($0) }
     }
+    /// The noise-reduced audio for `item` at `level`, if it has been made.
+    public func denoisedURL(for item: MediaItem, level: NoiseReduction) -> URL? {
+        guard let name = item.denoisedFileNames?[level] else { return nil }
+        let url = mediaDirectory.appendingPathComponent(name)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
 }
 
 /// The playable / exportable result of building a project.
@@ -46,10 +52,13 @@ public final class CompositionBuilder: @unchecked Sendable {
 
     public func build(project: Project, resolver: MediaResolver, renderSize: CGSize,
                       quality: RenderQuality = .preview,
-                      toggles: RenderToggles = RenderToggles()) async throws -> BuiltComposition {
+                      toggles: RenderToggles = RenderToggles(),
+                      minimumLength: MediaTime = .zero) async throws -> BuiltComposition {
         let composition = AVMutableComposition()
         let layout = project.layout
-        let total = project.duration
+        // The edit's length. The preview passes `minimumLength` = the timeline length so
+        // music past the end of the video can be heard (PRV-8); export never does.
+        let total = max(project.duration, minimumLength)
         guard total > .zero else { throw CompositionError.empty }
 
         // Base track: a black clip stretched over the whole edit keeps the compositor fed.
@@ -64,6 +73,8 @@ public final class CompositionBuilder: @unchecked Sendable {
 
         let videoTracks = [composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
                            composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)]
+        // Created on demand for slowed clips (A/B like the main tracks).
+        var blendTracks: [AVMutableCompositionTrack?] = [nil, nil]
         let audioTracks = [composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid),
                            composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)]
         var audioParams: [CMPersistentTrackID: AVMutableAudioMixInputParameters] = [:]
@@ -84,6 +95,9 @@ public final class CompositionBuilder: @unchecked Sendable {
             let timelineStart = entry.range.start.cmTime
             let timelineDuration = entry.range.duration.cmTime
             var trackID: CMPersistentTrackID?
+            var blendTrackID: CMPersistentTrackID?
+            var blendFileStart = 0.0
+            var blendFPS = 30.0
 
             if clip.isStill {
                 let url = resolver.url(for: media)
@@ -127,8 +141,28 @@ public final class CompositionBuilder: @unchecked Sendable {
                 }
                 trackID = track.trackID
 
+                // Smooth slow motion: the same footage one source frame ahead on a blend track.
+                let fps = media.frameRate > 1 ? media.frameRate : 30
+                let frame = CMTime(seconds: 1 / fps, preferredTimescale: 60_000)
+                if clip.speed < 0.95, sourceRange.duration > frame + frame {
+                    if blendTracks[lane] == nil {
+                        blendTracks[lane] = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
+                    }
+                    if let blend = blendTracks[lane] {
+                        let ahead = CMTimeRange(start: sourceRange.start + frame, duration: sourceRange.duration - frame)
+                        try blend.insertTimeRange(ahead, of: srcVideo, at: timelineStart)
+                        blend.scaleTimeRange(CMTimeRange(start: timelineStart, duration: ahead.duration),
+                                             toDuration: CMTimeMultiplyByFloat64(ahead.duration, multiplier: 1 / clip.speed))
+                        blendTrackID = blend.trackID
+                        blendFileStart = sourceRange.start.seconds
+                        blendFPS = fps
+                    }
+                }
+
+                // Noise reduction plays the cleaned copy of the sound (same timing as the original).
+                let audioAsset = project.noiseReduction(for: clip).flatMap { resolver.denoisedURL(for: media, level: $0) }.map { asset($0) } ?? a
                 if !clip.isReversed, !clip.isMuted, clip.volume > 0, media.hasAudio,
-                   let srcAudio = try await a.loadTracks(withMediaType: .audio).first,
+                   let srcAudio = try await audioAsset.loadTracks(withMediaType: .audio).first,
                    let audio = audioTracks[lane] {
                     try audio.insertTimeRange(sourceRange, of: srcAudio, at: timelineStart)
                     if clip.speed != 1 {
@@ -154,10 +188,14 @@ public final class CompositionBuilder: @unchecked Sendable {
             }
 
             let previous = entry.index > 0 ? project.clips[entry.index - 1] : nil
-            infos.append(ClipRenderInfo(clip: clip, media: media, trackID: trackID,
-                                        timelineRange: entry.range, overlapIn: entry.overlapIn, overlapOut: entry.overlapOut,
-                                        transitionIn: entry.overlapIn > .zero ? previous?.transitionOut : nil,
-                                        transitionOut: entry.overlapOut > .zero ? clip.transitionOut : nil))
+            var info = ClipRenderInfo(clip: clip, media: media, trackID: trackID,
+                                      timelineRange: entry.range, overlapIn: entry.overlapIn, overlapOut: entry.overlapOut,
+                                      transitionIn: entry.overlapIn > .zero ? previous?.transitionOut : nil,
+                                      transitionOut: entry.overlapOut > .zero ? clip.transitionOut : nil)
+            info.blendTrackID = blendTrackID
+            info.blendFileStart = blendFileStart
+            info.blendFPS = blendFPS
+            infos.append(info)
         }
 
         // Free audio clips each get their own track so volume envelopes stay independent.
@@ -168,12 +206,29 @@ public final class CompositionBuilder: @unchecked Sendable {
             guard let src = try await a.loadTracks(withMediaType: .audio).first,
                   let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
             else { continue }
-            let available = min(clip.sourceRange.duration, total - clip.start)
-            guard available > .zero else { continue }
-            let range = MediaTimeRange(start: clip.sourceRange.start, duration: available)
-            try track.insertTimeRange(range.cmTimeRange, of: src, at: clip.start.cmTime)
             let p = AVMutableAudioMixInputParameters(track: track)
-            Self.applyEnvelope(to: p, clip: clip, playedDuration: available, speech: clip.autoDuck ? speech : [])
+            if clip.hasSectionEdits {
+                // Kept sections play back to back (deleted ones are cut out), each at its own volume.
+                var cursor = clip.start
+                var placed: [(range: MediaTimeRange, volume: Float)] = []
+                for s in clip.resolvedSections where !s.deleted {
+                    guard cursor < total else { break }
+                    let len = min(s.duration, total - cursor)
+                    guard len > .zero else { continue }
+                    try track.insertTimeRange(MediaTimeRange(start: s.start, duration: len).cmTimeRange, of: src, at: cursor.cmTime)
+                    placed.append((MediaTimeRange(start: cursor, duration: len), Float(clip.volume * s.volume)))
+                    cursor += len
+                }
+                guard !placed.isEmpty else { continue }
+                Self.applySectionEnvelope(to: p, sections: placed, fadeIn: clip.fadeIn, fadeOut: clip.fadeOut)
+            } else {
+                let available = min(clip.sourceRange.duration, total - clip.start)
+                guard available > .zero else { continue }
+                let range = MediaTimeRange(start: clip.sourceRange.start, duration: available)
+                try track.insertTimeRange(range.cmTimeRange, of: src, at: clip.start.cmTime)
+                Self.applyEnvelope(to: p, clip: clip, playedDuration: available, speech: clip.autoDuck ? speech : [],
+                                   duckLevel: clip.resolvedDuckLevel)
+            }
             audioParams[track.trackID] = p
         }
 
@@ -212,14 +267,34 @@ public final class CompositionBuilder: @unchecked Sendable {
                                 audioMix: mix, scene: scene, duration: total)
     }
 
-    /// Timeline ranges where someone is speaking (from captions), used for ducking.
+    /// Timeline ranges where someone is speaking, used for ducking (see `Project.duckingSpeechRanges`).
     static func speechRanges(_ project: Project) -> [MediaTimeRange] {
-        Project.merge(project.captions.segments.map { seg in
-            MediaTimeRange(start: seg.range.start - MediaTime(seconds: 0.15), end: seg.range.end + MediaTime(seconds: 0.25))
-        })
+        project.duckingSpeechRanges
     }
 
     /// Volume envelope: fades in/out plus optional ducking under speech.
+    /// Per-section volumes (in timeline order) with an optional fade at the very start and end.
+    static func applySectionEnvelope(to p: AVMutableAudioMixInputParameters,
+                                     sections: [(range: MediaTimeRange, volume: Float)],
+                                     fadeIn: MediaTime, fadeOut: MediaTime) {
+        p.setVolume(sections[0].volume, at: .zero)
+        for (k, s) in sections.enumerated() {
+            let isFirst = k == 0, isLast = k == sections.count - 1
+            let inLen = isFirst ? min(fadeIn, s.range.duration) : .zero
+            let outLen = isLast ? min(fadeOut, s.range.duration - inLen) : .zero
+            if inLen > .zero {
+                p.setVolumeRamp(fromStartVolume: 0, toEndVolume: s.volume,
+                                timeRange: MediaTimeRange(start: s.range.start, duration: inLen).cmTimeRange)
+            } else {
+                p.setVolume(s.volume, at: s.range.start.cmTime)
+            }
+            if outLen > .zero {
+                p.setVolumeRamp(fromStartVolume: s.volume, toEndVolume: 0,
+                                timeRange: MediaTimeRange(start: s.range.end - outLen, duration: outLen).cmTimeRange)
+            }
+        }
+    }
+
     static func applyEnvelope(to p: AVMutableAudioMixInputParameters, clip: AudioClip, playedDuration: MediaTime,
                               speech: [MediaTimeRange], duckLevel: Double = 0.25) {
         let vol = Float(clip.volume)

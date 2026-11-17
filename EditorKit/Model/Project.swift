@@ -7,6 +7,13 @@ public enum MediaKind: String, Codable, Sendable {
     case video, photo, audio
 }
 
+/// How strongly background noise (hiss, hum, wind, room tone) is removed from a clip's sound.
+public enum NoiseReduction: String, Codable, CaseIterable, Sendable, Identifiable, CodingKeyRepresentable {
+    case low, medium, high
+    public var id: String { rawValue }
+    public var title: String { rawValue.capitalized }
+}
+
 /// A source file copied into the project's media folder.
 public struct MediaItem: Codable, Hashable, Identifiable, Sendable {
     public var id: UUID
@@ -20,6 +27,8 @@ public struct MediaItem: Codable, Hashable, Identifiable, Sendable {
     public var displayName: String
     /// Reversed copy of a video, generated on demand for reversed clips.
     public var reversedFileName: String?
+    /// Noise-reduced copies of the audio, by strength (generated on demand).
+    public var denoisedFileNames: [NoiseReduction: String]?
     /// Clockwise quarter turns needed to display the raw video frames upright
     /// (from the track's preferredTransform). `naturalSize` is the upright size.
     public var sourceQuarterTurns: Int = 0
@@ -330,6 +339,9 @@ public struct VideoClip: Codable, Hashable, Identifiable, Sendable {
     public var freezeAt: MediaTime?
     public var volume: Double = 1
     public var isMuted = false
+    /// Older per-clip noise reduction (DNS-8). New edits use `Project.noiseReduction`; this only
+    /// plays while the project-wide setting is nil, and picking a project level clears it.
+    public var noiseReduction: NoiseReduction?
     public var transform = ClipTransform()
     public var filter: FilterSetting?
     public var adjustments = ColorAdjustments()
@@ -389,11 +401,16 @@ public struct AudioClip: Codable, Hashable, Identifiable, Sendable {
     public var lane: Int = 0
     /// Lower this clip while someone is speaking on the main track.
     public var autoDuck = false
+    /// Music level while someone speaks when auto-duck is on (0…1). nil = 25% (older projects).
+    public var duckLevel: Double?
+    public var resolvedDuckLevel: Double { min(max(duckLevel ?? 0.25, 0), 1) }
     /// Beat times detected in the source (source time), if analysed.
     public var beats: [MediaTime] = []
     public var name: String = ""
     /// Music keeps its end at the end of the video as the edit grows or shrinks.
     /// nil (older projects) means "yes" for music, "no" for other roles.
+    /// Music now always shows the whole song (from its source start to the end of the
+    /// file) until it is cut; the part past the end of the video isn't exported.
     public var fitsVideo: Bool?
     public var followsVideo: Bool { fitsVideo ?? (role == .music) }
 
@@ -405,12 +422,56 @@ public struct AudioClip: Codable, Hashable, Identifiable, Sendable {
         self.start = start
     }
 
-    public var timelineRange: MediaTimeRange { MediaTimeRange(start: start, duration: sourceRange.duration) }
+    /// Marker-separated sections of the song (source time). nil = one section, full volume.
+    public var sections: [AudioSection]?
+
+    /// Sections clipped to the trimmed range (always at least one).
+    public var resolvedSections: [AudioSection] {
+        guard let sections, !sections.isEmpty else {
+            return [AudioSection(start: sourceRange.start, end: sourceRange.end)]
+        }
+        let clipped = sections.compactMap { s -> AudioSection? in
+            let a = max(s.start, sourceRange.start), b = min(s.end, sourceRange.end)
+            guard b > a else { return nil }
+            var c = s
+            c.start = a
+            c.end = b
+            return c
+        }
+        return clipped.isEmpty ? [AudioSection(start: sourceRange.start, end: sourceRange.end)] : clipped
+    }
+
+    /// How long the clip plays (deleted sections are cut out).
+    public var playedDuration: MediaTime {
+        resolvedSections.filter { !$0.deleted }.reduce(.zero) { $0 + ($1.end - $1.start) }
+    }
+
+    public var hasSectionEdits: Bool {
+        guard let sections else { return false }
+        return sections.count > 1 || sections.contains { $0.deleted || $0.volume != 1 }
+    }
+
+    public var timelineRange: MediaTimeRange { MediaTimeRange(start: start, duration: playedDuration) }
 
     /// Beat times mapped onto the timeline.
     public var timelineBeats: [MediaTime] {
         beats.filter { sourceRange.contains($0) }.map { start + ($0 - sourceRange.start) }
     }
+}
+
+/// Part of a song between two markers, with its own volume; deleted parts are cut out.
+public struct AudioSection: Codable, Hashable, Sendable {
+    public var start: MediaTime
+    public var end: MediaTime
+    public var volume: Double = 1
+    public var deleted = false
+    public init(start: MediaTime, end: MediaTime, volume: Double = 1, deleted: Bool = false) {
+        self.start = start
+        self.end = end
+        self.volume = volume
+        self.deleted = deleted
+    }
+    public var duration: MediaTime { end - start }
 }
 
 public enum TextAnimation: String, Codable, CaseIterable, Sendable, Identifiable {
@@ -607,10 +668,60 @@ public struct CaptionSegment: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
+// MARK: Filler words
+
+public extension CaptionTrack {
+    /// Hesitation sounds removed by "Remove Fillers" (compared without case or punctuation).
+    static let fillerWords: Set<String> = ["um", "umm", "ummm", "uh", "uhh", "uhhh", "ah", "ahh", "ahhh",
+                                           "er", "err", "erm", "hmm", "hm", "mm", "mmm"]
+
+    static func isFiller(_ word: String) -> Bool {
+        fillerWords.contains(word.lowercased().trimmingCharacters(in: .punctuationCharacters.union(.whitespaces)))
+    }
+
+    /// Removes filler words (um, uh, ah…) from every caption; captions left empty are dropped.
+    /// The remaining words keep their timing. Returns how many words were removed.
+    @discardableResult
+    mutating func removeFillers() -> Int {
+        var removed = 0
+        for s in segments.indices {
+            let words = segments[s].words
+            var kept = words.filter { !Self.isFiller($0.text) }
+            removed += words.count - kept.count
+            guard kept.count != words.count, !kept.isEmpty else {
+                if kept.isEmpty { segments[s].words = [] }
+                continue
+            }
+            // "Um, so we…" → "So we…": keep the sentence capitalised.
+            if Self.isFiller(words[0].text), let first = kept[0].text.first, first.isLowercase,
+               words[0].text.first?.isUppercase == true {
+                kept[0].text = first.uppercased() + kept[0].text.dropFirst()
+            }
+            // "…watching, um" → "…watching": no dangling comma at the end.
+            if let last = words.last, Self.isFiller(last.text), kept[kept.count - 1].text.hasSuffix(",") {
+                kept[kept.count - 1].text.removeLast()
+            }
+            segments[s].words = kept
+        }
+        segments.removeAll { $0.words.isEmpty }
+        return removed
+    }
+}
+
 public enum CaptionPreset: String, Codable, CaseIterable, Sendable, Identifiable {
-    case classic, karaoke, bold, minimal, neon
+    case classic, karaoke, bold
     public var id: String { rawValue }
     public var displayName: String { rawValue.capitalized }
+
+    /// Projects saved with the removed Minimal / Neon styles open with the closest one left.
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        switch raw {
+        case "minimal": self = .classic
+        case "neon": self = .karaoke
+        default: self = CaptionPreset(rawValue: raw) ?? .karaoke
+        }
+    }
 }
 
 public struct CaptionTrack: Codable, Hashable, Sendable {
@@ -645,6 +756,9 @@ public struct Project: Codable, Hashable, Identifiable, Sendable {
     public var watermark: Watermark?
     public var defaultFit: ContentFit?
     public var defaultAnchor: ContentAnchor?
+    /// Denoise for the whole video (DNS-1): every main-track video clip's own sound. nil = off,
+    /// or, for older projects, each clip's own `noiseReduction`.
+    public var noiseReduction: NoiseReduction?
 
     public init(id: UUID = UUID(), name: String, createdAt: Date = Date()) {
         self.id = id
@@ -655,4 +769,40 @@ public struct Project: Codable, Hashable, Identifiable, Sendable {
 
     public func mediaItem(_ id: UUID) -> MediaItem? { media.first { $0.id == id } }
     public func clipIndex(_ id: UUID) -> Int? { clips.firstIndex { $0.id == id } }
+}
+
+// MARK: - Noise reduction (DNS)
+
+public extension Project {
+    /// The level that plays for `clip`'s own sound: the project's, else the clip's older one (DNS-8).
+    func noiseReduction(for clip: VideoClip) -> NoiseReduction? { noiseReduction ?? clip.noiseReduction }
+
+    /// Media whose sound Denoise cleans: used by a main-track video clip (not a still), with sound.
+    /// Each item once, in timeline order.
+    var denoiseSources: [MediaItem] {
+        var seen = Set<UUID>()
+        return clips.compactMap { clip in
+            guard clip.kind == .video, !clip.isStill, seen.insert(clip.mediaID).inserted,
+                  let item = mediaItem(clip.mediaID), item.hasAudio else { return nil }
+            return item
+        }
+    }
+
+    /// Sets Denoise for the whole video (nil = Off), records newly made files, and clears every
+    /// clip's older per-clip setting (DNS-8). One edit.
+    mutating func setNoiseReduction(_ level: NoiseReduction?, files: [UUID: String] = [:]) {
+        if let level { recordDenoisedFiles(files, level: level) }
+        noiseReduction = level
+        for i in clips.indices { clips[i].noiseReduction = nil }
+    }
+
+    /// Stores cleaned file names (by media ID) for `level`.
+    mutating func recordDenoisedFiles(_ files: [UUID: String], level: NoiseReduction) {
+        for (id, name) in files {
+            guard let i = media.firstIndex(where: { $0.id == id }) else { continue }
+            var names = media[i].denoisedFileNames ?? [:]
+            names[level] = name
+            media[i].denoisedFileNames = names
+        }
+    }
 }

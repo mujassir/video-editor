@@ -12,6 +12,9 @@ struct ExportView: View {
     @State private var saved = false
     @State private var elapsed: TimeInterval = 0
     @State private var player: AVPlayer?
+    /// Open the share sheet as soon as the export finishes ("Export & Share").
+    @State private var shareWhenDone = false
+    @State private var sharing: ShareItem?
 
     var body: some View {
         NavigationStack {
@@ -37,6 +40,11 @@ struct ExportView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .sheet(item: $sharing) { item in
+            ActivityView(items: [item.url])
+                .presentationDetents([.medium, .large])
+                .ignoresSafeArea()
+        }
     }
 
     private var options: some View {
@@ -67,12 +75,22 @@ struct ExportView: View {
             .font(.subheadline.weight(.semibold))
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("export.estimate")
-            Button(action: start) {
+            Button { start(share: false) } label: {
                 Text("Export Video").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14)
                     .background(Theme.accent, in: RoundedRectangle(cornerRadius: 14))
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("export.start")
+            Button { start(share: true) } label: {
+                Label("Export & Share", systemImage: "square.and.arrow.up")
+                    .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14)
+                    .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 14))
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("export.startShare")
+            Text("Share to WhatsApp, Instagram, TikTok, Messages, AirDrop and more.")
+                .font(.footnote).foregroundStyle(Theme.secondaryText)
+                .frame(maxWidth: .infinity)
             if let error { Text(error).foregroundStyle(.red).font(.footnote) }
         }
     }
@@ -124,18 +142,25 @@ struct ExportView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("export.save")
-                ShareLink(item: url) {
+                Button { sharing = ShareItem(url: url) } label: {
                     Label("Share", systemImage: "square.and.arrow.up")
                         .frame(maxWidth: .infinity).padding(.vertical, 12)
                         .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 12))
                 }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("export.share")
             }
             if let error { Text(error).foregroundStyle(.red).font(.footnote) }
         }
     }
 
-    private func start() {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(model.project.name.replacingOccurrences(of: " ", with: "-"))-\(Int(Date().timeIntervalSince1970)).mp4")
+    private func start(share: Bool) {
+        // A folder per export so the shared file can carry a clean name ("My Trip.mp4").
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("export-\(Int(Date().timeIntervalSince1970))", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let url = folder.appendingPathComponent("\(Self.fileName(for: model.project.name)).mp4")
+        shareWhenDone = share
         progress = 0
         error = nil
         let started = Date()
@@ -150,12 +175,23 @@ struct ExportView: View {
                 elapsed = Date().timeIntervalSince(started)
                 outputURL = url
                 player = AVPlayer(url: url)
-                player?.play()
+                if shareWhenDone {
+                    sharing = ShareItem(url: url)
+                } else {
+                    player?.play()
+                }
             } catch {
                 self.error = "Export failed: \(error.localizedDescription)"
                 progress = nil
             }
         }
+    }
+
+    /// Project name made safe for a file name.
+    static func fileName(for name: String) -> String {
+        let cleaned = name.components(separatedBy: CharacterSet(charactersIn: "/\\:?%*|\"<>")).joined()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? "Cutline Video" : cleaned
     }
 
     static func format(bytes: Int64) -> String {
@@ -165,4 +201,18 @@ struct ExportView: View {
     static func fileSize(_ url: URL) -> Int64 {
         ((try? FileManager.default.attributesOfItem(atPath: url.path)[.size]) as? NSNumber)?.int64Value ?? 0
     }
+}
+
+struct ShareItem: Identifiable {
+    let url: URL
+    var id: URL { url }
+}
+
+/// The system share sheet (WhatsApp, Instagram, Messages, AirDrop, Save Video…).
+struct ActivityView: UIViewControllerRepresentable {
+    let items: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
