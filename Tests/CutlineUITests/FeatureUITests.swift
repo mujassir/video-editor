@@ -128,7 +128,7 @@ final class FeatureUITests: CutlineUITestCase {
         selectClip(0)
         tap("tool.Speed")
         let width = app.windows.firstMatch.frame.width
-        for chip in ["chip.0.25×", "chip.0.5×", "chip.1×", "chip.2×", "chip.3×", "chip.4×"] {
+        for chip in ["chip..3×", "chip..5×", "chip.1×", "chip.2×", "chip.3×", "chip.4×"] {
             let e = element(chip)
             XCTAssertTrue(e.waitForExistence(timeout: 5), "\(chip) missing")
             XCTAssertLessThanOrEqual(e.frame.maxX, width, "\(chip) runs off the screen")
@@ -137,6 +137,23 @@ final class FeatureUITests: CutlineUITestCase {
         waitFor("3× speed: clip 0 lasts 4 ÷ 3 s") { abs(totalSeconds - (8 + 4.0 / 3)) < 0.2 }
         XCTAssertTrue(element("chip.3×").isSelected)
         XCTAssertEqual(element("speed.value").label, "3×")
+    }
+
+    /// SPD-4: "Apply to all" sets the speed on every clip in one undo step.
+    func test05d_SPD4_ApplySpeedToAllClips() {
+        openProjectWithSamples()
+        selectClip(0)
+        tap("tool.Speed")
+        tap("chip.2×")
+        waitFor("2× on clip 0") { abs(totalSeconds - 10) < 0.2 }
+        XCTAssertEqual(element("speed.applyAll").label, "Apply to all 3 clips")
+        tap("speed.applyAll")
+        waitFor("2× on all three 4 s clips") { abs(totalSeconds - 6) < 0.2 }
+        XCTAssertEqual(toastText, "All clips set to 2×")
+        snapshot("05d-speed-apply-all")
+        tap("panel.done")
+        tap("editor.undo")
+        waitFor("one undo restores clip 1 and 2") { abs(totalSeconds - 10) < 0.2 }
     }
 
     /// PRV-9: the preview play speed buttons play faster without changing the edit (no undo step, same length).

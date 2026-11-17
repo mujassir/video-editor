@@ -115,7 +115,7 @@ final class DemoTourUITests: CutlineUITestCase {
             pause(0.6)
             tap("chip.2×")
             pause(1.2)
-            tap("chip.0.5×")
+            tap("chip..5×")
             pause(1.2)
             tap("chip.1×")
             tap("panel.done")

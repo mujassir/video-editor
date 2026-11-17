@@ -958,3 +958,137 @@ struct DragReorderTests {
         #expect(p.clips.last?.transitionOut == nil)
     }
 }
+
+@Suite("Speed: apply to all and re-timing")
+struct SpeedRetimeTests {
+    private func word(_ text: String, _ a: Double, _ b: Double) -> CaptionWord {
+        CaptionWord(text: text, range: MediaTimeRange(start: s(a), end: s(b)))
+    }
+
+    private func addPhoto(_ p: inout Project) {
+        p.appendClip(for: MediaItem(kind: .photo, fileName: "p.jpg", naturalSize: CGSize(width: 10, height: 10),
+                                    duration: .zero, hasAudio: false))
+    }
+
+    @Test func SPD4_appliesToEveryVideoClipAndSkipsStills() throws {
+        var p = makeProject([4, 4])
+        addPhoto(&p)
+        try p.insertFreezeFrame(at: s(1))
+        #expect(p.speedAdjustableClipCount == 3)   // two videos, one split into two pieces
+        p.setSpeedForAllClips(2)
+        for clip in p.clips {
+            #expect(clip.speed == (clip.isStill ? 1 : 2))
+        }
+        // 8 s of video at 2× = 4 s, plus the 3 s photo and the 1.5 s freeze frame.
+        #expect(p.layout.duration == s(8.5))
+        p.setSpeedForAllClips(50)
+        #expect(p.clips.filter { !$0.isStill }.allSatisfy { $0.speed == 10 })
+    }
+
+    @MainActor
+    @Test func SPD4_isOneUndoStep() throws {
+        var start = makeProject([4, 4, 4])
+        start.captions.segments = [CaptionSegment(words: [word("hi", 9, 10)])]
+        let session = EditSession(project: start)
+        session.apply("Speed") { $0.setSpeedForAllClips(2) }
+        #expect(session.project.layout.duration == s(6))
+        #expect(session.project.captions.segments[0].range == MediaTimeRange(start: s(4.5), end: s(5)))
+        session.undo()
+        #expect(session.project.clips == start.clips)
+        #expect(session.project.captions == start.captions)
+        #expect(!session.canUndo)
+    }
+
+    @Test func SPD5_captionsStayOnTheirSpeech() throws {
+        var p = makeProject([4, 4, 4])
+        p.captions.segments = [
+            CaptionSegment(words: [word("before", 1, 2)]),
+            CaptionSegment(words: [word("on", 5, 6), word("clip", 6, 7.5)]),
+            CaptionSegment(words: [word("after", 9, 10)]),
+        ]
+        try p.setSpeed(2, clipID: p.clips[1].id)
+        let ranges = p.captions.segments.flatMap(\.words).map(\.range)
+        #expect(ranges == [
+            MediaTimeRange(start: s(1), end: s(2)),       // clip 0 unchanged
+            MediaTimeRange(start: s(4.5), end: s(5)),     // clip 1: 4 + 1 ÷ 2 … 4 + 2 ÷ 2
+            MediaTimeRange(start: s(5), end: s(5.75)),
+            MediaTimeRange(start: s(7), end: s(8)),       // clip 2 shifts back 2 s
+        ])
+        // Back to 1× restores them exactly.
+        try p.setSpeed(1, clipID: p.clips[1].id)
+        #expect(p.captions.segments.flatMap(\.words).map(\.range) == [
+            MediaTimeRange(start: s(1), end: s(2)), MediaTimeRange(start: s(5), end: s(6)),
+            MediaTimeRange(start: s(6), end: s(7.5)), MediaTimeRange(start: s(9), end: s(10)),
+        ])
+    }
+
+    @Test func SPD5_slowMotionSpreadsCaptions() throws {
+        var p = makeProject([4, 4])
+        p.captions.segments = [CaptionSegment(words: [word("slow", 1, 2), word("next", 5, 6)])]
+        try p.setSpeed(0.5, clipID: p.clips[0].id)
+        #expect(p.captions.segments[0].words.map(\.range) == [
+            MediaTimeRange(start: s(2), end: s(4)), MediaTimeRange(start: s(9), end: s(10)),
+        ])
+    }
+
+    @Test func SPD5_applyToAllHalvesEveryTime() throws {
+        var p = makeProject([4, 4])
+        p.captions.segments = [CaptionSegment(words: [word("a", 1, 3), word("b", 6, 7)])]
+        p.setSpeedForAllClips(2)
+        #expect(p.captions.segments[0].words.map(\.range) == [
+            MediaTimeRange(start: s(0.5), end: s(1.5)), MediaTimeRange(start: s(3), end: s(3.5)),
+        ])
+    }
+
+    @Test func SPD5_textFollowsWithinItsDurationLimits() throws {
+        var p = makeProject([4, 4, 4])
+        let onClip = p.addText("On", at: s(4), duration: s(2))
+        let after = p.addText("After", at: s(9), duration: s(1))
+        let tiny = p.addText("Tiny", at: s(4), duration: s(0.6))
+        try p.setSpeed(4, clipID: p.clips[1].id)
+        func range(_ id: UUID) -> MediaTimeRange? { p.textOverlays.first { $0.id == id }?.range }
+        #expect(range(onClip) == MediaTimeRange(start: s(4), end: s(4.5)))
+        #expect(range(after) == MediaTimeRange(start: s(6), end: s(7)))
+        #expect(range(tiny) == MediaTimeRange(start: s(4), duration: s(0.5)))   // clamped up to 0.5 s
+        #expect(p.textOverlays.count == 3)
+        try p.setSpeed(0.1, clipID: p.clips[1].id)
+        #expect(range(onClip)?.duration == s(20))
+        #expect(range(after) == MediaTimeRange(start: s(4 + 40 + 1), duration: s(1)))
+    }
+
+    @Test func SPD5_voiceoverMovesMusicStays() throws {
+        var p = makeProject([4, 4])
+        let song = MediaItem(kind: .audio, fileName: "m.m4a", naturalSize: .zero, duration: s(60), hasAudio: true)
+        p.media.append(song)
+        p.audioClips.append(AudioClip(mediaID: song.id, role: .music, sourceRange: MediaTimeRange(start: .zero, duration: s(60)), start: s(1)))
+        p.audioClips.append(AudioClip(mediaID: song.id, role: .voiceover, sourceRange: MediaTimeRange(start: .zero, duration: s(3)), start: s(6)))
+        try p.setSpeed(2, clipID: p.clips[0].id)
+        #expect(p.audioClips[0].start == s(1))
+        #expect(p.audioClips[1].start == s(4))
+        #expect(p.audioClips[1].sourceRange.duration == s(3))
+    }
+
+    @Test func SPD5_transitionOverlapBelongsToTheIncomingClip() throws {
+        var p = makeProject([4, 4])
+        try p.setTransition(Transition(kind: .fade, duration: s(1)), after: p.clips[0].id)
+        // Clip 1 starts at 3 s; 3.5 s is 0.5 s into it.
+        p.captions.segments = [CaptionSegment(words: [word("x", 3.5, 4)])]
+        try p.setSpeed(2, clipID: p.clips[1].id)
+        #expect(p.layout.entries[1].range.start == s(3))
+        #expect(p.captions.segments[0].range == MediaTimeRange(start: s(3.25), end: s(3.5)))
+    }
+
+    @Test func SPD5_timesPastTheVideoShiftAndStillsDontChange() throws {
+        var p = makeProject([4])
+        addPhoto(&p)
+        p.captions.segments = [CaptionSegment(words: [word("photo", 5, 6), word("end", 8, 9)])]
+        try p.setSpeed(2, clipID: p.clips[0].id)
+        #expect(p.captions.segments[0].words.map(\.range) == [
+            MediaTimeRange(start: s(3), end: s(4)), MediaTimeRange(start: s(6), end: s(7)),
+        ])
+        // Setting speed on a photo does nothing.
+        let before = p
+        try p.setSpeed(3, clipID: p.clips[1].id)
+        #expect(p == before)
+    }
+}

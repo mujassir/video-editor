@@ -229,10 +229,12 @@ Deleting closes any open panel and clears the selection.
 ### SPD: Speed
 
 - **SPD-1 Range:** speed runs from `0.1×` to `10×` on a logarithmic slider, rounded to `0.05`.
-  - **Quick picks:** `0.25×`, `0.5×`, `1×`, `2×`, `3×`, `4×`.
+  - **Quick picks:** `.3×`, `.5×`, `1×`, `2×`, `3×`, `4×` (`0.3×` and `0.5×`, labelled without the leading zero).
   - **Readout:** the current value, for example "1.5×".
 - **SPD-2 Duration:** changing the speed changes how long the clip lasts on the timeline (source length ÷ speed). Stills ignore speed.
 - **SPD-3 Smooth slow motion:** below `1×`, consecutive source frames are blended, so motion looks smooth rather than stepped.
+- **SPD-4 Apply to all clips:** under the quick picks, an "Apply to all N clips" button (N = the number of video clips on the main track that aren't freeze frames) sets the current speed on every one of them. Photos, title slides and freeze frames have no speed and are skipped. The button shows only when N is at least 2. It's one undo step. Toast: "All clips set to 2×" (the speed as in the quick picks).
+- **SPD-5 Captions follow the speed:** when a clip's speed changes (`SPD-1` or `SPD-4`), captions, text, voiceovers and extracted audio stay with the moment of the video they belong to. Those on a sped-up clip move closer together, those after it move earlier, and so on, so each caption word stays on its speech. Text keeps its length within `0.5…30 s`. Voiceovers and extracted audio only move; their length doesn't change. Music isn't moved. IMPLEMENTATION §6.2 *Re-timing after a speed change* has the exact rule.
 
 ### REV: Reverse
 
@@ -524,7 +526,7 @@ Keep this table current. ✅ = done, 🟡 = partly or differently (explain), ⬜
 |---|---|---|---|---|---|
 | Library LIB-1…5 | ✅ | 🟡 | ⬜ | ⬜ | Compose library + Photo Picker; Robolectric covers new project / samples |
 | Timeline TML-1…13 | ✅ | 🟡 | ⬜ | ⬜ | Desktop: mouse wheel scrolls, ⌘/Ctrl+wheel zooms. Android has lanes, trim, TML-13 reorder |
-| Clip editing CLP, SPD, REV, FRZ | ✅ | 🟡 | ⬜ | ⬜ | Split / Voice / Speed / Freeze / Duplicate / Delete; Reverse not in the toolbar yet |
+| Clip editing CLP, SPD, REV, FRZ | ✅ | 🟡 | ⬜ | ⬜ | Split / Voice / Speed / Freeze / Duplicate / Delete; Reverse not in the toolbar yet. Android: SPD-4 Apply to all and SPD-5 re-timing not yet |
 | Denoise DNS | ✅ | ⬜ | ⬜ | ⬜ | Same algorithm (IMPLEMENTATION §9.4); model + composition hook exist, no UI yet |
 | Filters, Adjust, Crop FLT, ADJ, CRP | ✅ | 🟡 | ⬜ | ⬜ | Exact formulas in core; panels wired; golden maths table still missing |
 | Transitions and animation TRN, ANM | ✅ | 🟡 | ⬜ | ⬜ | Panels and model; transitions render as split halves (see CompositionBuilder) |

@@ -205,7 +205,62 @@ public extension Project {
     mutating func setSpeed(_ speed: Double, clipID: UUID) throws {
         guard let index = clipIndex(clipID) else { throw EditError.clipNotFound }
         guard !clips[index].isStill else { return }
-        clips[index].speed = min(max(speed, 0.1), 10)
+        let before = layout
+        clips[index].speed = Self.clampedSpeed(speed)
+        retimeOverlays(from: before)
+    }
+
+    /// SPD-4: sets the speed on every main-track clip that has one (not photos,
+    /// title slides or freeze frames), with one re-timing pass (SPD-5).
+    mutating func setSpeedForAllClips(_ speed: Double) {
+        let before = layout
+        let s = Self.clampedSpeed(speed)
+        for i in clips.indices where !clips[i].isStill { clips[i].speed = s }
+        retimeOverlays(from: before)
+    }
+
+    /// Main-track clips the Speed panel's "Apply to all" changes (SPD-4).
+    var speedAdjustableClipCount: Int { clips.filter { !$0.isStill }.count }
+
+    private static func clampedSpeed(_ speed: Double) -> Double { min(max(speed, 0.1), 10) }
+
+    /// SPD-5 (IMPLEMENTATION §6.2): maps a time on the `old` timeline to the current one,
+    /// so whatever sat on a clip stays on the same moment of that clip.
+    static func retimedTime(_ t: MediaTime, from old: TimelineLayout, to new: TimelineLayout) -> MediaTime {
+        if t <= .zero { return t }
+        if t >= old.duration { return t + (new.duration - old.duration) }
+        guard let i = old.entries.lastIndex(where: { $0.range.start <= t }) else { return t }
+        let o = old.entries[i]
+        guard let n = new.entry(for: o.clipID) else { return t }
+        let ratio = o.range.duration.ticks > 0 ? Double(n.range.duration.ticks) / Double(o.range.duration.ticks) : 1
+        var mapped = n.range.start + (t - o.range.start).multiplied(by: ratio)
+        if i + 1 < old.entries.count, let next = new.entry(for: old.entries[i + 1].clipID) {
+            mapped = min(mapped, next.range.start)
+        }
+        return mapped
+    }
+
+    /// SPD-5: moves captions, text, voiceovers and extracted audio after a clip's length changed.
+    private mutating func retimeOverlays(from old: TimelineLayout) {
+        let new = layout
+        guard new.entries.map(\.range) != old.entries.map(\.range) else { return }
+        func map(_ t: MediaTime) -> MediaTime { Self.retimedTime(t, from: old, to: new) }
+        for s in captions.segments.indices {
+            captions.segments[s].words = captions.segments[s].words.compactMap { word in
+                let r = MediaTimeRange(start: map(word.range.start), end: map(word.range.end))
+                return r.isEmpty ? nil : CaptionWord(text: word.text, range: r)
+            }
+        }
+        captions.segments.removeAll { $0.words.isEmpty }
+        for i in textOverlays.indices {
+            let r = textOverlays[i].range
+            let start = map(r.start)
+            let duration = (map(r.end) - start).clamped(to: Self.textDurationRange)
+            textOverlays[i].range = MediaTimeRange(start: start, duration: duration)
+        }
+        for i in audioClips.indices where audioClips[i].role == .voiceover || audioClips[i].role == .extracted {
+            audioClips[i].start = map(audioClips[i].start)
+        }
     }
 
     mutating func setReversed(_ reversed: Bool, clipID: UUID) throws {

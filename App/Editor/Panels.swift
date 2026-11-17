@@ -315,11 +315,28 @@ struct SpeedPanel: View {
                     model.editCoalescing("Speed", key: "speed-\(clipID)") { p in try? p.setSpeed(s, clipID: clipID) }
                 }), in: -1...1).tint(Theme.accent).accessibilityIdentifier("slider.Speed")
                 HStack {
-                    ForEach([0.25, 0.5, 1, 2, 3, 4], id: \.self) { v in
-                        ChipButton(title: String(format: "%g×", v), isSelected: abs(speed - v) < 0.01) {
+                    ForEach([0.3, 0.5, 1, 2, 3, 4], id: \.self) { v in
+                        // SPD-1: ".3×", ".5×" – no leading zero below 1×.
+                        let label = String(format: "%g×", v)
+                        ChipButton(title: v < 1 ? String(label.dropFirst()) : label, isSelected: abs(speed - v) < 0.01) {
                             model.edit("Speed") { try $0.setSpeed(v, clipID: clipID) }
                         }
                     }
+                }
+                // SPD-4: one undo step; photos, slides and freeze frames are skipped.
+                let videoCount = model.project.speedAdjustableClipCount
+                if videoCount > 1 {
+                    Button {
+                        let s = speed
+                        model.edit("Speed") { $0.setSpeedForAllClips(s) }
+                        model.showToast("All clips set to \(String(format: "%g×", s))", systemImage: "speedometer")
+                    } label: {
+                        Label("Apply to all \(videoCount) clips", systemImage: "square.stack.3d.down.right")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.accent)
+                    .accessibilityIdentifier("speed.applyAll")
                 }
             }
         }

@@ -144,10 +144,19 @@ class CompositionBuilder(
         val plays = clip.hasAudio && media.hasAudio && !clip.isMuted && clip.volume > 0 && reversedFile == null
         if (plays && clip.volume != 1.0) audio += GainProcessor(clip.volume.toFloat())
         return EditedMediaItem.Builder(item)
+            .setDurationUs(sourceDurationUs(media, end))
             .setRemoveAudio(!plays)
             .setEffects(Effects(audio, videoEffects))
             .build()
     }
+
+    /**
+     * The whole source file's length, which Media3 needs for clipped items: CompositionPlayer adds up
+     * each item's clipped length from it and crashes on an unset one. Never shorter than the clip's end,
+     * because Media3 also rejects an end past the source length (the probed length can round down).
+     */
+    private fun sourceDurationUs(media: MediaItem, clipEnd: MediaTime): Long =
+        maxOf(media.duration.micros, clipEnd.micros, 1)
 
     /** DNS: the cleaned file when Denoise is on and it exists. */
     private fun noiseFile(project: Project, clip: VideoClip, media: MediaItem): File? {
@@ -193,7 +202,8 @@ class CompositionBuilder(
                     val gain = EnvelopeProcessor((a.volume * volume).toFloat(), a.fadeIn.seconds, a.fadeOut.seconds,
                         startsClip = range.start == a.resolvedSections.first { !it.deleted }.start,
                         endsClip = range.end == a.resolvedSections.last { !it.deleted }.end, lengthSeconds = length.seconds)
-                    b.addItem(EditedMediaItem.Builder(item).setRemoveVideo(true).setEffects(Effects(listOf(gain), emptyList())).build())
+                    b.addItem(EditedMediaItem.Builder(item).setDurationUs(sourceDurationUs(media, range.start + length))
+                        .setRemoveVideo(true).setEffects(Effects(listOf(gain), emptyList())).build())
                     cursor += length
                     added++
                 }

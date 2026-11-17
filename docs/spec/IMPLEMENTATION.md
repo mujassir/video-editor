@@ -291,7 +291,20 @@ The total length is the last entry's end. `entry(at: t)` returns the **last** en
 - **Movable range (TML-13):** indices `[lo, hi)`, where `lo = 1` if clip 0 is an opening slide (else 0) and `hi = count − 1` if the last clip is a closing slide (else `count`). Slides never move; nothing moves when the range holds fewer than 2 clips.
 - **Reorder strip (drag):** tile `52`, gap `6`, pitch `p = 58`. Tile `k` (in the strip's current order) has its left edge at `k × p` from the strip start. The landing slot is `clamp(round((cx − 26) / p), lo, hi − 1)`, where `cx` is the floating tile's centre measured from the strip start; the other clips keep their order and fill the remaining slots. The slot is an index after removing the dragged clip; equal to its old index means no change.
 - **Strip placement:** on lift, the strip's start is put so the picked tile is under the finger, then clamped to `[w/2 − stripWidth, w/2]` (`w` = timeline width), the same range auto-scroll keeps it in.
-- **setSpeed:** clamped to `0.1…10`. Stills are ignored.
+- **setSpeed:** clamped to `0.1…10`. Stills are ignored. Afterwards the overlays are re-timed (below).
+- **setSpeedForAllClips(s)** (SPD-4): `s` clamped to `0.1…10` is set on every clip that isn't a still (`kind == photo` or `freezeAt != nil`). Then one re-timing pass runs from the layout before the change. It's one edit (one undo step).
+- **Re-timing after a speed change** (SPD-5): keep the old layout `L` and build the new one `L'` (same clip ids, same order). Each old entry `i` *owns* `[Lᵢ.start, Lᵢ₊₁.start)` on the old timeline, and the last one owns `[start, end)`. So during a transition the incoming clip owns the overlap, as in `entry(at:)`. A timeline time `t` maps to `t'`:
+  1. `t ≤ 0` → `t`.
+  2. `t ≥ L.duration` → `t + (L'.duration − L.duration)`.
+  3. Otherwise, with `i` the entry that owns `t`, old duration `d` and new duration `d'`: `t' = L'ᵢ.start + round((t − Lᵢ.start) × d' ÷ d)` in ticks. If there's a next clip, `t' = min(t', L'ᵢ₊₁.start)` (a transition that shrank can't push it past the next clip).
+
+  Clips whose duration didn't change map 1 : 1, and the clips after a change just shift. The map is applied to:
+  - **Caption words:** `start` and `end`. Words whose range becomes empty are dropped, then segments left with no words.
+  - **Text overlays:** `start` and `end`, then the duration is clamped to `0.5…30 s`, keeping the new start.
+  - **Voiceovers and extracted audio:** `start` only; the length doesn't change.
+  - Music, effects and everything else stay where they are.
+
+  The slider re-times on every step, so a drag is the same as a chain of these maps.
 - **setReversed:** only for video clips that aren't freeze frames.
 - **insertFreezeFrame(at t):**
   - The still is a copy with: new id, `freezeAt = sourceTime(local)`, `sourceRange = [freezeAt, freezeAt + 1.5 s)`, no transition, not reversed, `speed = 1`, no reframe.
