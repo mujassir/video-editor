@@ -9,6 +9,8 @@ How to start the Android app so it behaves exactly like the iOS app. This guide 
 
 The iOS app in this repo is the **reference implementation**. When the spec is unclear, read the iOS code (file map: IMPLEMENTATION §1.2), then fix the spec so the next person doesn't have to.
 
+**Resuming work?** Read [PROGRESS.md](PROGRESS.md) first (branch tip, what’s green, next slices).
+
 ### Readiness (2026-11-17)
 
 **M0–M1 done; UI/engine sketched through M2–M9.** Code lives in `android/` (`core`, `engine`, `app`). JVM suites: core editing + contract, engine WAV probe, and Robolectric phone/tablet UI (`LIB-1`, `TBR-3`, `TXT-1`, `TTL-1`, `MUS-2`, `EXP-1`, `LAY-2`, `LAY-6`). Still missing for a first internal build: Denoise UI, Reverse, Cutout, on-device caption generation, device/emulator CI.
