@@ -522,21 +522,21 @@ Keep this table current. ✅ = done, 🟡 = partly or differently (explain), ⬜
 
 | Area | iOS | Android | macOS | Windows | Notes |
 |---|---|---|---|---|---|
-| Library LIB-1…5 | ✅ | ⬜ | ⬜ | ⬜ | |
-| Timeline TML-1…13 | ✅ | ⬜ | ⬜ | ⬜ | Desktop: mouse wheel scrolls, ⌘/Ctrl+wheel zooms |
-| Clip editing CLP, SPD, REV, FRZ | ✅ | ⬜ | ⬜ | ⬜ | |
-| Denoise DNS | ✅ | ⬜ | ⬜ | ⬜ | Same algorithm (IMPLEMENTATION §9.4) |
-| Filters, Adjust, Crop FLT, ADJ, CRP | ✅ | ⬜ | ⬜ | ⬜ | Exact formulas |
-| Transitions and animation TRN, ANM | ✅ | ⬜ | ⬜ | ⬜ | Exact formulas |
-| Enhance ENH | ✅ | ⬜ | ⬜ | ⬜ | Pure maths, portable |
+| Library LIB-1…5 | ✅ | 🟡 | ⬜ | ⬜ | Compose library + Photo Picker; Robolectric covers new project / samples |
+| Timeline TML-1…13 | ✅ | 🟡 | ⬜ | ⬜ | Desktop: mouse wheel scrolls, ⌘/Ctrl+wheel zooms. Android has lanes, trim, TML-13 reorder |
+| Clip editing CLP, SPD, REV, FRZ | ✅ | 🟡 | ⬜ | ⬜ | Split / Voice / Speed / Freeze / Duplicate / Delete; Reverse not in the toolbar yet |
+| Denoise DNS | ✅ | ⬜ | ⬜ | ⬜ | Same algorithm (IMPLEMENTATION §9.4); model + composition hook exist, no UI yet |
+| Filters, Adjust, Crop FLT, ADJ, CRP | ✅ | 🟡 | ⬜ | ⬜ | Exact formulas in core; panels wired; golden maths table still missing |
+| Transitions and animation TRN, ANM | ✅ | 🟡 | ⬜ | ⬜ | Panels and model; transitions render as split halves (see CompositionBuilder) |
+| Enhance ENH | ✅ | 🟡 | ⬜ | ⬜ | Pure maths AutoEnhance on device |
 | Cutout CUT | ✅ | ⬜ | ⬜ | ⬜ | Needs on-device person segmentation |
-| Reframe RFR | ✅ | ⬜ | ⬜ | ⬜ | Needs on-device face and saliency detection |
-| Canvas, slides, watermark | ✅ | ⬜ | ⬜ | ⬜ | |
-| Text TXT | ✅ | ⬜ | ⬜ | ⬜ | Fonts: see IMPLEMENTATION §8.6 |
-| Music MUS | ✅ | ⬜ | ⬜ | ⬜ | |
-| Captions CAP | ✅ | ⬜ | ⬜ | ⬜ | Needs an on-device speech model |
-| Export EXP | ✅ | ⬜ | ⬜ | ⬜ | |
-| Layouts LAY-1…8 | ✅ iPad | ⬜ | ⬜ | ⬜ | Tablets and wide windows; Android tablets switch at the same 840 dp |
+| Reframe RFR | ✅ | 🟡 | ⬜ | ⬜ | FaceDetector path; no saliency fallback yet when no faces |
+| Canvas, slides, watermark | ✅ | 🟡 | ⬜ | ⬜ | Intro/Outro/Watermark panels; fonts mapped to open substitutes |
+| Text TXT | ✅ | 🟡 | ⬜ | ⬜ | Fonts: see IMPLEMENTATION §8.6 |
+| Music MUS | ✅ | 🟡 | ⬜ | ⬜ | Audio Tracks / From Video / Recent / Cut / Start Here / Duck / Repeat; sample tracks in tests |
+| Captions CAP | ✅ | 🟡 | ⬜ | ⬜ | Style / Edit / Fillers when segments exist; on-device speech generation not wired yet |
+| Export EXP | ✅ | 🟡 | ⬜ | ⬜ | Media3 Transformer + estimate/share; device-only encoding |
+| Layouts LAY-1…8 | ✅ iPad | 🟡 | ⬜ | ⬜ | Phone portrait + Expanded (≥840 dp) sidebar; Robolectric covers both |
 
 ---
 
