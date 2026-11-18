@@ -69,6 +69,7 @@ import com.mujassir.cutline.app.ui.PanelContainer
 import com.mujassir.cutline.app.ui.SwatchRow
 import com.mujassir.cutline.app.ui.compose
 import com.mujassir.cutline.core.AspectRatio
+import com.mujassir.cutline.core.BackgroundReplacement
 import com.mujassir.cutline.core.CanvasBackground
 import com.mujassir.cutline.core.ClipAnimation
 import com.mujassir.cutline.core.ClipCombo
@@ -80,6 +81,7 @@ import com.mujassir.cutline.core.CropRect
 import com.mujassir.cutline.core.FilterSetting
 import com.mujassir.cutline.core.MediaKind
 import com.mujassir.cutline.core.MediaTime
+import com.mujassir.cutline.core.NoiseReduction
 import com.mujassir.cutline.core.OverlayAnchor
 import com.mujassir.cutline.core.PhotoMotion
 import com.mujassir.cutline.core.RGBAColor
@@ -99,6 +101,7 @@ import com.mujassir.cutline.core.settingStillDuration
 import com.mujassir.cutline.core.settingTextAnchor
 import com.mujassir.cutline.core.settingTextDuration
 import com.mujassir.cutline.core.settingTransition
+import com.mujassir.cutline.core.speedAdjustableClipCount
 import com.mujassir.cutline.core.titleCardClip
 import com.mujassir.cutline.core.updatingAudio
 import com.mujassir.cutline.core.updatingClip
@@ -135,6 +138,8 @@ fun PanelView(model: EditorModel, panel: EditorPanel) {
         EditorPanel.Adjust -> model.selectedClipID?.let { AdjustPanel(model, it) }
         EditorPanel.Speed -> model.selectedClipID?.let { SpeedPanel(model, it) }
         EditorPanel.Crop -> model.selectedClipID?.let { CropPanel(model, it) }
+        EditorPanel.Denoise -> DenoisePanel(model)
+        EditorPanel.Cutout -> model.selectedClipID?.let { CutoutPanel(model, it) }
         EditorPanel.CaptionText -> {}
     }
 }
@@ -292,7 +297,9 @@ private fun CaptionsPanel(model: EditorModel) {
     PanelContainer("Captions", onDone = close(model), swipeAnywhere = false) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (track.segments.isEmpty()) {
-                Text("Captions are made with on-device speech recognition, which isn't available on this device yet.", color = Palette.secondaryText, fontSize = 13.sp)
+                // CAP-1
+                Text("Transcribe speech into animated captions. Runs entirely on your device.", color = Palette.secondaryText, fontSize = 13.sp)
+                ChipButton("Generate Captions", tag = "captions.generate") { model.generateCaptions() }
                 return@Column
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -304,6 +311,44 @@ private fun CaptionsPanel(model: EditorModel) {
             SwatchRow(track.highlightColor) { c -> if (c != null) model.edit("Highlight") { it.copy(captions = it.captions.copy(highlightColor = c)) } }
             LabeledSlider("Position", track.positionY.toFloat(), 0.10f..0.92f, { "${(it * 100).roundToInt()}%" }) { v ->
                 model.editCoalescing("Caption position", "cappos") { it.copy(captions = it.captions.copy(positionY = v.toDouble())) }
+            }
+        }
+    }
+}
+
+/** DNS-1: Denoise for the whole video — Off / Low / Medium / High. */
+@Composable
+private fun DenoisePanel(model: EditorModel) {
+    val level = model.project.noiseReduction
+    PanelContainer("Noise Reduction", onDone = close(model)) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Removes background hiss, hum, wind and room noise from the sound of every video clip.", color = Palette.secondaryText, fontSize = 13.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChipButton("Off", isSelected = level == null, tag = "denoise.off") { model.setNoiseReduction(null) }
+                NoiseReduction.entries.forEach { l ->
+                    ChipButton(l.title, isSelected = level == l, tag = "denoise.${l.raw}") { model.setNoiseReduction(l) }
+                }
+            }
+            Text("Stronger settings remove more noise but can make voices sound thinner.", color = Palette.secondaryText, fontSize = 12.sp)
+        }
+    }
+}
+
+/** CUT-1: Off · Blur · Canvas · colour swatches. */
+@Composable
+private fun CutoutPanel(model: EditorModel, clipID: UUID) {
+    val clip = model.project.clip(clipID) ?: return
+    val current = clip.backgroundRemoval
+    PanelContainer("Remove Background", onDone = close(model)) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Cuts out people automatically – no green screen.", color = Palette.secondaryText, fontSize = 13.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChipButton("Off", isSelected = current == null, tag = "cutout.off") { model.setCutout(null) }
+                ChipButton("Blur", isSelected = current == BackgroundReplacement.Blur, tag = "cutout.blur") { model.setCutout(BackgroundReplacement.Blur) }
+                ChipButton("Canvas", isSelected = current == BackgroundReplacement.Transparent, tag = "cutout.canvas") { model.setCutout(BackgroundReplacement.Transparent) }
+            }
+            SwatchRow((current as? BackgroundReplacement.Color)?.color) { c ->
+                if (c != null) model.setCutout(BackgroundReplacement.Color(c))
             }
         }
     }
@@ -694,8 +739,9 @@ private fun AdjustPanel(model: EditorModel, clipID: UUID) {
 @Composable
 private fun SpeedPanel(model: EditorModel, clipID: UUID) {
     val clip = model.project.clip(clipID) ?: return
+    val videoCount = model.project.speedAdjustableClipCount
     LaunchedEffect(clipID) { showCleanFrame(model, clipID) }
-    // SPD-1: logarithmic slider 0.1–10, rounded to 0.05.
+    // SPD-1: logarithmic slider 0.1–10, rounded to 0.05. SPD-4: Apply to all.
     PanelContainer("Speed", onDone = close(model)) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(speedTitle(clip.speed), color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.testTag("speed.value"))
@@ -707,6 +753,9 @@ private fun SpeedPanel(model: EditorModel, clipID: UUID) {
                 listOf(0.25, 0.5, 1.0, 2.0, 3.0, 4.0).forEach { v ->
                     ChipButton(speedTitle(v), isSelected = kotlin.math.abs(clip.speed - v) < 0.001) { model.edit("Speed") { it.settingSpeed(v, clipID) } }
                 }
+            }
+            if (videoCount >= 2) {
+                ChipButton("Apply to all $videoCount clips", tag = "speed.applyAll") { model.applySpeedToAll(clip.speed) }
             }
         }
     }

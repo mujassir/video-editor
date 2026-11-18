@@ -71,8 +71,8 @@ object AutoEnhance {
 }
 
 /**
- * Auto Reframe (RFR-1, §10.3) with the platform's on-device face detector. Without faces there's
- * no saliency fallback on Android yet (parity table), so the path holds its last position.
+ * Auto Reframe (RFR-1, §10.3): faces first, then classical saliency when no faces
+ * (stands in for Vision's objectness saliency until an ML model is bundled).
  */
 object AutoReframe {
     fun keyframes(clip: VideoClip, media: MediaItem, file: File): List<ReframeKeyframe> {
@@ -85,7 +85,7 @@ object AutoReframe {
                 val t = clip.sourceRange.start + clip.sourceRange.duration.multipliedBy(i / (count - 1.0))
                 val raw = r.getScaledFrameAtTime(t.micros, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 512, 512)
                 val frame = raw?.let { Thumbnails.upright(it, media.naturalSize.width > media.naturalSize.height, media.sourceQuarterTurns) }
-                targets += t to frame?.let { faceCentre(it) }
+                targets += t to frame?.let { subjectCentre(it) }
             }
         } catch (_: Exception) {
             return emptyList()
@@ -101,10 +101,13 @@ object AutoReframe {
         }
     }
 
+    /** Faces if present, otherwise the most salient region (§10.3). Origin top-left, 0…1. */
+    fun subjectCentre(frame: Bitmap): Pair<Double, Double>? = faceCentre(frame) ?: Saliency.subjectCentre(frame)
+
     /** Area-weighted centre of all faces, 0…1 with the origin top-left. */
     private fun faceCentre(frame: Bitmap): Pair<Double, Double>? {
-        val w = frame.width and 1.inv()
-        val bmp = Bitmap.createScaledBitmap(frame, w.coerceAtLeast(2), frame.height, true).copy(Bitmap.Config.RGB_565, false)
+        val w = (frame.width and 1.inv()).coerceAtLeast(2)
+        val bmp = Bitmap.createScaledBitmap(frame, w, frame.height, true).copy(Bitmap.Config.RGB_565, false)
         val faces = arrayOfNulls<FaceDetector.Face>(8)
         val n = runCatching { FaceDetector(bmp.width, bmp.height, faces.size).findFaces(bmp, faces) }.getOrDefault(0)
         if (n == 0) return null
@@ -117,5 +120,59 @@ object AutoReframe {
             sx += p.x / bmp.width * area; sy += p.y / bmp.height * area; total += area
         }
         return if (total > 0) (sx / total) to (sy / total) else null
+    }
+}
+
+/**
+ * Classical saliency fallback for RFR-1 when no faces are found: centre of the window with the
+ * highest (local contrast × area). Pure bitmap maths — no network / ML model.
+ */
+object Saliency {
+    fun subjectCentre(frame: Bitmap): Pair<Double, Double>? {
+        val tw = 64
+        val th = max(2, (64.0 * frame.height / frame.width).toInt())
+        val small = Bitmap.createScaledBitmap(frame, tw, th, true)
+        val px = IntArray(tw * th)
+        small.getPixels(px, 0, tw, 0, 0, tw, th)
+        val luma = DoubleArray(tw * th) { i ->
+            val p = px[i]
+            0.2126 * ((p shr 16) and 0xFF) + 0.7152 * ((p shr 8) and 0xFF) + 0.0722 * (p and 0xFF)
+        }
+        // Local contrast map (3×3 neighbourhood std-dev).
+        val contrast = DoubleArray(tw * th)
+        for (y in 1 until th - 1) for (x in 1 until tw - 1) {
+            var sum = 0.0; var sum2 = 0.0; var n = 0
+            for (dy in -1..1) for (dx in -1..1) {
+                val v = luma[(y + dy) * tw + (x + dx)]
+                sum += v; sum2 += v * v; n++
+            }
+            val mean = sum / n
+            contrast[y * tw + x] = sqrt(sum2 / n - mean * mean)
+        }
+        // Sliding windows: pick highest confidence×area (mean contrast × window area).
+        val sizes = intArrayOf(12, 18, 24)
+        var bestScore = 0.0
+        var bestX = 0.5
+        var bestY = 0.5
+        var found = false
+        for (s in sizes) {
+            if (s >= tw || s >= th) continue
+            for (y in 0..(th - s)) for (x in 0..(tw - s)) {
+                var sum = 0.0
+                for (yy in y until y + s) for (xx in x until x + s) sum += contrast[yy * tw + xx]
+                val mean = sum / (s * s)
+                val score = mean * (s * s) // confidence × area proxy
+                if (score > bestScore) {
+                    bestScore = score
+                    bestX = (x + s / 2.0) / tw
+                    bestY = (y + s / 2.0) / th
+                    found = true
+                }
+            }
+        }
+        if (small !== frame) small.recycle()
+        // Ignore near-flat frames (nothing stands out). Mean contrast ~0 on flat gray.
+        if (!found || bestScore < 2.0) return null
+        return bestX to bestY
     }
 }

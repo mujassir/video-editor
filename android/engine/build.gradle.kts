@@ -11,7 +11,14 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    testOptions { unitTests.isIncludeAndroidResources = true }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            // Prefer Maven Central for Robolectric's android-all jars (CI can miss Google's mirror).
+            it.systemProperty("robolectric.dependency.repo.url", "https://repo1.maven.org/maven2")
+            it.systemProperty("robolectric.dependency.repo.id", "central")
+        }
+    }
 }
 
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
