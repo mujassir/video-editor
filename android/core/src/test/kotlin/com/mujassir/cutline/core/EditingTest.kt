@@ -758,3 +758,113 @@ class DenoiseModelTest {
         assertEquals(2, p.denoiseSources.size)
     }
 }
+
+/** Ports of iOS SpeedRetimeTests (SPD-4, SPD-5). */
+class SpeedRetimeTest {
+    private fun word(text: String, a: Double, b: Double) = CaptionWord(text, r(a, b))
+
+    private fun Project.withPhoto(): Project = appendingClip(photo())
+
+    @Test fun `SPD-4 applies to every video clip and skips stills`() {
+        var p = makeProject(4.0, 4.0).withPhoto()
+        p = p.insertingFreezeFrame(s(1))
+        assertEquals(3, p.speedAdjustableClipCount) // two videos, one split into two pieces
+        p = p.settingSpeedForAllClips(2.0)
+        for (clip in p.clips) assertEquals(if (clip.isStill) 1.0 else 2.0, clip.speed, 0.0)
+        // 8 s of video at 2× = 4 s, plus the 3 s photo and the 1.5 s freeze frame.
+        assertEquals(s(8.5), p.layout.duration)
+        p = p.settingSpeedForAllClips(50.0)
+        assertTrue(p.clips.filter { !it.isStill }.all { it.speed == 10.0 })
+    }
+
+    @Test fun `SPD-4 is one undo step`() {
+        var start = makeProject(4.0, 4.0, 4.0)
+        start = start.copy(captions = start.captions.copy(segments = listOf(CaptionSegment(words = listOf(word("hi", 9.0, 10.0))))))
+        val session = EditSession(start)
+        session.apply("Speed") { it.settingSpeedForAllClips(2.0) }
+        assertEquals(s(6), session.project.layout.duration)
+        assertEquals(r(4.5, 5.0), session.project.captions.segments[0].range)
+        session.undo()
+        assertEquals(start.clips, session.project.clips)
+        assertEquals(start.captions, session.project.captions)
+        assertFalse(session.canUndo)
+    }
+
+    @Test fun `SPD-5 captions stay on their speech`() {
+        var p = makeProject(4.0, 4.0, 4.0)
+        p = p.copy(captions = p.captions.copy(segments = listOf(
+            CaptionSegment(words = listOf(word("before", 1.0, 2.0))),
+            CaptionSegment(words = listOf(word("on", 5.0, 6.0), word("clip", 6.0, 7.5))),
+            CaptionSegment(words = listOf(word("after", 9.0, 10.0))),
+        )))
+        p = p.settingSpeed(2.0, p.clips[1].id)
+        assertEquals(listOf(r(1.0, 2.0), r(4.5, 5.0), r(5.0, 5.75), r(7.0, 8.0)), p.captions.segments.flatMap { it.words }.map { it.range })
+        p = p.settingSpeed(1.0, p.clips[1].id)
+        assertEquals(listOf(r(1.0, 2.0), r(5.0, 6.0), r(6.0, 7.5), r(9.0, 10.0)), p.captions.segments.flatMap { it.words }.map { it.range })
+    }
+
+    @Test fun `SPD-5 slow motion spreads captions`() {
+        var p = makeProject(4.0, 4.0)
+        p = p.copy(captions = p.captions.copy(segments = listOf(CaptionSegment(words = listOf(word("slow", 1.0, 2.0), word("next", 5.0, 6.0))))))
+        p = p.settingSpeed(0.5, p.clips[0].id)
+        assertEquals(listOf(r(2.0, 4.0), r(9.0, 10.0)), p.captions.segments[0].words.map { it.range })
+    }
+
+    @Test fun `SPD-5 apply to all halves every time`() {
+        var p = makeProject(4.0, 4.0)
+        p = p.copy(captions = p.captions.copy(segments = listOf(CaptionSegment(words = listOf(word("a", 1.0, 3.0), word("b", 6.0, 7.0))))))
+        p = p.settingSpeedForAllClips(2.0)
+        assertEquals(listOf(r(0.5, 1.5), r(3.0, 3.5)), p.captions.segments[0].words.map { it.range })
+    }
+
+    @Test fun `SPD-5 text follows within its duration limits`() {
+        var p = makeProject(4.0, 4.0, 4.0)
+        p = p.addingText("On", s(4), s(2))
+        val onClip = p.textOverlays[0].id
+        p = p.addingText("After", s(9), s(1))
+        val after = p.textOverlays[1].id
+        p = p.addingText("Tiny", s(4), s(0.6))
+        val tiny = p.textOverlays[2].id
+        p = p.settingSpeed(4.0, p.clips[1].id)
+        fun range(id: UUID) = p.textOverlays.first { it.id == id }.range
+        assertEquals(r(4.0, 4.5), range(onClip))
+        assertEquals(r(6.0, 7.0), range(after))
+        assertEquals(MediaTimeRange(s(4), s(0.5)), range(tiny))
+        assertEquals(3, p.textOverlays.size)
+        p = p.settingSpeed(0.1, p.clips[1].id)
+        assertEquals(s(20), range(onClip).duration)
+        assertEquals(MediaTimeRange(s(4 + 40 + 1), s(1)), range(after))
+    }
+
+    @Test fun `SPD-5 voiceover moves music stays`() {
+        var p = makeProject(4.0, 4.0)
+        val song = song(60.0, "m.m4a")
+        p = p.copy(media = p.media + song, audioClips = listOf(
+            AudioClip(mediaID = song.id, role = AudioClip.Role.MUSIC, sourceRange = MediaTimeRange(MediaTime.ZERO, s(60)), start = s(1)),
+            AudioClip(mediaID = song.id, role = AudioClip.Role.VOICEOVER, sourceRange = MediaTimeRange(MediaTime.ZERO, s(3)), start = s(6)),
+        ))
+        p = p.settingSpeed(2.0, p.clips[0].id)
+        assertEquals(s(1), p.audioClips[0].start)
+        assertEquals(s(4), p.audioClips[1].start)
+        assertEquals(s(3), p.audioClips[1].sourceRange.duration)
+    }
+
+    @Test fun `SPD-5 transition overlap belongs to the incoming clip`() {
+        var p = makeProject(4.0, 4.0)
+        p = p.settingTransition(Transition(TransitionKind.FADE, s(1)), p.clips[0].id)
+        p = p.copy(captions = p.captions.copy(segments = listOf(CaptionSegment(words = listOf(word("x", 3.5, 4.0))))))
+        p = p.settingSpeed(2.0, p.clips[1].id)
+        assertEquals(s(3), p.layout.entries[1].range.start)
+        assertEquals(r(3.25, 3.5), p.captions.segments[0].range)
+    }
+
+    @Test fun `SPD-5 times past the video shift and stills dont change`() {
+        var p = makeProject(4.0).withPhoto()
+        p = p.copy(captions = p.captions.copy(segments = listOf(CaptionSegment(words = listOf(word("photo", 5.0, 6.0), word("end", 8.0, 9.0))))))
+        p = p.settingSpeed(2.0, p.clips[0].id)
+        assertEquals(listOf(r(3.0, 4.0), r(6.0, 7.0)), p.captions.segments[0].words.map { it.range })
+        val before = p
+        p = p.settingSpeed(3.0, p.clips[1].id)
+        assertEquals(before, p)
+    }
+}

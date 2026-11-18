@@ -177,17 +177,77 @@ fun Project.canReorder(clipID: UUID): Boolean {
 
 // MARK: - Speed / reverse / freeze
 
+private fun clampedSpeed(speed: Double) = speed.coerceIn(0.1, 10.0)
+
+/**
+ * SPD-5 (IMPLEMENTATION §6.2): maps a time on the `old` timeline to the current one,
+ * so whatever sat on a clip stays on the same moment of that clip.
+ */
+fun retimedTime(t: MediaTime, old: TimelineLayout, new: TimelineLayout): MediaTime {
+    if (t <= MediaTime.ZERO) return t
+    if (t >= old.duration) return t + (new.duration - old.duration)
+    val i = old.entries.indexOfLast { it.range.start <= t }.takeIf { it >= 0 } ?: return t
+    val o = old.entries[i]
+    val n = new.entry(o.clipID) ?: return t
+    val ratio = if (o.range.duration.ticks > 0) n.range.duration.ticks.toDouble() / o.range.duration.ticks.toDouble() else 1.0
+    var mapped = n.range.start + (t - o.range.start).multipliedBy(ratio)
+    if (i + 1 < old.entries.size) {
+        new.entry(old.entries[i + 1].clipID)?.let { next -> mapped = MediaTime.min(mapped, next.range.start) }
+    }
+    return mapped
+}
+
+/** SPD-5: moves captions, text, voiceovers and extracted audio after a clip's length changed. */
+private fun Project.retimingOverlays(old: TimelineLayout): Project {
+    val new = layout
+    if (new.entries.map { it.range } == old.entries.map { it.range }) return this
+    fun map(t: MediaTime) = retimedTime(t, old, new)
+    val segments = captions.segments.mapNotNull { seg ->
+        val words = seg.words.mapNotNull { word ->
+            val r = MediaTimeRange.of(map(word.range.start), map(word.range.end))
+            if (r.isEmpty) null else word.copy(range = r)
+        }
+        if (words.isEmpty()) null else seg.copy(words = words)
+    }
+    val texts = textOverlays.map { overlay ->
+        val start = map(overlay.range.start)
+        val duration = (map(overlay.range.end) - start).clamped(TEXT_DURATION_MIN, TEXT_DURATION_MAX)
+        overlay.copy(range = MediaTimeRange(start, duration))
+    }
+    val audios = audioClips.map { a ->
+        if (a.role == AudioClip.Role.VOICEOVER || a.role == AudioClip.Role.EXTRACTED) a.copy(start = map(a.start)) else a
+    }
+    return copy(captions = captions.copy(segments = segments), textOverlays = texts, audioClips = audios)
+}
+
 fun Project.settingSpeed(speed: Double, clipID: UUID): Project {
     val index = clipIndex(clipID) ?: throw EditError.ClipNotFound
     if (clips[index].isStill) return this
-    return copy(clips = clips.replacing(index, clips[index].copy(speed = speed.coerceIn(0.1, 10.0))))
+    val before = layout
+    return copy(clips = clips.replacing(index, clips[index].copy(speed = clampedSpeed(speed)))).retimingOverlays(before)
 }
+
+/** SPD-4: sets the speed on every main-track clip that has one (not photos, title slides or freeze frames). */
+fun Project.settingSpeedForAllClips(speed: Double): Project {
+    val before = layout
+    val s = clampedSpeed(speed)
+    return copy(clips = clips.map { if (it.isStill) it else it.copy(speed = s) }).retimingOverlays(before)
+}
+
+/** Main-track clips the Speed panel's "Apply to all" changes (SPD-4). */
+val Project.speedAdjustableClipCount: Int get() = clips.count { !it.isStill }
 
 fun Project.settingReversed(reversed: Boolean, clipID: UUID): Project {
     val index = clipIndex(clipID) ?: throw EditError.ClipNotFound
     val c = clips[index]
     if (c.kind != MediaKind.VIDEO || c.freezeAt != null) return this
     return copy(clips = clips.replacing(index, c.copy(isReversed = reversed)))
+}
+
+/** Records a reversed media file name on the source, then turns reverse on for the clip (REV-1). */
+fun Project.recordingReversedFile(mediaID: UUID, fileName: String, clipID: UUID): Project {
+    val media = this.media.map { if (it.id == mediaID) it.copy(reversedFileName = fileName) else it }
+    return copy(media = media).settingReversed(true, clipID)
 }
 
 /** Inserts a still of the frame under `time`, splitting the clip around it (FRZ-1). */

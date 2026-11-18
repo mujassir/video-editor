@@ -11,9 +11,9 @@ The iOS app in this repo is the **reference implementation**. When the spec is u
 
 **Resuming work?** Read [PROGRESS.md](PROGRESS.md) first (branch tip, what’s green, next slices).
 
-### Readiness (2026-11-17)
+### Readiness (2026-11-18)
 
-**M0–M1 done; UI/engine sketched through M2–M9.** Code lives in `android/` (`core`, `engine`, `app`). JVM suites: core editing + contract, engine WAV probe, and Robolectric phone/tablet UI (`LIB-1`, `TBR-3`, `TXT-1`, `TTL-1`, `MUS-2`, `EXP-1`, `LAY-2`, `LAY-6`). Still missing for a first internal build: Denoise UI, Reverse, Cutout, on-device caption generation, device/emulator CI.
+**M0–M4 largely in place for an internal build.** Code lives in `android/` (`core`, `engine`, `app`). JVM suites cover core editing (including SPD-4/5), contract tests, and Robolectric phone + tablet UI (library, tools, Denoise, Reverse, Cutout panel, CAP-1 generate, export, LAY). CI: `.github/workflows/android.yml`. Still open: device Media3 smoke, real reverse/NR encoders, Cutout segmentation mask, real on-device speech.
 
 Open items, none of which block continuing the port:
 

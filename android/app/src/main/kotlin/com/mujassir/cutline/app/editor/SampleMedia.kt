@@ -50,6 +50,11 @@ object SampleMedia {
         }
     }
 
+    /** Synthetic video clip(s) with sound for Reverse / Denoise / Cutout / Captions / SPD UI tests. */
+    fun importVideoInto(model: EditorModel, count: Int = 1) {
+        model.addDemoVideoClip(durationSeconds = 4.0, withAudio = true, count = count)
+    }
+
     fun addTrack(model: EditorModel, t: Track) {
         model.scope.launch {
             val seconds = max(model.project.duration.seconds, 10.0)

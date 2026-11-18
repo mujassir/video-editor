@@ -8,6 +8,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.mujassir.cutline.app.ui.Toast
 import com.mujassir.cutline.core.AudioClip
+import com.mujassir.cutline.core.BackgroundReplacement
+import com.mujassir.cutline.core.CaptionSegment
+import com.mujassir.cutline.core.CaptionWord
 import com.mujassir.cutline.core.ClipAnimation
 import com.mujassir.cutline.core.ContentAnchor
 import com.mujassir.cutline.core.ContentFit
@@ -17,6 +20,8 @@ import com.mujassir.cutline.core.MINIMUM_AUDIO_DURATION
 import com.mujassir.cutline.core.MediaItem
 import com.mujassir.cutline.core.MediaKind
 import com.mujassir.cutline.core.MediaTime
+import com.mujassir.cutline.core.MediaTimeRange
+import com.mujassir.cutline.core.NoiseReduction
 import com.mujassir.cutline.core.Project
 import com.mujassir.cutline.core.ProjectStore
 import com.mujassir.cutline.core.RecentAudioStore
@@ -35,6 +40,7 @@ import com.mujassir.cutline.core.deletingClip
 import com.mujassir.cutline.core.deletingText
 import com.mujassir.cutline.core.duplicatingClip
 import com.mujassir.cutline.core.duration
+import com.mujassir.cutline.core.hasVideoClips
 import com.mujassir.cutline.core.insertingFreezeFrame
 import com.mujassir.cutline.core.isEmptyEdit
 import com.mujassir.cutline.core.layout
@@ -42,10 +48,16 @@ import com.mujassir.cutline.core.movableClipIndices
 import com.mujassir.cutline.core.movingAudio
 import com.mujassir.cutline.core.movingAudioToGapStart
 import com.mujassir.cutline.core.movingClip
+import com.mujassir.cutline.core.recordingDenoisedFiles
+import com.mujassir.cutline.core.recordingReversedFile
 import com.mujassir.cutline.core.removingCaptionFillers
 import com.mujassir.cutline.core.removingTitleCard
 import com.mujassir.cutline.core.repeatingAudio
 import com.mujassir.cutline.core.settingContentFit
+import com.mujassir.cutline.core.settingNoiseReduction
+import com.mujassir.cutline.core.settingReversed
+import com.mujassir.cutline.core.settingSpeedForAllClips
+import com.mujassir.cutline.core.speedAdjustableClipCount
 import com.mujassir.cutline.core.splitting
 import com.mujassir.cutline.core.splittingAudio
 import com.mujassir.cutline.core.startingAudioHere
@@ -56,6 +68,7 @@ import com.mujassir.cutline.core.upsertingTitleCard
 import com.mujassir.cutline.engine.AutoEnhance
 import com.mujassir.cutline.engine.AutoReframe
 import com.mujassir.cutline.engine.MediaImporter
+import com.mujassir.cutline.engine.MediaProcessing
 import com.mujassir.cutline.engine.Thumbnails
 import com.mujassir.cutline.engine.TitleCardRenderer
 import com.mujassir.cutline.engine.Waveforms
@@ -91,6 +104,8 @@ sealed interface EditorPanel {
     data object Adjust : EditorPanel
     data object Speed : EditorPanel
     data object Crop : EditorPanel
+    data object Denoise : EditorPanel
+    data object Cutout : EditorPanel
 }
 
 data class Busy(val message: String, val progress: Double? = null)
@@ -171,7 +186,7 @@ class EditorModel(
         session.selection = s
         selection = s
         val p = panel
-        if (s == Selection.None && p != null && p != EditorPanel.Canvas && p != EditorPanel.Music && p != EditorPanel.Captions) panel = null
+        if (s == Selection.None && p != null && p != EditorPanel.Canvas && p != EditorPanel.Music && p != EditorPanel.Captions && p != EditorPanel.Denoise) panel = null
         // PRV-8: deselecting while playing past the video pauses where it is.
         if (s !is Selection.Audio && isPlaying && currentTime >= project.duration) pause()
     }
@@ -262,6 +277,7 @@ class EditorModel(
             if (items.isEmpty()) { showToast("Couldn't import that file"); return@launch }
             edit("Add media") { p -> items.fold(p) { acc, m -> acc.appendingClip(m) } }
             items.filter { it.hasAudio }.forEach { loadWaveform(it) }
+            denoiseNewMedia()
         }
     }
 
@@ -273,6 +289,33 @@ class EditorModel(
             if (items.isEmpty()) { showToast("Couldn't import that file"); return@launch }
             edit("Add media") { p -> items.fold(p) { acc, m -> acc.appendingClip(m) } }
             items.filter { it.hasAudio }.forEach { loadWaveform(it) }
+            denoiseNewMedia()
+        }
+    }
+
+    /**
+     * Demo/test helper: appends video clip(s) with sound (no real encoder). Used by sample media
+     * so Reverse, Denoise, Cutout and Captions can be exercised without the Photo Picker.
+     */
+    fun addDemoVideoClip(durationSeconds: Double = 4.0, withAudio: Boolean = true, count: Int = 1) {
+        scope.launch {
+            busy = Busy("Importing…")
+            val items = withContext(Dispatchers.IO) {
+                (0 until count.coerceAtLeast(1)).map {
+                    val name = "demo-${UUID.randomUUID().toString().take(8)}.mov"
+                    val dest = store.mediaFile(name, project.id)
+                    dest.parentFile?.mkdirs()
+                    if (!dest.exists()) dest.writeBytes(ByteArray(64) { 0 })
+                    MediaItem(
+                        kind = MediaKind.VIDEO, fileName = name, naturalSize = Size(1280.0, 720.0),
+                        duration = MediaTime.seconds(durationSeconds), hasAudio = withAudio, displayName = "Demo clip",
+                    )
+                }
+            }
+            busy = null
+            edit("Add media") { p -> items.fold(p) { acc, m -> acc.appendingClip(m) } }
+            items.filter { it.hasAudio }.forEach { loadWaveform(it) }
+            denoiseNewMedia()
         }
     }
 
@@ -321,6 +364,119 @@ class EditorModel(
     fun freezeFrame() {
         val t = currentTime
         if (edit("Freeze frame") { it.insertingFreezeFrame(t) }) showToast("Freeze frame added")
+    }
+
+    /** REV-1: toggle reverse; first time prepares a reversed media file. */
+    fun reverseSelected() {
+        val clip = selectedClip ?: return
+        if (clip.kind != MediaKind.VIDEO || clip.freezeAt != null) return
+        val media = project.mediaItem(clip.mediaID) ?: return
+        if (clip.isReversed) {
+            edit("Reverse") { it.settingReversed(false, clip.id) }
+            return
+        }
+        if (media.reversedFileName != null) {
+            edit("Reverse") { it.settingReversed(true, clip.id) }
+            return
+        }
+        scope.launch {
+            busy = Busy("Reversing clip…", 0.0)
+            val name = MediaProcessing.reverseFileName(media.fileName)
+            val source = store.mediaFile(media, project.id)
+            val dest = store.mediaFile(name, project.id)
+            val ok = withContext(Dispatchers.IO) {
+                MediaProcessing.copyPrepared(source, dest) { busy = Busy("Reversing clip…", it) }
+            }
+            busy = null
+            if (!ok) { showToast("Couldn't reverse this clip"); return@launch }
+            edit("Reverse") { it.recordingReversedFile(media.id, name, clip.id) }
+            showToast("Clip reversed")
+        }
+    }
+
+    /**
+     * DNS-1 / DNS-2: Denoise for the whole video. Off clears the setting; a level cleans every
+     * video with sound once per strength (DNS-3), then reuses the file.
+     */
+    fun setNoiseReduction(level: NoiseReduction?) {
+        if (level == null) {
+            edit("Noise reduction") { it.settingNoiseReduction(null) }
+            return
+        }
+        val sources = project.denoiseSources
+        if (sources.isEmpty()) { showToast("This video has no sound"); return }
+        val missing = sources.filter { !hasCurrentDenoisedFile(it, level) }
+        if (missing.isEmpty()) {
+            edit("Noise reduction") { it.settingNoiseReduction(level) }
+            showToast("Noise reduced (${level.title})")
+            return
+        }
+        scope.launch {
+            busy = Busy("Reducing noise…", 0.0)
+            val files = withContext(Dispatchers.IO) { makeDenoisedFiles(missing, level) }
+            busy = null
+            if (files.size < missing.size) { showToast("Couldn't reduce noise"); return@launch }
+            edit("Noise reduction") { it.settingNoiseReduction(level, files) }
+            showToast("Noise reduced (${level.title})")
+        }
+    }
+
+    /** DNS-7: while Denoise is on, videos added later are cleaned straight away. */
+    fun denoiseNewMedia() {
+        val level = project.noiseReduction ?: return
+        val missing = project.denoiseSources.filter { !hasCurrentDenoisedFile(it, level) }
+        if (missing.isEmpty()) return
+        scope.launch {
+            busy = Busy("Reducing noise…", 0.0)
+            val files = withContext(Dispatchers.IO) { makeDenoisedFiles(missing, level) }
+            busy = null
+            if (files.isNotEmpty()) edit("Noise reduction") { it.recordingDenoisedFiles(files, level) }
+        }
+    }
+
+    private fun hasCurrentDenoisedFile(item: MediaItem, level: NoiseReduction): Boolean {
+        val name = item.denoisedFileNames?.get(level) ?: return false
+        if (!MediaProcessing.isCurrentDenoiseFile(name)) return false
+        return store.mediaFile(name, project.id).exists()
+    }
+
+    private fun makeDenoisedFiles(items: List<MediaItem>, level: NoiseReduction): Map<UUID, String> {
+        val files = LinkedHashMap<UUID, String>()
+        items.forEachIndexed { done, item ->
+            val base = item.fileName.substringBeforeLast('.').ifBlank { "clip" }
+            val name = MediaProcessing.denoiseFileName(level, base)
+            val source = store.mediaFile(item, project.id)
+            val dest = store.mediaFile(name, project.id)
+            val count = items.size.toDouble().coerceAtLeast(1.0)
+            if (MediaProcessing.copyPrepared(source, dest) { p -> busy = Busy("Reducing noise…", (done + p) / count) }) {
+                files[item.id] = name
+            }
+        }
+        return files
+    }
+
+    /** CUT-1: set or clear background removal on the selected video clip. */
+    fun setCutout(replacement: BackgroundReplacement?) {
+        val id = selectedClipID ?: return
+        edit("Cutout") { p -> p.updatingClip(id) { it.copy(backgroundRemoval = replacement) } }
+        showToast(when (replacement) {
+            null -> "Background restored"
+            BackgroundReplacement.Blur -> "Background blurred"
+            BackgroundReplacement.Transparent -> "Background removed"
+            is BackgroundReplacement.Color -> "Background colour set"
+        })
+    }
+
+    /** SPD-4: one undo step applying the current clip's speed to every adjustable clip. */
+    fun applySpeedToAll(speed: Double) {
+        val n = project.speedAdjustableClipCount
+        if (n < 2) return
+        edit("Speed") { it.settingSpeedForAllClips(speed) }
+        fun title(v: Double): String {
+            val r = (v * 100).toInt() / 100.0
+            return (if (r == r.toInt().toDouble()) r.toInt().toString() else r.toString().trimEnd('0')) + "×"
+        }
+        showToast("All clips set to ${title(speed)}")
     }
 
     fun autoEnhance() {
@@ -475,6 +631,61 @@ class EditorModel(
         var n = 0
         edit("Remove fillers") { p -> p.removingCaptionFillers().also { n = it.second }.first }
         showToast(if (n == 0) "No filler words found" else "Removed $n filler word${if (n == 1) "" else "s"}")
+    }
+
+    /**
+     * CAP-1: generate captions. Sample/demo mode installs timed demo words; otherwise the on-device
+     * speech path is not wired yet (parity table), so we show a clear toast.
+     */
+    fun generateCaptions() {
+        if (!project.hasVideoClips && !sampleMedia) {
+            showToast("Add a video clip first")
+            return
+        }
+        if (sampleMedia || project.clips.any { it.kind == MediaKind.VIDEO }) {
+            scope.launch {
+                busy = Busy("Generating captions…")
+                delay(300)
+                val words = demoCaptionWords(project.duration)
+                busy = null
+                if (words.isEmpty()) { showToast("No speech found"); return@launch }
+                edit("Captions") { it.copy(captions = it.captions.copy(segments = groupCaptionWords(words))) }
+                showToast("Captions added")
+                panel = EditorPanel.Captions
+            }
+            return
+        }
+        showToast("On-device speech recognition isn't available yet")
+    }
+
+    private fun demoCaptionWords(duration: MediaTime): List<CaptionWord> {
+        val script = listOf("Welcome", "to", "Cutline", "edit", "on", "your", "phone")
+        val end = MediaTime.max(duration, MediaTime.seconds(3.5))
+        val step = end.ticks / script.size
+        return script.mapIndexed { i, w ->
+            val start = MediaTime(step * i)
+            val stop = if (i == script.lastIndex) end else MediaTime(step * (i + 1))
+            CaptionWord(w, MediaTimeRange.of(start, stop))
+        }
+    }
+
+    private fun groupCaptionWords(words: List<CaptionWord>): List<CaptionSegment> {
+        if (words.isEmpty()) return emptyList()
+        val out = ArrayList<CaptionSegment>()
+        var bucket = ArrayList<CaptionWord>()
+        fun flush() {
+            if (bucket.isEmpty()) return
+            out += CaptionSegment(words = bucket.toList())
+            bucket = ArrayList()
+        }
+        for (w in words) {
+            val wouldPause = bucket.isNotEmpty() && (w.range.start - bucket.last().range.end).seconds > 0.55
+            val wouldLong = bucket.isNotEmpty() && (w.range.end - bucket.first().range.start).seconds > 2.6
+            if (bucket.size >= 5 || wouldPause || wouldLong) flush()
+            bucket += w
+        }
+        flush()
+        return out
     }
 
     // MARK: Slides and watermark (TTL, WMK)

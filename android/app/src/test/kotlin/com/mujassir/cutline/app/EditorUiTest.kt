@@ -69,6 +69,19 @@ abstract class CutlineUiTest {
         rule.onNodeWithTag(tool).performScrollTo().performClick()
         waitFor(panel)
     }
+
+    /** New project with demo video clip(s) (sound on) for Reverse / Denoise / Cutout / Captions / SPD-4. */
+    protected fun openProjectWithVideo(count: Int = 1) {
+        launch()
+        rule.onNodeWithTag("projects.new").performClick()
+        waitFor("timeline.add")
+        rule.onNodeWithTag("timeline.add").performClick()
+        val tag = if (count >= 2) "add.sampleVideos" else "add.sampleVideo"
+        waitFor(tag)
+        rule.onNodeWithTag(tag).performClick()
+        rule.waitUntil(20_000) { count("clip.") >= count }
+        rule.waitUntil(20_000) { rule.onAllNodesWithTag("busy").fetchSemanticsNodes().isEmpty() }
+    }
 }
 
 @Config(sdk = [35], qualifiers = "w411dp-h891dp-xxhdpi")
@@ -230,6 +243,67 @@ class PhoneUiTest : CutlineUiTest() {
         rule.onNodeWithTag("editor.redo").assertIsDisplayed()
         shot("phone-16-undo-redo")
     }
+
+    @Test fun `DNS-1 Denoise panel Off Low Medium High`() {
+        openProjectWithVideo()
+        waitFor("tool.Denoise")
+        rule.onNodeWithTag("tool.Denoise").performClick()
+        waitFor("panel.Noise Reduction")
+        shot("phone-17-denoise")
+        rule.onNodeWithTag("denoise.medium").performClick()
+        rule.waitUntil(20_000) { rule.onAllNodesWithTag("busy").fetchSemanticsNodes().isEmpty() }
+        rule.onNodeWithTag("panel.done").performClick()
+        waitFor("tool.Denoise")
+    }
+
+    @Test fun `CAP-1 Generate Captions then style panel`() {
+        openProjectWithVideo()
+        waitFor("tool.Captions")
+        rule.onNodeWithTag("tool.Captions").performClick()
+        waitFor("panel.Captions")
+        waitFor("captions.generate")
+        rule.onNodeWithTag("captions.generate").performClick()
+        rule.waitUntil(20_000) { rule.onAllNodesWithTag("busy").fetchSemanticsNodes().isEmpty() }
+        waitFor("panel.Captions")
+        shot("phone-18-captions")
+        assertTrue(rule.onAllNodesWithTag("captions.generate").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test fun `REV-1 Reverse toggles on a video clip`() {
+        openProjectWithVideo()
+        rule.onNodeWithTag("clip.0").performClick()
+        waitFor("tool.Reverse")
+        rule.onNodeWithTag("tool.Reverse").performScrollTo().performClick()
+        rule.waitUntil(20_000) { rule.onAllNodesWithTag("busy").fetchSemanticsNodes().isEmpty() }
+        shot("phone-19-reverse")
+        waitFor("tool.Reverse")
+    }
+
+    @Test fun `CUT-1 Cutout panel Blur and Off`() {
+        openProjectWithVideo()
+        rule.onNodeWithTag("clip.0").performClick()
+        waitFor("tool.Cutout")
+        rule.onNodeWithTag("tool.Cutout").performScrollTo().performClick()
+        waitFor("panel.Remove Background")
+        shot("phone-20-cutout")
+        rule.onNodeWithTag("cutout.blur").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithTag("cutout.off").performClick()
+        rule.onNodeWithTag("panel.done").performClick()
+    }
+
+    @Test fun `SPD-1 Speed panel with Apply to all when two videos`() {
+        openProjectWithVideo(count = 2)
+        rule.onNodeWithTag("clip.0").performClick()
+        waitFor("tool.Speed")
+        rule.onNodeWithTag("tool.Speed").performScrollTo().performClick()
+        waitFor("panel.Speed")
+        waitFor("speed.value")
+        waitFor("speed.applyAll")
+        shot("phone-21-speed")
+        rule.onNodeWithTag("speed.applyAll").performClick()
+        rule.waitForIdle()
+    }
 }
 
 /** LAY-1…3: a wide (tablet landscape) window shows the sidebar with a tool grid. */
@@ -294,5 +368,41 @@ class TabletUiTest : CutlineUiTest() {
         waitFor("export.estimate")
         shot("tablet-06-export")
         assertTrue(rule.onAllNodesWithTag("export.start").fetchSemanticsNodes().isNotEmpty())
+    }
+
+    @Test fun `LAY-2 DNS-1 Denoise in the sidebar`() {
+        openProjectWithVideo()
+        waitFor("editor.sidebar")
+        waitFor("tool.Denoise")
+        rule.onNodeWithTag("tool.Denoise").performClick()
+        waitFor("panel.Noise Reduction")
+        shot("tablet-07-denoise")
+        rule.onNodeWithTag("denoise.low").performClick()
+        rule.waitUntil(20_000) { rule.onAllNodesWithTag("busy").fetchSemanticsNodes().isEmpty() }
+    }
+
+    @Test fun `LAY-2 REV-1 and CUT-1 video tools in the sidebar`() {
+        openProjectWithVideo()
+        waitFor("editor.sidebar")
+        rule.onNodeWithTag("clip.0").performClick()
+        waitFor("tool.Reverse")
+        rule.onNodeWithTag("tool.Cutout").performClick()
+        waitFor("panel.Remove Background")
+        shot("tablet-08-cutout")
+        rule.onNodeWithTag("panel.done").performClick()
+        rule.onNodeWithTag("tool.Reverse").performClick()
+        rule.waitUntil(20_000) { rule.onAllNodesWithTag("busy").fetchSemanticsNodes().isEmpty() }
+    }
+
+    @Test fun `LAY-2 CAP-1 Generate Captions in the sidebar`() {
+        openProjectWithVideo()
+        waitFor("editor.sidebar")
+        waitFor("tool.Captions")
+        rule.onNodeWithTag("tool.Captions").performClick()
+        waitFor("captions.generate")
+        rule.onNodeWithTag("captions.generate").performClick()
+        rule.waitUntil(20_000) { rule.onAllNodesWithTag("busy").fetchSemanticsNodes().isEmpty() }
+        waitFor("panel.Captions")
+        shot("tablet-09-captions")
     }
 }
