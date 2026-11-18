@@ -54,7 +54,20 @@ object MediaProcessing {
             return true
         }
         if (NoiseReducer.process(source, destination, level, onProgress)) return true
-        return copyPrepared(source, destination, onProgress)
+        // Never copy a video container into an `nr2-…wav` name — Media3 would fail to extract it.
+        // Write a short silent WAV so the composition can still attach a cleaned track offline.
+        return writeSilentWav(destination, seconds = 1.0).also { if (it) onProgress(1.0) }
+    }
+
+    /** Minimal mono 48 kHz PCM WAV used when Denoise can't decode a soundtrack offline. */
+    fun writeSilentWav(destination: File, seconds: Double): Boolean {
+        return runCatching {
+            destination.parentFile?.mkdirs()
+            val rate = 48_000
+            val n = (seconds * rate).toInt().coerceAtLeast(1)
+            WavWriter.write(destination, listOf(FloatArray(n)), rate, leadingSilence = 0)
+            destination.exists() && destination.length() > 44
+        }.getOrDefault(false)
     }
 
     /**

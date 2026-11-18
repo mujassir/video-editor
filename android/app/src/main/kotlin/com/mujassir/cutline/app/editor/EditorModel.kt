@@ -302,15 +302,17 @@ class EditorModel(
         scope.launch {
             busy = Busy("Importing…")
             val items = withContext(Dispatchers.IO) {
-                (0 until count.coerceAtLeast(1)).map {
-                    val name = "demo-${UUID.randomUUID().toString().take(8)}.mov"
+                (0 until count.coerceAtLeast(1)).map { index ->
+                    val name = "demo-${UUID.randomUUID().toString().take(8)}.mp4"
                     val dest = store.mediaFile(name, project.id)
                     dest.parentFile?.mkdirs()
-                    if (!dest.exists()) dest.writeBytes(ByteArray(64) { 0 })
-                    MediaItem(
-                        kind = MediaKind.VIDEO, fileName = name, naturalSize = Size(1280.0, 720.0),
-                        duration = MediaTime.seconds(durationSeconds), hasAudio = withAudio, displayName = "Demo clip",
-                    )
+                    if (!dest.exists()) SampleMedia.writeDemoVideo(dest, context, variant = index)
+                    MediaImporter.probe(dest, name, "Demo clip", "video/mp4")
+                        ?.let { probed -> probed.copy(hasAudio = withAudio || probed.hasAudio) }
+                        ?: MediaItem(
+                            kind = MediaKind.VIDEO, fileName = name, naturalSize = Size(1280.0, 720.0),
+                            duration = MediaTime.seconds(durationSeconds), hasAudio = withAudio, displayName = "Demo clip",
+                        )
                 }
             }
             busy = null

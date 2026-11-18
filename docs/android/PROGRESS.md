@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-11-18  
 **Branch:** `cursor/android-app-complete-b64d` (from `develop`)  
-**Tip when this was written:** DNS/REV/CUT/CAP-1/RFR saliency; CI uses preinstalled sdkmanager
+**Tip when this was written:** Media3 emulator smoke green (bundled demo MP4 + ClipLayer blur GL fix); DNS silent-WAV fallback
 
 This note is for picking up the port. Spec still wins: [FEATURES.md](../spec/FEATURES.md), [IMPLEMENTATION.md](../spec/IMPLEMENTATION.md), [AGENTS.md](../../AGENTS.md), kick-start [README.md](README.md).
 
@@ -14,7 +14,7 @@ This note is for picking up the port. Spec still wins: [FEATURES.md](../spec/FEA
 |---|---|---|
 | **M0** Gradle + core model + project file contract | Done | `android/core`, `ProjectFileContractTest` |
 | **M1** Core editing tests | Done | Ported iOS suites including SPD-4/5 |
-| **M2** Library, import, timeline, preview, save, undo | Partial | UI + store wired; Media3 preview needs a device |
+| **M2** Library, import, timeline, preview, save, undo | Partial | UI + store wired; Media3 preview verified on emulator with bundled `demo_clip*.mp4` |
 | **M3** Clip editing | Done for UI | Split / Voice / Speed (Apply to all) / Reverse / Freeze / Duplicate / Delete |
 | **M4** Music + Denoise | Partial | Music tools; **spectral NoiseReducer** (§9.4) + WAV `nr2-` files + cleaned audio track in composition |
 | **M5** Text, slides, watermark, canvas | Partial | Panels + raster; fonts mapped to open substitutes |
@@ -23,7 +23,7 @@ This note is for picking up the port. Spec still wins: [FEATURES.md](../spec/FEA
 | **M8** On-device AI | Partial | Enhance + Reframe; Cutout compositor + FaceDetector mask; CAP-1 speech mix + demo/availability path |
 | **M9** Tablet layout | Partial | Expanded ≥840 dp sidebar; phone portrait; Robolectric covers both |
 
-**First internal build (M0–M4):** usable for photos + videos + music + denoise. Device smoke for Media3 preview/export still open.
+**First internal build (M0–M4):** usable for photos + videos + music + denoise. Emulator Media3 preview smoke passed (phone + tablet-wide); device export smoke still open.
 
 ---
 
@@ -42,7 +42,7 @@ Remaining gaps:
 - Bundled MediaPipe / ML Kit Selfie Segmentation (interim FaceDetector + centre-prior mask is wired into the compositor).
 - Optional: replace classical RFR saliency with an ML saliency model.
 - File-capable on-device STT (whisper.cpp) for CAP-1; speech mix + availability gate are wired; sample/demo captions remain for tests.
-- Reframe saliency fallback; `golden.json` for M6; device/emulator Media3 smoke.
+- Reframe saliency fallback; `golden.json` for M6; device export smoke (preview smoke done on emulator).
 
 ---
 
@@ -64,7 +64,7 @@ CI: `.github/workflows/android.yml` (JDK 21, platform 35, preinstalled sdkmanage
 
 ## 4. Suggested next slices
 
-1. Device / emulator smoke — Media3 preview, real export, Photo Picker.
+1. Device export smoke + Photo Picker on real hardware.
 2. Real reverse encoder (windowed frame reverse → HEVC).
 3. Bundled offline segmentation for Cutout; speech model for CAP-1.
 4. Close remaining 🟡 items toward ✅; keep the parity table honest.

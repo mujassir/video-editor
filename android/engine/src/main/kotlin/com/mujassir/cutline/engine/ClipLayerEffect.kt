@@ -64,7 +64,9 @@ private class ClipLayerProgram(
     private val frameAt: (Long, Int, Int) -> LayerFrame,
 ) : BaseGlShaderProgram(false, 1) {
     private val layer = GlProgram(VERTEX, LAYER_FRAGMENT)
-    private val blur = GlProgram(VERTEX, BLUR_FRAGMENT)
+    // Blur must not share VERTEX: GlProgram.bindAttributesAndUniforms requires every
+    // attribute to have a buffer, and VERTEX's aLocal is unused by the blur pass.
+    private val blur = GlProgram(BLUR_VERTEX, BLUR_FRAGMENT)
     private var inputW = 1
     private var inputH = 1
     private var lutTexture = -1
@@ -381,13 +383,22 @@ void main() {
 }
 """
 
+        const val BLUR_VERTEX = """
+attribute vec4 aPosition;
+attribute vec4 aUv;
+varying vec2 vUv;
+void main() {
+  gl_Position = vec4(aPosition.xy, 0.0, 1.0);
+  vUv = aUv.xy;
+}
+"""
+
         const val BLUR_FRAGMENT = """
 precision highp float;
 uniform sampler2D uTex;
 uniform vec2 uStep;
 uniform float uSigma;
 varying vec2 vUv;
-varying vec2 vLocal;
 void main() {
   vec4 acc = vec4(0.0);
   float total = 0.0;

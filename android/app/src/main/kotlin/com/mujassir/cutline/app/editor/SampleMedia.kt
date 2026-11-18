@@ -55,6 +55,23 @@ object SampleMedia {
         model.addDemoVideoClip(durationSeconds = 4.0, withAudio = true, count = count)
     }
 
+    /**
+     * Copies a bundled H.264 + AAC demo clip from assets so Media3 preview/export works on
+     * device/emulator. Falls back to a tiny placeholder only if the asset is missing
+     * (Robolectric paths that never open CompositionPlayer).
+     */
+    fun writeDemoVideo(dest: File, context: android.content.Context, variant: Int = 0) {
+        dest.parentFile?.mkdirs()
+        val asset = if (variant % 2 == 0) "demo_clip.mp4" else "demo_clip_2.mp4"
+        val ok = runCatching {
+            context.assets.open(asset).use { input ->
+                dest.outputStream().use { input.copyTo(it) }
+            }
+            dest.exists() && dest.length() > 1000
+        }.getOrDefault(false)
+        if (!ok) dest.writeBytes(ByteArray(64) { 0 })
+    }
+
     fun addTrack(model: EditorModel, t: Track) {
         model.scope.launch {
             val seconds = max(model.project.duration.seconds, 10.0)
