@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-11-18  
 **Branch:** `cursor/android-app-complete-b64d` (from `develop`)  
-**Tip when this was written:** §9.4 NoiseReducer + Cutout maths + REV MediaCodec reverse; CI uses preinstalled sdkmanager
+**Tip when this was written:** DNS/REV/CUT/CAP-1/RFR saliency; CI uses preinstalled sdkmanager
 
 This note is for picking up the port. Spec still wins: [FEATURES.md](../spec/FEATURES.md), [IMPLEMENTATION.md](../spec/IMPLEMENTATION.md), [AGENTS.md](../../AGENTS.md), kick-start [README.md](README.md).
 
@@ -40,6 +40,7 @@ Remaining gaps:
 
 - Reverse encoder: windowed MediaCodec path in `ReverseVideo` (Robolectric falls back to a prepared copy).
 - Bundled MediaPipe / ML Kit Selfie Segmentation (interim FaceDetector + centre-prior mask is wired into the compositor).
+- Optional: replace classical RFR saliency with an ML saliency model.
 - File-capable on-device STT (whisper.cpp) for CAP-1; speech mix + availability gate are wired; sample/demo captions remain for tests.
 - Reframe saliency fallback; `golden.json` for M6; device/emulator Media3 smoke.
 

@@ -532,7 +532,7 @@ Keep this table current. ✅ = done, 🟡 = partly or differently (explain), ⬜
 | Transitions and animation TRN, ANM | ✅ | 🟡 | ⬜ | ⬜ | Panels and model; transitions render as split halves (see CompositionBuilder) |
 | Enhance ENH | ✅ | 🟡 | ⬜ | ⬜ | Pure maths AutoEnhance on device |
 | Cutout CUT | ✅ | 🟡 | ⬜ | ⬜ | CUT-1 panel + §10.4 soft-edge maths in compositor (Transparent / Blur / Colour). Interim FaceDetector / centre-prior mask until MediaPipe Selfie is bundled |
-| Reframe RFR | ✅ | 🟡 | ⬜ | ⬜ | FaceDetector path; no saliency fallback yet when no faces |
+| Reframe RFR | ✅ | 🟡 | ⬜ | ⬜ | FaceDetector path + classical local-contrast saliency fallback when no faces |
 | Canvas, slides, watermark | ✅ | 🟡 | ⬜ | ⬜ | Intro/Outro/Watermark panels; fonts mapped to open substitutes |
 | Text TXT | ✅ | 🟡 | ⬜ | ⬜ | Fonts: see IMPLEMENTATION §8.6 |
 | Music MUS | ✅ | 🟡 | ⬜ | ⬜ | Audio Tracks / From Video / Recent / Cut / Start Here / Duck / Repeat; sample tracks in tests |
