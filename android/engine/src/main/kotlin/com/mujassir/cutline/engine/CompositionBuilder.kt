@@ -86,8 +86,15 @@ class CompositionBuilder(
             val itemDuration = entry.range.duration - halfIn - halfOut
             if (itemDuration <= MediaTime.ZERO) continue
             val layerEffect = ClipLayerEffect(cw, ch, project.background) { timeUs, inW, inH ->
-                layerFrame(project, clip, media, entry.range.start, entry.range.duration, entry.overlapIn, entry.overlapOut,
+                val base = layerFrame(project, clip, media, entry.range.start, entry.range.duration, entry.overlapIn, entry.overlapOut,
                     timeUs, inW, inH, Size(cw.toDouble(), ch.toDouble()), toggles.animate.get())
+                val cutout = clip.backgroundRemoval ?: return@ClipLayerEffect base
+                val t = MediaTime(timeUs * MediaTime.TIMESCALE / 1_000_000)
+                val local = t - entry.range.start
+                val sourceT = clip.sourceTime(local)
+                val file = store.mediaFile(media, project.id)
+                val mask = SubjectMask.cached(file, sourceT, inW.coerceAtLeast(2), inH.coerceAtLeast(2), clip.isStill)
+                base.copy(cutout = cutout, cutoutMask = mask)
             }
             items += if (clip.isStill) stillItem(project, clip, media, itemDuration, layerEffect)
             else videoItem(project, clip, media, halfIn, halfOut, layerEffect)

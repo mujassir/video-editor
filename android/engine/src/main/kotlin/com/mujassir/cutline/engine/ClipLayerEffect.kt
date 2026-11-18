@@ -1,7 +1,9 @@
 package com.mujassir.cutline.engine
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.opengl.GLES20
+import android.opengl.GLUtils
 import androidx.media3.common.util.GlProgram
 import androidx.media3.common.util.GlUtil
 import androidx.media3.common.util.Size as MSize
@@ -9,6 +11,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.BaseGlShaderProgram
 import androidx.media3.effect.GlEffect
 import androidx.media3.effect.GlShaderProgram
+import com.mujassir.cutline.core.BackgroundReplacement
 import com.mujassir.cutline.core.CanvasBackground
 import com.mujassir.cutline.core.ColorAdjustments
 import com.mujassir.cutline.core.render.FilterLooks
@@ -28,6 +31,10 @@ data class LayerFrame(
     val filterIntensity: Double,
     /** Clip-local time in seconds (glitch noise). */
     val time: Double,
+    /** CUT: background removal mode, or null when off. */
+    val cutout: BackgroundReplacement? = null,
+    /** Grayscale person mask (white = keep). Null skips §8.3 step 9. */
+    val cutoutMask: Bitmap? = null,
 )
 
 /**
@@ -62,6 +69,7 @@ private class ClipLayerProgram(
     private var inputH = 1
     private var lutTexture = -1
     private var lutFilter: String? = null
+    private var maskTexture = -1
     // Small buffers for the blurred background (a quarter of the canvas).
     private val smallW = (canvasW / 4).coerceAtLeast(2)
     private val smallH = (canvasH / 4).coerceAtLeast(2)
@@ -148,8 +156,41 @@ private class ClipLayerProgram(
         if (filter != null) ensureLut(filter)
         layer.setFloatUniform("uFilterIntensity", if (filter != null) f.filterIntensity.toFloat() else 0f)
         layer.setSamplerTexIdUniform("uLut", if (filter != null) lutTexture else input, 1)
+        // §8.3 step 9 — Cutout.
+        val cutout = f.cutout
+        val mask = f.cutoutMask
+        val mode = when {
+            cutout == null || mask == null -> 0f
+            cutout == BackgroundReplacement.Transparent -> 1f
+            cutout == BackgroundReplacement.Blur -> 2f
+            cutout is BackgroundReplacement.Color -> 3f
+            else -> 0f
+        }
+        if (mode > 0f) ensureMask(mask!!)
+        layer.setFloatUniform("uCutoutMode", mode)
+        layer.setFloatUniform("uCutoutBlur", (inputW / 60f).coerceAtLeast(1f))
+        val cc = (cutout as? BackgroundReplacement.Color)?.color
+        layer.setFloatsUniform(
+            "uCutoutColor",
+            floatArrayOf(cc?.r?.toFloat() ?: 0f, cc?.g?.toFloat() ?: 0f, cc?.b?.toFloat() ?: 0f),
+        )
+        layer.setSamplerTexIdUniform("uMask", if (mode > 0f) maskTexture else input, 2)
         layer.bindAttributesAndUniforms()
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+    }
+
+    private fun ensureMask(mask: Bitmap) {
+        if (maskTexture < 0) {
+            val t = IntArray(1); GLES20.glGenTextures(1, t, 0); maskTexture = t[0]
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, maskTexture)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+        } else {
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, maskTexture)
+        }
+        GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, mask, 0)
     }
 
     private fun ensureLut(id: String) {
@@ -180,6 +221,7 @@ private class ClipLayerProgram(
         super.release()
         runCatching { layer.delete(); blur.delete() }
         if (lutTexture >= 0) runCatching { GlUtil.deleteTexture(lutTexture) }
+        if (maskTexture >= 0) runCatching { GlUtil.deleteTexture(maskTexture) }
         for (i in 0..1) {
             if (smallFbo[i] >= 0) runCatching { GlUtil.deleteFbo(smallFbo[i]) }
             if (smallTex[i] >= 0) runCatching { GlUtil.deleteTexture(smallTex[i]) }
@@ -205,6 +247,7 @@ void main() {
 precision highp float;
 uniform sampler2D uTex;
 uniform sampler2D uLut;
+uniform sampler2D uMask;
 uniform vec2 uTexel;
 uniform vec2 uCanvas;
 uniform vec4 uAdjustA;   // exposure, contrast, saturation, warmth
@@ -216,6 +259,9 @@ uniform float uWipe;
 uniform float uGlitch;
 uniform float uTime;
 uniform float uFilterIntensity;
+uniform float uCutoutMode;   // 0 off, 1 transparent, 2 blur, 3 colour
+uniform float uCutoutBlur;
+uniform vec3 uCutoutColor;
 varying vec2 vUv;
 varying vec2 vLocal;
 
@@ -305,6 +351,27 @@ void main() {
   // 8. Brightness and opacity.
   c *= uBrightness;
   float alpha = s.a * uOpacity;
+  // 9. Cut-out mask (person segmentation).
+  if (uCutoutMode > 0.5) {
+    float raw = texture2D(uMask, uv).r;
+    float m = smoothstep(0.15, 0.85, raw);
+    if (uCutoutMode < 1.5) {
+      alpha *= m;
+    } else if (uCutoutMode < 2.5) {
+      // Approximate σ = width/60 with a disc of samples.
+      vec3 blurred = texture2D(uTex, uv).rgb * uBrightness;
+      for (int i = 1; i <= 8; i++) {
+        float fi = float(i);
+        float r = sqrt(fi / 8.0) * uCutoutBlur;
+        float a = fi * 2.39996323;
+        blurred += texture2D(uTex, uv + vec2(cos(a), sin(a)) * r * uTexel).rgb * uBrightness;
+      }
+      blurred /= 9.0;
+      c = mix(blurred, c, m);
+    } else {
+      c = mix(uCutoutColor, c, m);
+    }
+  }
   // 10. Wipe.
   if (uWipe >= 0.0) {
     float x = gl_FragCoord.x / uCanvas.x;
