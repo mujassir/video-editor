@@ -526,7 +526,7 @@ Keep this table current. ✅ = done, 🟡 = partly or differently (explain), ⬜
 |---|---|---|---|---|---|
 | Library LIB-1…5 | ✅ | 🟡 | ⬜ | ⬜ | Compose library + Photo Picker; Robolectric covers new project / samples |
 | Timeline TML-1…13 | ✅ | 🟡 | ⬜ | ⬜ | Desktop: mouse wheel scrolls, ⌘/Ctrl+wheel zooms. Android has lanes, trim, TML-13 reorder |
-| Clip editing CLP, SPD, REV, FRZ | ✅ | 🟡 | ⬜ | ⬜ | Split / Voice / Speed (SPD-4 Apply to all + SPD-5 re-timing) / Reverse / Freeze / Duplicate / Delete. Reverse prepares a copy of the source until a real reverse encoder lands |
+| Clip editing CLP, SPD, REV, FRZ | ✅ | 🟡 | ⬜ | ⬜ | Split / Voice / Speed (SPD-4 Apply to all + SPD-5 re-timing) / Reverse / Freeze / Duplicate / Delete. Reverse uses windowed MediaCodec re-encode (falls back to a prepared copy when no encoder) |
 | Denoise DNS | ✅ | 🟡 | ⬜ | ⬜ | DNS-1 panel + project-wide setting; §9.4 spectral NoiseReducer + JVM tests (hiss/tone/DNS-6); cleaned WAV as `nr2-…`; composition plays cleaned audio on a separate track |
 | Filters, Adjust, Crop FLT, ADJ, CRP | ✅ | 🟡 | ⬜ | ⬜ | Exact formulas in core; panels wired; golden maths table still missing |
 | Transitions and animation TRN, ANM | ✅ | 🟡 | ⬜ | ⬜ | Panels and model; transitions render as split halves (see CompositionBuilder) |

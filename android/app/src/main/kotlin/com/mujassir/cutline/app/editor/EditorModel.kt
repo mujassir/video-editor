@@ -385,7 +385,7 @@ class EditorModel(
             val source = store.mediaFile(media, project.id)
             val dest = store.mediaFile(name, project.id)
             val ok = withContext(Dispatchers.IO) {
-                MediaProcessing.copyPrepared(source, dest) { busy = Busy("Reversing clip…", it) }
+                MediaProcessing.prepareReversed(source, dest) { busy = Busy("Reversing clip…", it) }
             }
             busy = null
             if (!ok) { showToast("Couldn't reverse this clip"); return@launch }

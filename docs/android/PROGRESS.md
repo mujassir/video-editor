@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-11-18  
 **Branch:** `cursor/android-app-complete-b64d` (from `develop`)  
-**Tip when this was written:** §9.4 NoiseReducer + Cutout maths; CI uses preinstalled sdkmanager
+**Tip when this was written:** §9.4 NoiseReducer + Cutout maths + REV MediaCodec reverse; CI uses preinstalled sdkmanager
 
 This note is for picking up the port. Spec still wins: [FEATURES.md](../spec/FEATURES.md), [IMPLEMENTATION.md](../spec/IMPLEMENTATION.md), [AGENTS.md](../../AGENTS.md), kick-start [README.md](README.md).
 
@@ -38,7 +38,7 @@ android/
 
 Remaining gaps:
 
-- Real reverse re-encode (today: prepared file copy under `rev-…`).
+- Reverse encoder: windowed MediaCodec path in `ReverseVideo` (Robolectric falls back to a prepared copy).
 - Cutout person-segmentation (ML Kit / MediaPipe) into the live compositor (maths ready).
 - On-device speech for CAP-1 (sample/demo captions work in tests).
 - Reframe saliency fallback; `golden.json` for M6; device/emulator Media3 smoke.

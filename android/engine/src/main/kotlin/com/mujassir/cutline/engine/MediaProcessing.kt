@@ -6,9 +6,9 @@ import java.io.File
 /**
  * On-device media preparation for Reverse (REV-1) and Denoise (DNS-2).
  *
- * Denoise runs the §9.4 spectral gate when a soundtrack can be decoded; otherwise (and for
- * Reverse until the encoder lands) the source is copied under the required file name so
- * Robolectric / sample-media tests stay offline.
+ * Real reverse re-encodes via [ReverseVideo]; Denoise runs the §9.4 spectral gate when a
+ * soundtrack can be decoded. When those pipelines aren't available (Robolectric / no codec),
+ * the source is copied under the required file name so sample-media tests stay offline.
  */
 object MediaProcessing {
     /** DNS-6: current cleaned files use the `nr2-` prefix (IMPLEMENTATION §9.4). */
@@ -18,6 +18,24 @@ object MediaProcessing {
     fun reverseFileName(sourceFileName: String): String {
         val base = sourceFileName.substringBeforeLast('.').ifBlank { "clip" }
         return "rev-$base.mov"
+    }
+
+    /**
+     * REV-1: reverse-re-encode when MediaCodec is available; otherwise copy the source under the
+     * required name so Robolectric / sample-media tests stay offline.
+     */
+    fun prepareReversed(
+        source: File,
+        destination: File,
+        onProgress: (Double) -> Unit = {},
+    ): Boolean {
+        if (!source.exists()) return false
+        if (destination.exists() && destination.length() > 0) {
+            onProgress(1.0)
+            return true
+        }
+        if (ReverseVideo.process(source, destination, onProgress)) return true
+        return copyPrepared(source, destination, onProgress)
     }
 
     /**
