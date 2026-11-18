@@ -29,14 +29,22 @@ jobs:
           cache: gradle
           cache-dependency-path: android/**/*.gradle*
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install platform 35 and build-tools
+      - name: Install Android SDK packages
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME || '/usr/local/lib/android/sdk' }}
         run: |
-          sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
-          yes | sdkmanager --licenses >/dev/null || true
+          set -euo pipefail
+          # Prefer cmdline-tools/latest, then the numbered install GitHub runners ship.
+          if [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          else
+            SDKMANAGER="$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)"
+          fi
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Unit tests
         working-directory: android
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME || '/usr/local/lib/android/sdk' }}
         run: ./gradlew :core:test :engine:testDebugUnitTest :app:testDebugUnitTest --stacktrace
