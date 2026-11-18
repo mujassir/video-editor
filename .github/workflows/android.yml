@@ -18,6 +18,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
     steps:
       - uses: actions/checkout@v4
 
@@ -30,11 +32,8 @@ jobs:
           cache-dependency-path: android/**/*.gradle*
 
       - name: Install Android SDK packages
-        env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME || '/usr/local/lib/android/sdk' }}
         run: |
           set -euo pipefail
-          # Prefer cmdline-tools/latest, then the numbered install GitHub runners ship.
           if [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
             SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           else
@@ -45,6 +44,4 @@ jobs:
 
       - name: Unit tests
         working-directory: android
-        env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME || '/usr/local/lib/android/sdk' }}
         run: ./gradlew :core:test :engine:testDebugUnitTest :app:testDebugUnitTest --stacktrace
