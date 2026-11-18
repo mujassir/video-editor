@@ -448,7 +448,10 @@ class EditorModel(
             val source = store.mediaFile(item, project.id)
             val dest = store.mediaFile(name, project.id)
             val count = items.size.toDouble().coerceAtLeast(1.0)
-            if (MediaProcessing.copyPrepared(source, dest) { p -> busy = Busy("Reducing noise…", (done + p) / count) }) {
+            if (MediaProcessing.prepareDenoised(source, dest, level) { p ->
+                    busy = Busy("Reducing noise…", (done + p) / count)
+                }
+            ) {
                 files[item.id] = name
             }
         }

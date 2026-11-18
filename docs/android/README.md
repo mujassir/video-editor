@@ -13,7 +13,7 @@ The iOS app in this repo is the **reference implementation**. When the spec is u
 
 ### Readiness (2026-11-18)
 
-**M0–M4 largely in place for an internal build.** Code lives in `android/` (`core`, `engine`, `app`). JVM suites cover core editing (including SPD-4/5), contract tests, and Robolectric phone + tablet UI (library, tools, Denoise, Reverse, Cutout panel, CAP-1 generate, export, LAY). CI: `.github/workflows/android.yml`. Still open: device Media3 smoke, real reverse/NR encoders, Cutout segmentation mask, real on-device speech.
+**M0–M4 largely in place for an internal build.** Code lives in `android/` (`core`, `engine`, `app`). JVM suites cover core editing (including SPD-4/5), contract tests, and Robolectric phone + tablet UI (library, tools, Denoise, Reverse, Cutout panel, CAP-1 generate, export, LAY). CI: `.github/workflows/android.yml`. Still open: device Media3 smoke, real reverse encoder, Cutout segmentation→compositor, real on-device speech. Spectral Denoise (§9.4) is in engine tests.
 
 Open items, none of which block continuing the port:
 

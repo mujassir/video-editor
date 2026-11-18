@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-11-18  
 **Branch:** `cursor/android-app-complete-b64d` (from `develop`)  
-**Tip when this was written:** SPD-4/5, REV, DNS UI, CUT panel, CAP-1 generate + expanded phone/tablet Robolectric + Android CI
+**Tip when this was written:** §9.4 NoiseReducer + Cutout maths; CI uses preinstalled sdkmanager
 
 This note is for picking up the port. Spec still wins: [FEATURES.md](../spec/FEATURES.md), [IMPLEMENTATION.md](../spec/IMPLEMENTATION.md), [AGENTS.md](../../AGENTS.md), kick-start [README.md](README.md).
 
@@ -16,14 +16,14 @@ This note is for picking up the port. Spec still wins: [FEATURES.md](../spec/FEA
 | **M1** Core editing tests | Done | Ported iOS suites including SPD-4/5 |
 | **M2** Library, import, timeline, preview, save, undo | Partial | UI + store wired; Media3 preview needs a device |
 | **M3** Clip editing | Done for UI | Split / Voice / Speed (Apply to all) / Reverse / Freeze / Duplicate / Delete |
-| **M4** Music + Denoise | Partial | Music tools present; Denoise panel + file prep wired (spectral NR still thin) |
+| **M4** Music + Denoise | Partial | Music tools; **spectral NoiseReducer** (§9.4) + WAV `nr2-` files + cleaned audio track in composition |
 | **M5** Text, slides, watermark, canvas | Partial | Panels + raster; fonts mapped to open substitutes |
 | **M6** Filters / adjust / crop / transitions / animation | Partial | Panels + core maths; no `golden.json` yet |
 | **M7** Export + share | Partial | Media3 Transformer + estimate/share UI; not proven on device in CI |
-| **M8** On-device AI | Partial | Enhance + Reframe; Cutout panel (no mask yet); CAP-1 demo generate |
+| **M8** On-device AI | Partial | Enhance + Reframe; Cutout panel + §10.4 soft-edge maths; CAP-1 demo generate |
 | **M9** Tablet layout | Partial | Expanded ≥840 dp sidebar; phone portrait; Robolectric covers both |
 
-**First internal build (M0–M4):** usable for photos + videos + music + denoise UI. Device smoke for Media3 preview/export still open.
+**First internal build (M0–M4):** usable for photos + videos + music + denoise. Device smoke for Media3 preview/export still open.
 
 ---
 
@@ -32,14 +32,14 @@ This note is for picking up the port. Spec still wins: [FEATURES.md](../spec/FEA
 ```
 android/
   core/     MediaTime, Project, Editing (incl. SPD-4/5 retime), EditSession, stores, render maths
-  engine/   Media3 composition/export, import, thumbs, waveforms, text, GL, Enhance, Reframe, MediaProcessing
-  app/      Compose: library, editor (phone + wide), timeline, panels (Denoise/Cutout/Speed Apply all), export
+  engine/   Media3, NoiseReducer (§9.4), Cutout maths, Enhance, Reframe, MediaProcessing, export
+  app/      Compose: library, editor (phone + wide), timeline, panels, export
 ```
 
 Remaining gaps:
 
-- Real reverse re-encode and spectral Denoise (today: prepared file copies under the required names).
-- Cutout person-segmentation mask in the compositor.
+- Real reverse re-encode (today: prepared file copy under `rev-…`).
+- Cutout person-segmentation (ML Kit / MediaPipe) into the live compositor (maths ready).
 - On-device speech for CAP-1 (sample/demo captions work in tests).
 - Reframe saliency fallback; `golden.json` for M6; device/emulator Media3 smoke.
 
@@ -55,14 +55,16 @@ cd android
 
 UI scenarios (phone + tablet): LIB, TBR, TXT, TTL, MUS, EXP, DUR, ANM, ADJ, CRP, CNV, WMK, PRJ-2, DNS, CAP, REV, CUT, SPD, LAY-2/6.
 
-CI: `.github/workflows/android.yml` (JDK 21, platform 35).
+Engine: `NoiseReducerTest` (hiss/tone/DNS-6), `CutoutTest` (soft edge + Transparent).
+
+CI: `.github/workflows/android.yml` (JDK 21, platform 35, preinstalled sdkmanager).
 
 ---
 
 ## 4. Suggested next slices
 
 1. Device / emulator smoke — Media3 preview, real export, Photo Picker.
-2. Real reverse encoder + NoiseReducer port (IMPLEMENTATION §9.4).
+2. Real reverse encoder (windowed frame reverse → HEVC).
 3. Bundled offline segmentation for Cutout; speech model for CAP-1.
 4. Close remaining 🟡 items toward ✅; keep the parity table honest.
 
