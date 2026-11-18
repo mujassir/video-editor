@@ -27,7 +27,11 @@ android {
     buildFeatures { compose = true }
     testOptions {
         unitTests.isIncludeAndroidResources = true
-        unitTests.all { it.systemProperty("robolectric.pixelCopyRenderMode", "hardware") }
+        unitTests.all {
+            it.systemProperty("robolectric.pixelCopyRenderMode", "hardware")
+            it.systemProperty("robolectric.dependency.repo.url", "https://repo1.maven.org/maven2")
+            it.systemProperty("robolectric.dependency.repo.id", "central")
+        }
     }
 }
 

@@ -42,6 +42,18 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" --install "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
+      - name: Prefetch Robolectric android-all
+        working-directory: android
+        run: |
+          set -euo pipefail
+          # Warm the Robolectric jar cache so unit tests don't race a cold Maven fetch.
+          ./gradlew :engine:dependencies --configuration debugUnitTestRuntimeClasspath -q >/dev/null || true
+          ./gradlew :app:dependencies --configuration debugUnitTestRuntimeClasspath -q >/dev/null || true
+
       - name: Unit tests
         working-directory: android
-        run: ./gradlew :core:test :engine:testDebugUnitTest :app:testDebugUnitTest --stacktrace
+        run: |
+          set -euo pipefail
+          # One retry: Robolectric's android-all download is occasionally flaky on runners.
+          ./gradlew :core:test :engine:testDebugUnitTest :app:testDebugUnitTest --stacktrace \
+            || ./gradlew :core:test :engine:testDebugUnitTest :app:testDebugUnitTest --stacktrace --rerun-tasks

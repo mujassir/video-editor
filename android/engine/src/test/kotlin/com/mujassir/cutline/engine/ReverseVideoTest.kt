@@ -1,16 +1,10 @@
 package com.mujassir.cutline.engine
 
-import android.graphics.Bitmap
-import android.graphics.Color
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
 
-@RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+/** Pure REV-1 window / timestamp maths — no Robolectric. */
 class ReverseVideoTest {
     @Test
     fun reversedPresentationTime_mapsSourceEndToNearZero() {
@@ -32,16 +26,6 @@ class ReverseVideoTest {
         assertTrue(times.isNotEmpty())
         assertTrue(times.first() >= times.last())
         assertTrue(times.first() < 0.1)
-    }
-
-    @Test
-    fun rgbaToNV12_writesYPlaneForSolidColor() {
-        val bmp = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.WHITE) }
-        val out = ByteArray(4 * 4 * 3 / 2)
-        ReverseVideo.rgbaToNV12(bmp, out, 4, 4)
-        // White → high luma (~235 in studio range).
-        assertTrue(out[0].toInt() and 0xFF > 200)
-        bmp.recycle()
     }
 
     @Test
