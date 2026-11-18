@@ -536,7 +536,7 @@ Keep this table current. ✅ = done, 🟡 = partly or differently (explain), ⬜
 | Canvas, slides, watermark | ✅ | 🟡 | ⬜ | ⬜ | Intro/Outro/Watermark panels; fonts mapped to open substitutes |
 | Text TXT | ✅ | 🟡 | ⬜ | ⬜ | Fonts: see IMPLEMENTATION §8.6 |
 | Music MUS | ✅ | 🟡 | ⬜ | ⬜ | Audio Tracks / From Video / Recent / Cut / Start Here / Duck / Repeat; sample tracks in tests |
-| Captions CAP | ✅ | 🟡 | ⬜ | ⬜ | CAP-1 Generate (demo captions in sample mode), Style / Edit / Fillers; real on-device speech recognition not wired yet |
+| Captions CAP | ✅ | 🟡 | ⬜ | ⬜ | CAP-1 Generate: demo words in sample mode; speech mix + on-device availability gate (FEATURES messages). File STT (whisper.cpp) still to bundle |
 | Export EXP | ✅ | 🟡 | ⬜ | ⬜ | Media3 Transformer + estimate/share; device-only encoding |
 | Layouts LAY-1…8 | ✅ iPad | 🟡 | ⬜ | ⬜ | Phone portrait + Expanded (≥840 dp) sidebar; Robolectric covers both |
 

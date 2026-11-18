@@ -67,6 +67,7 @@ import com.mujassir.cutline.core.updatingClip
 import com.mujassir.cutline.core.upsertingTitleCard
 import com.mujassir.cutline.engine.AutoEnhance
 import com.mujassir.cutline.engine.AutoReframe
+import com.mujassir.cutline.engine.CaptionGenerator
 import com.mujassir.cutline.engine.MediaImporter
 import com.mujassir.cutline.engine.MediaProcessing
 import com.mujassir.cutline.engine.Thumbnails
@@ -637,58 +638,36 @@ class EditorModel(
     }
 
     /**
-     * CAP-1: generate captions. Sample/demo mode installs timed demo words; otherwise the on-device
-     * speech path is not wired yet (parity table), so we show a clear toast.
+     * CAP-1: generate captions. Sample/demo mode installs timed demo words (Robolectric).
+     * Real projects mix speech audio and attempt on-device STT (FEATURES messages on failure).
      */
     fun generateCaptions() {
         if (!project.hasVideoClips && !sampleMedia) {
             showToast("Add a video clip first")
             return
         }
-        if (sampleMedia || project.clips.any { it.kind == MediaKind.VIDEO }) {
-            scope.launch {
-                busy = Busy("Generating captions…")
-                delay(300)
-                val words = demoCaptionWords(project.duration)
-                busy = null
-                if (words.isEmpty()) { showToast("No speech found"); return@launch }
-                edit("Captions") { it.copy(captions = it.captions.copy(segments = groupCaptionWords(words))) }
-                showToast("Captions added")
-                panel = EditorPanel.Captions
+        scope.launch {
+            busy = Busy(if (sampleMedia) "Generating captions…" else "Transcribing on device…", 0.0)
+            val result = withContext(Dispatchers.IO) {
+                CaptionGenerator.generate(context, project, store, demo = sampleMedia) { p ->
+                    busy = Busy(if (sampleMedia) "Generating captions…" else "Transcribing on device…", p)
+                }
             }
-            return
+            busy = null
+            when (result) {
+                is CaptionGenerator.Result.Ok -> {
+                    edit("Captions") {
+                        it.copy(captions = it.captions.copy(segments = result.segments, isVisible = true))
+                    }
+                    showToast(if (sampleMedia) "Captions added" else "Captioned ${result.wordCount} words")
+                    panel = EditorPanel.Captions
+                }
+                CaptionGenerator.Result.NoSpeech ->
+                    showToast("No speech was found in this video.")
+                CaptionGenerator.Result.Unavailable ->
+                    showToast("On-device speech recognition isn't available for this language.")
+            }
         }
-        showToast("On-device speech recognition isn't available yet")
-    }
-
-    private fun demoCaptionWords(duration: MediaTime): List<CaptionWord> {
-        val script = listOf("Welcome", "to", "Cutline", "edit", "on", "your", "phone")
-        val end = MediaTime.max(duration, MediaTime.seconds(3.5))
-        val step = end.ticks / script.size
-        return script.mapIndexed { i, w ->
-            val start = MediaTime(step * i)
-            val stop = if (i == script.lastIndex) end else MediaTime(step * (i + 1))
-            CaptionWord(w, MediaTimeRange.of(start, stop))
-        }
-    }
-
-    private fun groupCaptionWords(words: List<CaptionWord>): List<CaptionSegment> {
-        if (words.isEmpty()) return emptyList()
-        val out = ArrayList<CaptionSegment>()
-        var bucket = ArrayList<CaptionWord>()
-        fun flush() {
-            if (bucket.isEmpty()) return
-            out += CaptionSegment(words = bucket.toList())
-            bucket = ArrayList()
-        }
-        for (w in words) {
-            val wouldPause = bucket.isNotEmpty() && (w.range.start - bucket.last().range.end).seconds > 0.55
-            val wouldLong = bucket.isNotEmpty() && (w.range.end - bucket.first().range.start).seconds > 2.6
-            if (bucket.size >= 5 || wouldPause || wouldLong) flush()
-            bucket += w
-        }
-        flush()
-        return out
     }
 
     // MARK: Slides and watermark (TTL, WMK)

@@ -20,7 +20,7 @@ This note is for picking up the port. Spec still wins: [FEATURES.md](../spec/FEA
 | **M5** Text, slides, watermark, canvas | Partial | Panels + raster; fonts mapped to open substitutes |
 | **M6** Filters / adjust / crop / transitions / animation | Partial | Panels + core maths; no `golden.json` yet |
 | **M7** Export + share | Partial | Media3 Transformer + estimate/share UI; not proven on device in CI |
-| **M8** On-device AI | Partial | Enhance + Reframe; Cutout compositor + FaceDetector mask; CAP-1 demo generate |
+| **M8** On-device AI | Partial | Enhance + Reframe; Cutout compositor + FaceDetector mask; CAP-1 speech mix + demo/availability path |
 | **M9** Tablet layout | Partial | Expanded ≥840 dp sidebar; phone portrait; Robolectric covers both |
 
 **First internal build (M0–M4):** usable for photos + videos + music + denoise. Device smoke for Media3 preview/export still open.
@@ -40,7 +40,7 @@ Remaining gaps:
 
 - Reverse encoder: windowed MediaCodec path in `ReverseVideo` (Robolectric falls back to a prepared copy).
 - Bundled MediaPipe / ML Kit Selfie Segmentation (interim FaceDetector + centre-prior mask is wired into the compositor).
-- On-device speech for CAP-1 (sample/demo captions work in tests).
+- File-capable on-device STT (whisper.cpp) for CAP-1; speech mix + availability gate are wired; sample/demo captions remain for tests.
 - Reframe saliency fallback; `golden.json` for M6; device/emulator Media3 smoke.
 
 ---
