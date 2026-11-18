@@ -1,9 +1,9 @@
 # Android development progress (resume here)
 
-**Last updated:** 2026-11-17 (Asia/Riyadh)  
-**Branch:** `claude/android-app` (tracks `origin/claude/android-app`)  
-**PR:** https://github.com/mujassir/video-editor/pull/24 → `develop`  
-**Tip when this was written:** `c458c6a` — *LIB-1, MUS-2, EXP-1, LAY: make Robolectric UI tests pass*
+**Last updated:** 2026-11-18  
+**Branch:** `cursor/android-app-complete-b64d` (from `develop`)  
+**PR:** https://github.com/mujassir/video-editor/pull/24 → `develop` (merged)  
+**Tip when this was written:** expanding Robolectric UI — DUR/ANM/ADJ/CRP/CNV/WMK/TTL Outro/PRJ-2 + tablet LAY-2/LAY-6 + `.github/workflows/android.yml`
 
 This note is for picking up the port. Spec still wins: [FEATURES.md](../spec/FEATURES.md), [IMPLEMENTATION.md](../spec/IMPLEMENTATION.md), [AGENTS.md](../../AGENTS.md), kick-start [README.md](README.md).
 
@@ -59,9 +59,9 @@ printf 'sdk.dir=%s\n' "$HOME/Library/Android/sdk" > local.properties   # gitigno
 ./gradlew :core:test :engine:testDebugUnitTest :app:testDebugUnitTest
 ```
 
-**Last local run:** 93 tests, 0 failures (core + WAV probe + 8 Robolectric UI scenarios).
+**Last local run:** core + engine + Robolectric UI (phone + tablet). CI: `.github/workflows/android.yml` (JDK 21, platform 35).
 
-UI scenarios (feature IDs in names): `LIB-1`, `TBR-3`, `TXT-1`, `TTL-1`, `MUS-2`, `EXP-1`, `LAY-2`, `LAY-6`.
+UI scenarios (feature IDs in names): `LIB-1`, `TBR-3`, `TXT-1`, `TTL-1`, `MUS-2`, `EXP-1`, `DUR-1`, `ANM-4`, `ADJ-1`, `CRP-1`, `CNV-1`, `WMK-1`, `PRJ-2`, `LAY-2` (×3), `LAY-6` (×2).
 
 Fixes that made Robolectric pass (do not regress):
 
@@ -75,8 +75,8 @@ Roborazzi screenshot paths were configured as `build/screens/…`; confirm captu
 
 ## 4. Suggested next slices (in order)
 
-1. **Android CI** — workflow: JDK 21 + the Gradle command above on `android/`.
-2. **Device / emulator smoke** — Media3 `CompositionPreviewPlayer`, real export, Photo Picker.
+1. **Device / emulator smoke** — Media3 `CompositionPreviewPlayer`, real export, Photo Picker.
+2. ~~**Android CI**~~ — `.github/workflows/android.yml` added (JDK 21 + unit tests).
 3. **M3 leftover:** Reverse (`REV-*`) in the video clip toolbar + tests.
 4. **M4 leftover:** Denoise UI (`DNS-*`) on the project-wide setting already in the model.
 5. **M8:** on-device caption generation (`CAP-*`); Cutout when a bundled segmentation model is chosen (offline only).
