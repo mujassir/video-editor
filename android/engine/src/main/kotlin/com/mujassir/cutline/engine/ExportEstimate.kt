@@ -10,10 +10,10 @@ enum class ExportResolution(val title: String, val shortEdge: Int, val baseBitsP
 
 /** Size estimate and file naming (IMPLEMENTATION §11). */
 object ExportEstimate {
-    /** `<project name>.mp4` without / \ : ? % * | " < >, trimmed; "Cutline Video" when empty. */
+    /** `<project name>.mp4` without / \ : ? % * | " < >, trimmed; "Cut & Weld Video" when empty. */
     fun fileName(name: String): String {
         val clean = name.filterNot { it in "/\\:?%*|\"<>" }.trim()
-        return (clean.ifEmpty { "Cutline Video" }) + ".mp4"
+        return (clean.ifEmpty { "Cut & Weld Video" }) + ".mp4"
     }
 
     fun fpsFactor(fps: Int) = when {

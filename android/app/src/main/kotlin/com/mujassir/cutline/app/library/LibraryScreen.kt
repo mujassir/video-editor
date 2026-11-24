@@ -80,7 +80,7 @@ fun LibraryScreen(app: LibraryModel, onOpen: (Project) -> Unit, onCreate: () -> 
             horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                Text("Cutline", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 16.dp))
+                Text("Cut & Weld", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 16.dp))
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Box(Modifier.fillMaxWidth()) { NewProjectCard(Modifier.widthIn(max = if (wide) 720.dp else 2000.dp), onCreate) }

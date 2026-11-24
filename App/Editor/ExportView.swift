@@ -191,7 +191,7 @@ struct ExportView: View {
     static func fileName(for name: String) -> String {
         let cleaned = name.components(separatedBy: CharacterSet(charactersIn: "/\\:?%*|\"<>")).joined()
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return cleaned.isEmpty ? "Cutline Video" : cleaned
+        return cleaned.isEmpty ? "Cut & Weld Video" : cleaned
     }
 
     static func format(bytes: Int64) -> String {

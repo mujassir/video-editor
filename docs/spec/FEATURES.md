@@ -1,6 +1,7 @@
 # Cutline: Feature Specification
 
 **Status:** describes the iOS app as built (reference implementation).
+**App name:** users see **Cut & Weld** (store listing "Cut & Weld: Video Editor"). "Cutline" is the internal code name for the repo, targets and packages only, and never appears in the interface.
 **Applies to:** iOS (shipping), Android (next), macOS and Windows (later). Starting Android: see [docs/android/README.md](../android/README.md).
 **Companion documents:**
 - [IMPLEMENTATION.md](IMPLEMENTATION.md): how each feature works internally, with exact numbers and formulas.
@@ -492,7 +493,7 @@ Noise reduction is **one setting for the whole video**, not per clip. It's in th
   - "Exported in X.Xs · N MB".
   - **Save to Photos:** changes to "Saved". Platforms save to their gallery, or to Downloads/Movies on desktop.
   - **Share:** opens the system share sheet.
-- **EXP-6 File name:** the exported file is named after the project, `<Project name>.mp4`, with characters not allowed in file names removed. If the name is empty: "Cutline Video".
+- **EXP-6 File name:** the exported file is named after the project, `<Project name>.mp4`, with characters not allowed in file names removed. If the name is empty: "Cut & Weld Video".
 - **EXP-7 Output:** an MP4 file with AAC audio. Preview and export are the same frame for frame (see `PRV-3` for animations).
 
 ---
@@ -561,6 +562,8 @@ These were tried and removed on purpose. Don't add them back without changing th
 | 2026-11 | **The timeline "+" opens the Photos library directly**, with no Add menu, so video and photo files can't be picked from Files any more. Own audio still comes from Music → Audio Tracks. UI tests and demos (`-sampleMedia` / `-demoMedia`) still get the Add menu with Sample Clips. |
 | 2026-11 | **No built-in music tracks in the Music panel.** It offers only Audio Tracks (Files) and From Video. The generator stays in the engine for UI tests and demos, which launch with `-sampleMedia` / `-demoMedia` and still see the tracks (§14 in IMPLEMENTATION). Projects that use them still play. |
 | 2026-11 | **No landscape editor on phones.** Phones stay portrait only. Wide windows (iPad, Android tablets, desktop later) get the wide layout instead (`LAY-*`). |
+| 2026-11 | **The app is called Cut & Weld.** Every name users see (home screen, library title, permission prompts, export file and folder names) says Cut & Weld. "Cutline" stays as the code name. |
+| 2026-11 | **The iOS app is for iPhone and iPad only.** It isn't listed on the Mac or Vision Pro App Store. |
 | 2026-11 | **macOS is a separate app, built later.** It will reuse EditorKit and follow `LAY-*` for its window, but isn't the iPad app running on a Mac. |
 
 ### Engine features not exposed in the interface

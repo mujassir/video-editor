@@ -61,7 +61,7 @@ struct ProjectsView: View {
             library(wide: sizeClass == .regular && width >= EditorView.wideMinWidth)
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
             .background(Theme.background.ignoresSafeArea())
-            .navigationTitle("Cutline")
+            .navigationTitle("Cut & Weld")
             .alert("Rename project", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
                 TextField("Name", text: $newName)
                 Button("Save") { if let p = renaming { app.rename(p, to: newName) }; renaming = nil }

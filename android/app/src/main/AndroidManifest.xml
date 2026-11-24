@@ -7,7 +7,7 @@
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="Cutline"
+        android:label="Cut &amp; Weld"
         android:supportsRtl="true"
         android:theme="@style/Theme.Cutline">
         <!-- Orientation is set in code: portrait on phones, any on tablets (LAY-4). -->

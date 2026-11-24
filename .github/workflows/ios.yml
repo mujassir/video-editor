@@ -74,7 +74,7 @@ jobs:
         run: |
           set -o pipefail
           for svc in photos photos-add microphone speech-recognition; do
-            xcrun simctl privacy ${{ steps.sim.outputs.udid }} grant $svc com.mujassir.cutline || true
+            xcrun simctl privacy ${{ steps.sim.outputs.udid }} grant $svc com.mujassir.cutnweld || true
           done
           TEST_RUNNER_PRINT_SCREENSHOTS=1 TEST_RUNNER_DEMO_MEDIA="$RUNNER_TEMP/demo-media" \
           xcodebuild test -project Cutline.xcodeproj -scheme Cutline -only-testing:CutlineUITests \
@@ -94,7 +94,7 @@ jobs:
           print(pref[-1][1]["udid"])')
           xcrun simctl boot "$IPAD" || true
           for svc in photos photos-add microphone speech-recognition; do
-            xcrun simctl privacy "$IPAD" grant $svc com.mujassir.cutline || true
+            xcrun simctl privacy "$IPAD" grant $svc com.mujassir.cutnweld || true
           done
           TEST_RUNNER_PRINT_SCREENSHOTS=1 \
           xcodebuild test -project Cutline.xcodeproj -scheme Cutline -only-testing:CutlineUITests/TabletUITests \

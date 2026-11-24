@@ -832,7 +832,7 @@ Used by beat sync. The settings:
   ```
   On platforms where you set the bitrate yourself, aim for `base × fps × codec` so file sizes match.
 - **File name:** `<project name>.mp4`.
-  - Remove `/ \ : ? % * | " < >` and trim whitespace. If the result is empty, use "Cutline Video".
+  - Remove `/ \ : ? % * | " < >` and trim whitespace. If the result is empty, use "Cut & Weld Video".
   - Write it into a new folder per export inside the temporary directory, so the name never clashes.
 - **Share:** pass the file's URL to the system share sheet. On Android, use a `FileProvider` content URI with `video/mp4`.
 
