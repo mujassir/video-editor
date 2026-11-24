@@ -153,6 +153,10 @@ fun EditorScreen(model: EditorModel, startWithPhotos: Boolean, onClose: () -> Un
             DropdownMenuItem(text = { Text("Photos Library") }, onClick = { showAddMenu = false; openPhotos() })
             DropdownMenuItem(text = { Text("Sample Clips") }, modifier = Modifier.testTag("add.samples"),
                 onClick = { showAddMenu = false; SampleMedia.importInto(model) })
+            DropdownMenuItem(text = { Text("Sample Video") }, modifier = Modifier.testTag("add.sampleVideo"),
+                onClick = { showAddMenu = false; SampleMedia.importVideoInto(model) })
+            DropdownMenuItem(text = { Text("Two Sample Videos") }, modifier = Modifier.testTag("add.sampleVideos"),
+                onClick = { showAddMenu = false; SampleMedia.importVideoInto(model, count = 2) })
         }
         if (showExport) {
             ExportScreen(model, onClose = { showExport = false })
@@ -366,8 +370,7 @@ data class Tool(val title: String, val icon: ImageVector, val isActive: Boolean 
 
 /**
  * The toolbar for the current selection (TBR-1…6), one list for the phone toolbar and the wide
- * sidebar grid. Android hides tools whose on-device feature isn't available yet (FEATURES §1):
- * Captions generation, Denoise, Cutout and Reverse — see the parity table.
+ * sidebar grid.
  */
 fun tools(model: EditorModel): List<Tool> {
     val p = model.project
@@ -375,7 +378,13 @@ fun tools(model: EditorModel): List<Tool> {
         Selection.None -> buildList {
             if (p.duration > MediaTime.ZERO) {
                 add(Tool("Music", Icons.Default.MusicNote) { model.select(Selection.None); model.panel = EditorPanel.Music })
-                if (p.hasVideoClips && p.captions.segments.isNotEmpty()) add(Tool("Captions", Icons.Default.ClosedCaption, badge = "AI") { model.panel = EditorPanel.Captions })
+                // TBR-1: Captions / Denoise need a video clip on the main track.
+                if (p.hasVideoClips) {
+                    add(Tool("Captions", Icons.Default.ClosedCaption, badge = "AI", isActive = p.captions.segments.isNotEmpty()) {
+                        if (p.captions.segments.isEmpty()) model.panel = EditorPanel.Captions else model.select(Selection.Captions)
+                    })
+                    add(Tool("Denoise", Icons.Default.GraphicEq, isActive = p.noiseReduction != null) { model.panel = EditorPanel.Denoise })
+                }
                 add(Tool("Watermark", Icons.Default.Verified, isActive = p.watermark != null) { model.select(Selection.None); model.panel = EditorPanel.Watermark })
                 add(Tool("Text", Icons.Default.TextFields) { model.addText() })
             }
@@ -397,10 +406,12 @@ fun tools(model: EditorModel): List<Tool> {
                 Tool("Split", Icons.Default.ContentCut) { model.split() },
                 Tool("Voice", if (c?.isMuted == true) Icons.Default.MicOff else Icons.Default.Mic, isActive = c?.isMuted == true) { model.toggleVoice() },
                 Tool("Speed", Icons.Default.Speed) { model.panel = EditorPanel.Speed },
+                Tool("Reverse", Icons.Default.FastRewind, isActive = c?.isReversed == true) { model.reverseSelected() },
                 Tool("Animate", Icons.Default.Animation, isActive = c?.animation?.isEmpty == false) { model.panel = EditorPanel.Motion },
                 Tool("Filters", Icons.Default.FilterVintage) { model.panel = EditorPanel.Filters },
                 Tool("Adjust", Icons.Default.Tune) { model.panel = EditorPanel.Adjust },
                 Tool("Enhance", Icons.Default.AutoFixHigh, badge = "AI") { model.autoEnhance() },
+                Tool("Cutout", Icons.Default.Person, badge = "AI", isActive = c?.backgroundRemoval != null) { model.panel = EditorPanel.Cutout },
                 Tool("Reframe", Icons.Default.CenterFocusStrong, badge = "AI") { model.autoReframe() },
                 Tool("Crop", Icons.Default.Crop) { model.panel = EditorPanel.Crop },
                 Tool("Freeze", Icons.Default.AcUnit) { model.freezeFrame() },

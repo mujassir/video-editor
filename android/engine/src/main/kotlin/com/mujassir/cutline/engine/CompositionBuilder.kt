@@ -64,6 +64,8 @@ class CompositionBuilder(
         val video = videoSequence(project, cw, ch)
         val sequences = mutableListOf(video)
         val end = if (preview) project.timelineDuration else project.duration
+        // Denoised clip sound is a separate audio sequence (video keeps the picture track).
+        mainTrackCleanedAudio(project, end)?.let { sequences += it }
         audioSequences(project, end).forEach { sequences += it }
         val composition = Composition.Builder(sequences)
             .setEffects(Effects(emptyList(), listOf(overlayEffect(project, overlay, cw, ch))))
@@ -84,8 +86,15 @@ class CompositionBuilder(
             val itemDuration = entry.range.duration - halfIn - halfOut
             if (itemDuration <= MediaTime.ZERO) continue
             val layerEffect = ClipLayerEffect(cw, ch, project.background) { timeUs, inW, inH ->
-                layerFrame(project, clip, media, entry.range.start, entry.range.duration, entry.overlapIn, entry.overlapOut,
+                val base = layerFrame(project, clip, media, entry.range.start, entry.range.duration, entry.overlapIn, entry.overlapOut,
                     timeUs, inW, inH, Size(cw.toDouble(), ch.toDouble()), toggles.animate.get())
+                val cutout = clip.backgroundRemoval ?: return@ClipLayerEffect base
+                val t = MediaTime(timeUs * MediaTime.TIMESCALE / 1_000_000)
+                val local = t - entry.range.start
+                val sourceT = clip.sourceTime(local)
+                val file = store.mediaFile(media, project.id)
+                val mask = SubjectMask.cached(file, sourceT, inW.coerceAtLeast(2), inH.coerceAtLeast(2), clip.isStill)
+                base.copy(cutout = cutout, cutoutMask = mask)
             }
             items += if (clip.isStill) stillItem(project, clip, media, itemDuration, layerEffect)
             else videoItem(project, clip, media, halfIn, halfOut, layerEffect)
@@ -113,6 +122,7 @@ class CompositionBuilder(
 
     private fun videoItem(project: Project, clip: VideoClip, media: MediaItem, halfIn: MediaTime, halfOut: MediaTime, effect: Effect): EditedMediaItem {
         val reversedFile = media.reversedFileName?.let { store.mediaFile(it, project.id) }?.takeIf { clip.isReversed && it.exists() }
+        val cleanedAudio = if (reversedFile == null) noiseFile(project, clip, media) else null
         val src = clip.sourceRange
         val sp = clip.speed
         // Each clip gives up half of each transition overlap (in timeline time → source time).
@@ -124,7 +134,7 @@ class CompositionBuilder(
             start = rs; end = re
             reversedFile
         } else {
-            noiseFile(project, clip, media) ?: store.mediaFile(media, project.id)
+            store.mediaFile(media, project.id)
         }
         val item = M3Item.Builder().setUri(Uri.fromFile(file))
             .setClippingConfiguration(
@@ -141,13 +151,67 @@ class CompositionBuilder(
             videoEffects += pair.second
         }
         videoEffects += effect
-        val plays = clip.hasAudio && media.hasAudio && !clip.isMuted && clip.volume > 0 && reversedFile == null
+        // Original embedded audio only when Denoise hasn't supplied a cleaned copy (DNS-2 / §7).
+        val plays = clip.hasAudio && media.hasAudio && !clip.isMuted && clip.volume > 0 &&
+            reversedFile == null && cleanedAudio == null
         if (plays && clip.volume != 1.0) audio += GainProcessor(clip.volume.toFloat())
         return EditedMediaItem.Builder(item)
             .setDurationUs(sourceDurationUs(media, end))
             .setRemoveAudio(!plays)
             .setEffects(Effects(audio, videoEffects))
             .build()
+    }
+
+    /**
+     * Main-track cleaned audio (DNS): one sequence with gaps so timing matches the picture.
+     * Source range matches the (half-trimmed) clip, same as the video item.
+     */
+    private fun mainTrackCleanedAudio(project: Project, end: MediaTime): EditedMediaItemSequence? {
+        val layout = project.layout
+        val b = EditedMediaItemSequence.Builder(emptyList())
+        var cursor = MediaTime.ZERO
+        var added = 0
+        for (entry in layout.entries) {
+            val clip = project.clips[entry.index]
+            val media = project.mediaItem(clip.mediaID) ?: continue
+            if (clip.isReversed || clip.isMuted || clip.volume <= 0 || !clip.hasAudio || !media.hasAudio) continue
+            val cleaned = noiseFile(project, clip, media) ?: continue
+            val halfIn = entry.overlapIn.half()
+            val halfOut = entry.overlapOut.half()
+            val itemDuration = entry.range.duration - halfIn - halfOut
+            if (itemDuration <= MediaTime.ZERO) continue
+            val timelineStart = entry.range.start + halfIn
+            if (timelineStart >= end) break
+            if (timelineStart > cursor) b.addGap((timelineStart - cursor).micros)
+            val sp = clip.speed
+            val srcStart = clip.sourceRange.start + halfIn.multipliedBy(sp)
+            val srcEnd = clip.sourceRange.end - halfOut.multipliedBy(sp)
+            val length = MediaTime.min(itemDuration, end - timelineStart)
+            val srcLength = length.multipliedBy(sp)
+            val item = M3Item.Builder().setUri(Uri.fromFile(cleaned))
+                .setClippingConfiguration(
+                    M3Item.ClippingConfiguration.Builder()
+                        .setStartPositionUs(srcStart.micros.coerceAtLeast(0))
+                        .setEndPositionUs((srcStart + srcLength).micros)
+                        .build()
+                ).build()
+            val processors = ArrayList<AudioProcessor>()
+            if (sp != 1.0) {
+                val pair = Effects.createExperimentalSpeedChangingEffect(ConstantSpeed(sp.toFloat()))
+                processors += pair.first
+            }
+            if (clip.volume != 1.0) processors += GainProcessor(clip.volume.toFloat())
+            b.addItem(
+                EditedMediaItem.Builder(item)
+                    .setDurationUs(sourceDurationUs(media, srcStart + srcLength))
+                    .setRemoveVideo(true)
+                    .setEffects(Effects(processors, emptyList()))
+                    .build()
+            )
+            cursor = timelineStart + length
+            added++
+        }
+        return if (added > 0) b.build() else null
     }
 
     /**
