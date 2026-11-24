@@ -7,13 +7,13 @@ Everything to paste into App Store Connect for the first iOS release. Character 
 | Field | Value |
 |---|---|
 | Name | Cut & Weld: Video Editor |
-| Subtitle | Auto captions & music, offline |
+| Subtitle | Trim, join, caption & music |
 | Bundle ID | `com.mujassir.cutnweld` (locked after the first build upload) |
 | SKU | `ncut-ios-001` (already set, cannot change) |
 | Primary language | English (U.S.) |
 | Primary category | Photo & Video |
 | Secondary category | Entertainment |
-| Content rights | Does not contain, show or access third-party content (set) |
+| Content rights | Does not contain, show or access third-party content (set 2026-11-25; it had not been saved before) |
 | Age rating | 4+ (set: "No" or "None" to every question) |
 
 ## Version 1.0.0
@@ -59,14 +59,16 @@ MAKE IT YOURS
 EXPORT AND SHARE
 • 720p, 1080p or 4K at 24, 30 or 60 fps, in HEVC or H.264
 • See the file size before you export
-• Save to Photos or share to WhatsApp, Instagram, TikTok, Messages and AirDrop
+• Save to Photos or share to your favourite apps, Messages and AirDrop
 
 PRIVATE BY DESIGN
 Your videos never leave your device. Editing, AI features, captions and export all happen on your iPhone or iPad. Projects save automatically, and every change can be undone.
 
 ### Keywords (max 100, comma-separated, no spaces)
 
-trim,split,speed,reels,shorts,subtitles,tiktok,filters,transitions,reverse,reframe,montage,clip
+split,speed,subtitles,filters,transitions,reverse,reframe,montage,clip,vlog,slideshow,merge,4k,fx
+
+No trademarked app names (Guideline 2.3.7): `tiktok`, `reels` and `shorts` were removed on 2026-11-25.
 
 ### URLs
 
@@ -106,7 +108,7 @@ Answer **"No, we do not collect data from this app."** That gives the "Data Not 
 |---|---|
 | Sign-in required | No |
 | Contact | Your name, phone and email |
-| Notes | Cut & Weld is an on-device video editor with no account and no network access. To test: tap New Project, pick a video with speech, then try Captions → Generate Captions, Music, Speed and Export. Speech recognition runs on device only. |
+| Notes | The full six-point answer in `review-notes.md` (set 2026-11-25). Attach a screen recording too, see `review-readiness.md` |
 
 ## Export compliance
 
@@ -125,6 +127,8 @@ Generated with `tools/screenshots/capture.sh build/appstore-screenshots`. It ren
 | 5 | `*-05-export.png` | Export options and size estimate |
 
 iPhone files are 1320 × 2868 (6.9" display), iPad files are 2064 × 2752 (13" display). No alpha channel.
+
+App Store Connect's iPhone slot now asks for the 6.1"/6.3" size, so upload the 1206 × 2622 copies in `build/appstore-screenshots/iphone-6.3/`. iPad uses the originals.
 
 The App Store icon comes from the build: build 2 is attached to version 1.0.0, and its App Icon shows under Included Assets.
 
