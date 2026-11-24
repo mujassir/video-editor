@@ -38,6 +38,8 @@ struct PlayerSurface: UIViewRepresentable {
 /// Canvas-shaped preview with direct manipulation of the selected text.
 struct PreviewView: View {
     @Bindable var model: EditorModel
+    /// Tapping the empty state adds media, like the timeline "+" (PRV-7).
+    var onAddMedia: () -> Void = {}
     @State private var dragStart: SIMD2<Double>?
 
     var body: some View {
@@ -59,6 +61,7 @@ struct PreviewView: View {
                             }
                         }
                         .clipShape(RoundedRectangle(cornerRadius: 4))
+                        .overlay { if model.isPastVideoEnd { pastEndOverlay } }
                         .overlay(textHandles(canvas: fitted).coordinateSpace(.named("canvas")))
                         .contentShape(Rectangle())
                         .onTapGesture { model.togglePlay() }
@@ -68,11 +71,34 @@ struct PreviewView: View {
         }
     }
 
-    private var emptyState: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "film.stack").font(.system(size: 40)).foregroundStyle(Theme.secondaryText)
-            Text("Add videos or photos to start").foregroundStyle(Theme.secondaryText)
+    /// PRV-8: past the end of the video only the music plays, and it isn't exported.
+    private var pastEndOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.55)
+            Label("Music only · not in export", systemImage: "music.note")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(.black.opacity(0.5), in: Capsule())
         }
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("preview.pastEnd")
+    }
+
+    /// Shown whenever the main track is empty: at the start and after every clip is deleted.
+    private var emptyState: some View {
+        Button(action: onAddMedia) {
+            VStack(spacing: 10) {
+                Image(systemName: "film.stack").font(.system(size: 40))
+                Text("Add videos or photos to start")
+            }
+            .foregroundStyle(Theme.secondaryText)
+            .padding(24)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("preview.addMedia")
     }
 
     private func fit(ratio: Double, in size: CGSize) -> CGSize {

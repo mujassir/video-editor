@@ -59,6 +59,12 @@ public struct TimelineLayout: Sendable {
 public extension Project {
     var layout: TimelineLayout { TimelineLayout(clips: clips) }
 
+    /// The main track has at least one video clip that plays motion (not a photo,
+    /// title slide or freeze frame). Captions are only offered then (TBR-1).
+    var hasVideoClips: Bool {
+        clips.contains { $0.kind == .video && !$0.isStill }
+    }
+
     /// Nothing has been added yet (no clips, audio, text or captions).
     var isEmptyEdit: Bool {
         clips.isEmpty && audioClips.isEmpty && textOverlays.isEmpty && captions.segments.isEmpty
@@ -69,5 +75,11 @@ public extension Project {
         var d = layout.duration
         for a in audioClips where a.role == .voiceover { d = max(d, a.timelineRange.end) }
         return d
+    }
+
+    /// Length the timeline shows: the edit plus any music that runs past its end
+    /// (shown in full, but cut off at `duration` in the preview and the export).
+    var timelineDuration: MediaTime {
+        audioClips.map(\.timelineRange.end).reduce(duration, max)
     }
 }

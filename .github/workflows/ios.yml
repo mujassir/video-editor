@@ -74,15 +74,35 @@ jobs:
         run: |
           set -o pipefail
           for svc in photos photos-add microphone speech-recognition; do
-            xcrun simctl privacy ${{ steps.sim.outputs.udid }} grant $svc com.mujassir.cutline || true
+            xcrun simctl privacy ${{ steps.sim.outputs.udid }} grant $svc com.mujassir.cutnweld || true
           done
           TEST_RUNNER_PRINT_SCREENSHOTS=1 TEST_RUNNER_DEMO_MEDIA="$RUNNER_TEMP/demo-media" \
           xcodebuild test -project Cutline.xcodeproj -scheme Cutline -only-testing:CutlineUITests \
             -destination "id=${{ steps.sim.outputs.udid }}" -resultBundlePath build/ui.xcresult \
-            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/ui.log | grep -E "error:|Test (Suite|Case)|passed|failed|\*\* |CAPTIONS|XCTAssert|Timed out|AUDIODRAG" | head -400
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/ui.log | grep -E "error:|Test (Suite|Case)|passed|failed|\*\* |CAPTIONS|XCTAssert|Timed out|AUDIODRAG|TRIM" | head -400
+      - name: iPad UI tests (LAY-*)
+        if: ${{ always() && (github.event_name == 'push' || inputs.ui_tests) }}
+        run: |
+          set -o pipefail
+          IPAD=$(xcrun simctl list devices available -j | python3 -c '
+          import json,sys
+          d=json.load(sys.stdin)["devices"]
+          c=[(rt,x) for rt,l in d.items() if "iOS" in rt for x in l if x["name"].startswith("iPad")]
+          pref=[t for t in c if "Air" in t[1]["name"] and "11" in t[1]["name"]] or c
+          pref.sort(key=lambda t:t[0])
+          print(pref[-1][1]["udid"], pref[-1][1]["name"], file=sys.stderr)
+          print(pref[-1][1]["udid"])')
+          xcrun simctl boot "$IPAD" || true
+          for svc in photos photos-add microphone speech-recognition; do
+            xcrun simctl privacy "$IPAD" grant $svc com.mujassir.cutnweld || true
+          done
+          TEST_RUNNER_PRINT_SCREENSHOTS=1 \
+          xcodebuild test -project Cutline.xcodeproj -scheme Cutline -only-testing:CutlineUITests/TabletUITests \
+            -destination "id=$IPAD" -resultBundlePath build/ipad.xcresult \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/ipad.log | grep -E "error:|Test (Suite|Case)|passed|failed|skipped|\*\* |XCTAssert|Timed out" | head -200
       - name: Screenshots (base64, for log review)
         if: always()
-        run: grep -oE "SCREENSHOT [^ ]+ [A-Za-z0-9+/=]+" build/ui.log || echo "no screenshots"
+        run: grep -ohE "SCREENSHOT [^ ]+ [A-Za-z0-9+/=]+" build/ui.log build/ipad.log || echo "no screenshots"
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4

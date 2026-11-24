@@ -4,7 +4,7 @@ import CoreImage
 import EditorKit
 
 enum EditorPanel: Equatable {
-    case canvas, trim, audioTrim, duration, motion, filters, adjust, speed, volume, transition(UUID), text(UUID?), music, captions, crop, background, export
+    case canvas, trim, duration, motion, filters, adjust, speed, duck, denoise, transition(UUID), text(UUID?), music, captions, captionText, crop, background, export
     case textDuration(UUID), textAnimate(UUID), textPosition(UUID), watermark, titleCard(TitleCard.Placement)
 }
 
@@ -39,7 +39,7 @@ final class EditorModel {
         didSet {
             guard let panel, panel != oldValue else { return }
             switch panel {
-            case .filters, .adjust, .crop, .background, .volume, .speed, .duration:
+            case .filters, .adjust, .crop, .background, .speed, .duration:
                 showCleanFrameOfSelection()
             case .textPosition(let id), .text(.some(let id)):
                 // Text panels: pause on a frame where that text is visible.
@@ -95,6 +95,9 @@ final class EditorModel {
     /// Incremented when the timeline must redraw (thumbnails, waveforms loaded).
     var timelineVersion = 0
     var waveforms: [UUID: [Float]] = [:]
+    /// The 5 audio tracks used most recently, in any project (MUS-10).
+    let recentAudio = RecentAudioStore.defaultStore()
+    var recentTracks: [RecentAudioStore.Entry] = []
 
     private var rebuildTask: Task<Void, Never>?
     private var timeObserver: Any?
@@ -118,6 +121,19 @@ final class EditorModel {
                 self.currentTime = MediaTime(time)
                 let playing = self.player.rate != 0
                 if self.isPlaying != playing { self.isPlaying = playing }
+                // PRV-8: past the end of the video, playback only continues while music is selected.
+                if playing, !self.isAuditioningMusic, self.currentTime >= self.duration {
+                    self.player.pause()
+                    self.isPlaying = false
+                    // Just reached the end: land exactly on it. Already further (music was
+                    // deselected while playing past it): stay where the playhead is.
+                    if self.currentTime - self.duration < MediaTime(seconds: 0.25) { self.seek(to: self.duration) }
+                }
+            }
+        }
+        if LaunchOptions.isUITesting {
+            NotificationCenter.default.addObserver(forName: AVPlayer.rateDidChangeNotification, object: player, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { if let self { self.debugRate = self.player.rate } }
             }
         }
         scheduleRebuild(immediate: true)
@@ -126,6 +142,16 @@ final class EditorModel {
 
     var project: Project { session.project }
     var duration: MediaTime { project.duration }
+
+    /// PRV-8: with an audio clip selected, Play goes on past the end of the video to the end
+    /// of the music, so the whole song can be heard (and cut with Start Here / ✂︎).
+    var isAuditioningMusic: Bool { selectedAudioID != nil }
+
+    /// Where Play stops: the end of the video, or the end of the music while auditioning.
+    var playbackEnd: MediaTime { isAuditioningMusic ? project.timelineDuration : duration }
+
+    /// The playhead is past the end of the video (over music only); not exported.
+    var isPastVideoEnd: Bool { duration > .zero && currentTime > duration + MediaTime(seconds: 0.02) }
 
     // MARK: Preview
 
@@ -150,8 +176,9 @@ final class EditorModel {
         }
         let size = project.aspectRatio.renderSize(shortEdge: 720)
         do {
+            // The preview runs to the end of the music too (PRV-8); export stays at the video's length.
             let built = try await CompositionBuilder().build(project: project, resolver: resolver, renderSize: size,
-                                                             toggles: renderToggles)
+                                                             toggles: renderToggles, minimumLength: project.timelineDuration)
             guard !Task.isCancelled else { return }
             // Grab what's on screen now so the swap is seamless.
             if let output = frameOutput, let pb = output.copyPixelBuffer(forItemTime: player.currentTime(), itemTimeForDisplay: nil) {
@@ -179,12 +206,33 @@ final class EditorModel {
         }
     }
 
+    /// PRV-9: preview play speeds. Editor state only: not saved, not undoable, not exported.
+    static let previewRates: [Float] = [0.5, 0.75, 1, 1.25, 1.5, 2]
+
+    /// How fast the preview plays (PRV-9). Starts at 1× for each editor session.
+    var previewRate: Float = 1 {
+        didSet {
+            player.defaultRate = previewRate
+            // While playing, restart at the new rate the same way Play does. Setting `rate` on
+            // the running player didn't take effect on the device.
+            if isPlaying {
+                player.pause()
+                player.playImmediately(atRate: previewRate)
+            }
+        }
+    }
+
+    /// UI tests: the player's actual rate, refreshed on every rate change (PRV-9).
+    var debugRate: Float = 0
+
     func togglePlay() {
         if player.rate != 0 {
             player.pause()
             isPlaying = false
         } else {
-            if currentTime >= duration - MediaTime(seconds: 0.05) { seek(to: .zero) }
+            // At (or past) the end, Play starts again from 0:00. With music selected the end is the
+            // end of the music, so Play from a point after the video keeps playing from there.
+            if currentTime >= playbackEnd - MediaTime(seconds: 0.05) { seek(to: .zero) }
             isPlaying = true          // enable animations before the first frame plays
             player.play()
         }
@@ -202,9 +250,12 @@ final class EditorModel {
     }
 
     func seek(to time: MediaTime, exact: Bool = true) {
-        let t = time.clamped(to: .zero...max(duration, .zero))
+        // The playhead can go past the video over music that runs longer (to cut it there);
+        // the preview stays on the last frame.
+        let t = time.clamped(to: .zero...max(project.timelineDuration, .zero))
         currentTime = t
         let tolerance = exact ? CMTime.zero : CMTime(value: 1, timescale: 30)
+        // The preview composition runs to the end of the music (PRV-8), so seek there directly.
         player.seek(to: t.cmTime, toleranceBefore: tolerance, toleranceAfter: tolerance)
     }
 
@@ -290,6 +341,18 @@ final class EditorModel {
         edit("Duplicate") { try $0.duplicateClip(id) }
     }
 
+    /// Drag-to-reorder drop on the timeline (TML-13). One undo step; the moved clip is
+    /// selected and the playhead goes to its start.
+    func dropClip(_ id: UUID, to index: Int) {
+        guard project.canReorder(id), project.clipIndex(id) != index else { return }
+        pause()
+        edit("Move clip") { try $0.moveClip(id, to: index) }
+        session.selection = .clip(id)
+        if let entry = project.layout.entry(for: id) { seek(to: entry.range.start) }
+        let range = project.movableClipIndices
+        showToast("Moved to position \(index - range.lowerBound + 1) of \(range.count)", systemImage: "arrow.left.and.right")
+    }
+
     func freezeFrame() {
         edit("Freeze frame") { try $0.insertFreezeFrame(at: currentTime) }
         showToast("Freeze frame added", systemImage: "snowflake")
@@ -319,10 +382,82 @@ final class EditorModel {
         }
     }
 
-    func extractAudio() {
-        guard let id = selectedClipID else { return }
-        edit("Extract audio") { try $0.extractAudio(from: id) }
-        loadWaveforms()
+    /// Voice (CLP-5): turns the selected video clip's own sound off or back on.
+    func toggleVoice() {
+        guard let clip = selectedClip, let media = project.mediaItem(clip.mediaID) else { return }
+        guard media.hasAudio else { showToast("This clip has no sound", systemImage: "speaker.slash"); return }
+        let muting = !clip.isMuted
+        edit("Voice") { try $0.updateClip(clip.id) { $0.isMuted = muting } }
+        showToast(muting ? "Voice off" : "Voice on", systemImage: muting ? "mic.slash" : "mic")
+    }
+
+    /// Turns Denoise on (at `level`) or off for the whole video (DNS-1, DNS-2). Every video in the
+    /// edit with sound is cleaned once per strength, then reused (also by split pieces and copies).
+    func setNoiseReduction(_ level: NoiseReduction?) {
+        guard let level else {
+            edit("Noise reduction") { $0.setNoiseReduction(nil) }
+            return
+        }
+        let sources = project.denoiseSources
+        guard !sources.isEmpty else { showToast("This video has no sound", systemImage: "speaker.slash"); return }
+        let missing = sources.filter { !hasCurrentDenoisedFile($0, level: level) }
+        guard !missing.isEmpty else {
+            edit("Noise reduction") { $0.setNoiseReduction(level) }
+            showToast("Noise reduced (\(level.title))", systemImage: "waveform")
+            return
+        }
+        runBusy("Reducing noise…") { model in
+            let files = try await model.makeDenoisedFiles(missing, level: level)
+            model.edit("Noise reduction") { $0.setNoiseReduction(level, files: files) }
+            model.showToast("Noise reduced (\(level.title))", systemImage: "waveform")
+        }
+    }
+
+    /// DNS-7: while Denoise is on, videos added later are cleaned straight away.
+    func denoiseNewMedia() {
+        guard let level = project.noiseReduction else { return }
+        let missing = project.denoiseSources.filter { !hasCurrentDenoisedFile($0, level: level) }
+        guard !missing.isEmpty else { return }
+        runBusy("Reducing noise…") { model in
+            let files = try await model.makeDenoisedFiles(missing, level: level)
+            model.edit("Noise reduction") { $0.recordDenoisedFiles(files, level: level) }
+        }
+    }
+
+    /// A cleaned file for `level` exists and was made by the current rules (an older one, from
+    /// before the DNS-6 fix, is made again).
+    private func hasCurrentDenoisedFile(_ item: MediaItem, level: NoiseReduction) -> Bool {
+        guard resolver.denoisedURL(for: item, level: level) != nil, let name = item.denoisedFileNames?[level] else { return false }
+        return NoiseReducer.isCurrent(fileName: name)
+    }
+
+    /// Cleans each item's sound in turn; returns the new file names by media ID.
+    private func makeDenoisedFiles(_ items: [MediaItem], level: NoiseReduction) async throws -> [UUID: String] {
+        var files: [UUID: String] = [:]
+        for (done, item) in items.enumerated() {
+            let base = item.fileName.split(separator: ".").first.map(String.init) ?? "clip"
+            let name = NoiseReducer.fileName(level: level, base: base)
+            let destination = resolver.mediaDirectory.appendingPathComponent(name)
+            let count = Double(items.count)
+            try await NoiseReducer.process(source: resolver.url(for: item), destination: destination, level: level) { p in
+                Task { @MainActor in self.busyProgress = (Double(done) + p) / count }
+            }
+            files[item.id] = name
+        }
+        return files
+    }
+
+    /// Removes um, uh, ah… from the captions (text only; the video is not cut).
+    func removeCaptionFillers() {
+        var track = project.captions
+        let removed = track.removeFillers()
+        guard removed > 0 else {
+            showToast("No filler words found", systemImage: "checkmark.circle")
+            return
+        }
+        edit("Remove fillers") { $0.captions = track }
+        if project.captions.segments.isEmpty { select(.none) }
+        showToast("Removed \(removed) filler word\(removed == 1 ? "" : "s")", systemImage: "text.badge.minus")
     }
 
     var selectedAudioID: UUID? {
@@ -330,28 +465,78 @@ final class EditorModel {
         return nil
     }
 
-    func splitSelectedAudio() {
-        guard let id = selectedAudioID else { return }
+    var selectedAudio: AudioClip? {
+        guard let id = selectedAudioID else { return nil }
+        return project.audioClips.first { $0.id == id }
+    }
+
+    /// Cuts a music clip in two at `time` (the scissors on the timeline / toolbar).
+    /// Each piece is its own clip: select, move, repeat, duplicate or delete it separately.
+    func cutAudio(_ id: UUID, at time: MediaTime) {
         var newID: UUID?
-        edit("Split audio") { newID = try $0.splitAudio(id, at: currentTime) }
-        if let newID { session.selection = .audio(newID) }
+        edit("Cut audio") { newID = try $0.splitAudio(id, at: time) }
+        if let newID {
+            session.selection = .audio(newID)
+            showToast("Cut at \(time.timecode)", systemImage: "scissors")
+        }
         loadWaveforms()
     }
 
-    func moveSelectedAudioToPlayhead() {
+    func cutSelectedAudio() {
         guard let id = selectedAudioID else { return }
-        edit("Move audio") { try $0.moveAudio(id, toTimelineStart: currentTime) }
-        showToast("Starts at \(currentTime.timecode)", systemImage: "arrow.right.to.line")
+        cutAudio(id, at: currentTime)
     }
 
-    func duplicateSelectedAudio() {
-        guard let id = selectedAudioID else { return }
+
+
+    /// "Start Here" (MUS-11) is offered while the playhead is inside the selected audio clip,
+    /// at least 0.2 s from its ends (the same rule as the scissors).
+    var canStartSelectedAudioHere: Bool {
+        guard let clip = selectedAudio else { return false }
+        let margin = Project.minimumAudioDuration
+        return currentTime >= clip.start + margin && currentTime <= clip.timelineRange.end - margin
+    }
+
+    /// One tap: the music now plays from the playhead's point in the song, moved back to the
+    /// start. Then it plays from there so the user hears the result with the video.
+    func startSelectedAudioHere() {
+        guard let id = selectedAudioID, canStartSelectedAudioHere else { return }
+        let time = currentTime.snappedToFrame(fps: 30)
         var newID: UUID?
-        edit("Duplicate audio") { newID = try $0.duplicateAudio(id) }
-        if let newID {
-            session.selection = .audio(newID)
-            showToast("Audio duplicated", systemImage: "plus.square.on.square")
-        }
+        edit("Start here") { newID = try $0.startAudioHere(id, at: time) }
+        guard let newID, let clip = project.audioClips.first(where: { $0.id == newID }) else { return }
+        session.selection = .audio(newID)
+        loadWaveforms()
+        showToast("Music starts from \(clip.sourceRange.start.timecode)", systemImage: "arrow.right.to.line")
+        seek(to: clip.start)
+        if clip.start < duration { play() }
+    }
+
+    /// "Move to Start" is offered when there is blank space before the selected music on its lane.
+    var canMoveSelectedAudioToStart: Bool {
+        guard let id = selectedAudioID else { return false }
+        return project.audioGapStart(id) != nil
+    }
+
+    func moveSelectedAudioToStart() {
+        guard let id = selectedAudioID, let start = project.audioGapStart(id) else { return }
+        edit("Move to start") { try $0.moveAudioToGapStart(id) }
+        showToast("Moved to \(start.timecode)", systemImage: "arrow.left.to.line")
+    }
+
+    /// Repeat is offered only while the selected music stops before the video ends.
+    var canRepeatSelectedAudio: Bool {
+        guard let id = selectedAudioID, let clip = project.audioClips.first(where: { $0.id == id }) else { return false }
+        return clip.timelineRange.end < project.layout.duration - MediaTime(seconds: 0.2)
+    }
+
+    func repeatSelectedAudio() {
+        guard let id = selectedAudioID else { return }
+        var added = 0
+        edit("Repeat audio") { added = try $0.repeatAudio(id) }
+        showToast(added > 0 ? "Repeated \(added + 1)× to the end" : "Already plays to the end",
+                  systemImage: "repeat")
+        loadWaveforms()
     }
 
     // MARK: Watermark & title cards
@@ -474,6 +659,7 @@ final class EditorModel {
             for item in items { p.appendClip(for: item) }
         }
         loadWaveforms()
+        denoiseNewMedia()
     }
 
     func addMusic(_ track: SampleMedia.Track) {
@@ -487,6 +673,9 @@ final class EditorModel {
             var item = try await MediaImporter.probeAudio(url, fileName: file, displayName: track.name)
             item.id = UUID()
             try await model.placeMusic(item, name: track.name)
+            if let list = try? model.recentAudio.add(fileAt: url, name: track.name, duration: item.duration) {
+                model.recentTracks = list
+            }
         }
     }
 
@@ -505,17 +694,29 @@ final class EditorModel {
                 throw MusicImportError.noAudio
             }
             try await model.placeMusic(item, name: name)
+            // Remember it for the Recent list (kept even if this project is deleted later).
+            if let list = try? model.recentAudio.add(fileAt: stored, name: name, duration: item.duration) {
+                model.recentTracks = list
+            }
         }
     }
 
-    /// Puts music on its own lane at the start, analyses beats for Beat Sync,
+    /// Adds one of the recent tracks to this project (copied in, like a file from Files).
+    func addRecentTrack(_ entry: RecentAudioStore.Entry) {
+        addMusicFile(recentAudio.url(for: entry), name: entry.name)
+    }
+
+    func loadRecentTracks() {
+        recentTracks = recentAudio.entries
+    }
+
+    /// Puts music on its own lane (after any existing music),
     /// and sets sensible defaults (70% volume, fade-out, ducking under speech).
     private func placeMusic(_ item: MediaItem, name: String) async throws {
-        let url = resolver.url(for: item)
-        let beats = (try? await BeatDetector.detect(url: url))?.beats ?? []
         edit("Add music") { p in
             p.media.append(item)
-            let length = p.layout.duration > .zero ? min(item.duration, p.layout.duration) : item.duration
+            // The whole song goes on the timeline; preview and export stop at the end of the video.
+            let length = item.duration
             // Another track starts where the existing music ends (if that's inside the video).
             let musicEnd = p.audioClips.filter { $0.role == .music }.map(\.timelineRange.end).max() ?? .zero
             let start = musicEnd < p.layout.duration ? musicEnd : .zero
@@ -527,11 +728,10 @@ final class EditorModel {
             clip.fadeOut = MediaTime(seconds: min(1.5, length.seconds / 4))
             clip.autoDuck = true
             clip.fitsVideo = true
-            clip.beats = beats.map { MediaTime(seconds: $0) }
             p.addAudio(clip)
         }
         loadWaveforms()
-        showToast("Added \(name) · \(beats.count) beats", systemImage: "music.note")
+        showToast("Added \(name)", systemImage: "music.note")
     }
 
     // MARK: AI features
@@ -564,16 +764,6 @@ final class EditorModel {
         }
     }
 
-    func beatSync() {
-        guard let music = project.audioClips.first(where: { $0.role == .music && !$0.beats.isEmpty }) else {
-            showToast("Add music first", systemImage: "music.note")
-            panel = .music
-            return
-        }
-        var aligned = 0
-        edit("Beat sync") { aligned = $0.syncCutsToBeats(music.timelineBeats) }
-        showToast("Synced \(aligned) cut\(aligned == 1 ? "" : "s") to the beat", systemImage: "metronome")
-    }
 
     func autoReframe() {
         guard let clip = selectedClip, let media = project.mediaItem(clip.mediaID), clip.kind == .video, !clip.isStill else {

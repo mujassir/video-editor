@@ -13,11 +13,14 @@ class CutlineUITestCase: XCTestCase {
         if let folder = ProcessInfo.processInfo.environment["DEMO_MEDIA"], !folder.isEmpty, useDemoMedia {
             app.launchArguments += ["-demoMedia", folder]
         }
+        app.launchArguments += extraLaunchArguments
         app.launch()
     }
 
     /// Subclasses that need real footage (speech for captions) override this.
     var useDemoMedia: Bool { false }
+    /// Extra app launch arguments for a test class (e.g. "-sampleCaptions").
+    var extraLaunchArguments: [String] { [] }
 
     func element(_ id: String) -> XCUIElement {
         app.descendants(matching: .any).matching(identifier: id).firstMatch
@@ -101,7 +104,7 @@ class CutlineUITestCase: XCTestCase {
     /// New project with the three sample clips on the timeline.
     func openProjectWithSamples(expectedClips: Int = 3) {
         tap("projects.new")
-        tap("tool.Media")
+        tap("timeline.add")   // there's no Media button in the main toolbar (TBR-1)
         let sample = app.buttons["Sample Clips"]
         XCTAssertTrue(sample.waitForExistence(timeout: 5))
         sample.tap()

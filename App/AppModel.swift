@@ -65,4 +65,6 @@ enum LaunchOptions {
     }
     static var isUITesting: Bool { arguments.contains("-sampleMedia") }
     static var disableAnimations: Bool { arguments.contains("-noAnimations") }
+    /// UI tests: give the sample project a few captions (the simulator can't transcribe speech).
+    static var sampleCaptions: Bool { arguments.contains("-sampleCaptions") }
 }

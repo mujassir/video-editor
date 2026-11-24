@@ -5,25 +5,78 @@ import AVFoundation
 import EditorKit
 
 /// Bottom panel container – slides up over the toolbar.
+/// Swipe down to close it (EDT-1): anywhere on the panel, or only on its top
+/// (grabber and title row) for panels with a vertically scrolling list.
 struct PanelContainer<Content: View>: View {
     let title: String
     let onDone: () -> Void
+    /// What a swipe down does; defaults to `onDone`. Panels whose ✓ also commits
+    /// something (Intro/Outro adds the slide) pass a plain close instead.
+    var onSwipeDown: (() -> Void)? = nil
+    /// false for panels whose content scrolls vertically: there only the top row swipes,
+    /// so scrolling the list never closes the panel.
+    var swipeAnywhere = true
     var onUndo: (() -> Void)? = nil
     var canUndo = true
     @ViewBuilder var content: Content
+    @State private var dragOffset: CGFloat = 0
+    /// Wide layout (LAY-3): no grabber and no swipe-down; ✓ or Esc closes.
+    @Environment(\.inSidebar) private var inSidebar
+
+    /// Distance (pt) or predicted distance that closes the panel when the finger lifts.
+    static var closeDistance: CGFloat { 30 }
+    static var closePredictedDistance: CGFloat { 80 }
 
     var body: some View {
         VStack(spacing: 10) {
             PanelHeader(title: title, onDone: onDone, onUndo: onUndo, canUndo: canUndo)
+                .overlay(alignment: .top) {
+                    if !inSidebar {
+                        Capsule().fill(Theme.secondaryText.opacity(0.6))
+                            .frame(width: 36, height: 5)
+                            .padding(.top, 4)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .contentShape(Rectangle())
+                .gesture(swipeDown, including: inSidebar ? .subviews : (swipeAnywhere ? .none : .all))
             content
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
         }
         .frame(maxWidth: .infinity)
         .background(Theme.surface)
+        .contentShape(Rectangle())
+        // Simultaneous, so buttons and horizontal sliders inside keep working.
+        .simultaneousGesture(swipeDown, including: inSidebar ? .subviews : (swipeAnywhere ? .all : .none))
+        .offset(y: dragOffset)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("panel.\(title)")
+        .accessibilityAction(.escape) { close() }
     }
+
+    /// Measured in screen space: the panel moves with the finger, so local coordinates
+    /// would cancel the movement out and the swipe would never reach the threshold.
+    /// Only mostly-downward drags count (horizontal slider drags are ignored).
+    private var swipeDown: some Gesture {
+        DragGesture(minimumDistance: 8, coordinateSpace: .global)
+            .onChanged { g in
+                let t = g.translation
+                dragOffset = t.height > abs(t.width) ? max(0, t.height) : 0
+            }
+            .onEnded { g in
+                let t = g.translation, predicted = g.predictedEndTranslation
+                let downward = t.height > abs(t.width)
+                if downward && (t.height > Self.closeDistance || predicted.height > Self.closePredictedDistance) {
+                    close()
+                    dragOffset = 0
+                } else {
+                    withAnimation(.spring(duration: 0.25)) { dragOffset = 0 }
+                }
+            }
+    }
+
+    private func close() { (onSwipeDown ?? onDone)() }
 }
 
 private let swatches: [RGBAColor] = [
@@ -212,7 +265,7 @@ struct AdjustPanel: View {
     }
 
     var body: some View {
-        PanelContainer(title: "Adjust", onDone: { model.panel = nil }) {
+        PanelContainer(title: "Adjust", onDone: { model.panel = nil }, swipeAnywhere: false) {
             VStack(spacing: 8) {
                 HStack {
                     Button { model.autoEnhance() } label: {
@@ -262,34 +315,79 @@ struct SpeedPanel: View {
                     model.editCoalescing("Speed", key: "speed-\(clipID)") { p in try? p.setSpeed(s, clipID: clipID) }
                 }), in: -1...1).tint(Theme.accent).accessibilityIdentifier("slider.Speed")
                 HStack {
-                    ForEach([0.25, 0.5, 1, 2, 4], id: \.self) { v in
-                        ChipButton(title: String(format: "%g×", v), isSelected: abs(speed - v) < 0.01) {
+                    ForEach([0.3, 0.5, 1, 2, 3, 4], id: \.self) { v in
+                        // SPD-1: ".3×", ".5×" – no leading zero below 1×.
+                        let label = String(format: "%g×", v)
+                        ChipButton(title: v < 1 ? String(label.dropFirst()) : label, isSelected: abs(speed - v) < 0.01) {
                             model.edit("Speed") { try $0.setSpeed(v, clipID: clipID) }
                         }
                     }
+                }
+                // SPD-4: one undo step; photos, slides and freeze frames are skipped.
+                let videoCount = model.project.speedAdjustableClipCount
+                if videoCount > 1 {
+                    Button {
+                        let s = speed
+                        model.edit("Speed") { $0.setSpeedForAllClips(s) }
+                        model.showToast("All clips set to \(String(format: "%g×", s))", systemImage: "speedometer")
+                    } label: {
+                        Label("Apply to all \(videoCount) clips", systemImage: "square.stack.3d.down.right")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.accent)
+                    .accessibilityIdentifier("speed.applyAll")
                 }
             }
         }
     }
 }
 
-struct VolumePanel: View {
+/// Denoise for the whole video (DNS-1): every video clip's own sound. Off / Low / Medium / High.
+struct NoiseReductionPanel: View {
     @Bindable var model: EditorModel
-    let clipID: UUID
-    private var clip: VideoClip? { model.project.clipIndex(clipID).map { model.project.clips[$0] } }
+    private var level: NoiseReduction? { model.project.noiseReduction }
 
     var body: some View {
-        PanelContainer(title: "Volume", onDone: { model.panel = nil }) {
-            VStack(spacing: 12) {
-                LabeledSlider(title: "Volume", value: Binding(get: { clip?.volume ?? 1 }, set: { v in
-                    model.editCoalescing("Volume", key: "vol-\(clipID)") { p in try? p.updateClip(clipID) { $0.volume = v } }
-                }), range: 0...2, format: { String(format: "%.0f%%", $0 * 100) })
-                HStack {
-                    ChipButton(title: clip?.isMuted == true ? "Unmute" : "Mute", isSelected: clip?.isMuted == true) {
-                        model.edit("Mute") { p in try p.updateClip(clipID) { $0.isMuted.toggle() } }
+        PanelContainer(title: "Noise Reduction", onDone: { model.panel = nil }) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Removes background hiss, hum, wind and room noise from the sound of every video clip.")
+                    .font(.caption).foregroundStyle(Theme.secondaryText)
+                HStack(spacing: 8) {
+                    ChipButton(title: "Off", isSelected: level == nil) { model.setNoiseReduction(nil) }
+                    ForEach(NoiseReduction.allCases) { l in
+                        ChipButton(title: l.title, isSelected: level == l) { model.setNoiseReduction(l) }
                     }
-                    ChipButton(title: "Extract Audio") { model.extractAudio() }
                     Spacer()
+                }
+                Text("Stronger settings remove more noise but can make voices sound thinner.")
+                    .font(.caption2).foregroundStyle(Theme.secondaryText)
+            }
+        }
+    }
+}
+
+/// How far the music drops while someone speaks (auto-duck). Speech comes from captions.
+struct DuckPanel: View {
+    @Bindable var model: EditorModel
+    let audioID: UUID
+    private var audio: AudioClip? { model.project.audioClips.first { $0.id == audioID } }
+
+    var body: some View {
+        PanelContainer(title: "Duck", onDone: { model.panel = nil }) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Music volume while someone is speaking")
+                    .font(.caption).foregroundStyle(Theme.secondaryText)
+                LabeledSlider(title: "Music", value: Binding(get: { audio?.resolvedDuckLevel ?? 0.25 }, set: { v in
+                    let level = (v * 20).rounded() / 20   // 5% steps
+                    model.editCoalescing("Duck level", key: "duck-\(audioID)") { p in
+                        p.updateAudio(audioID) { $0.duckLevel = level; if $0.role == .music { $0.autoDuck = true } }
+                    }
+                }), range: 0...1, format: { String(format: "%.0f%%", $0 * 100) })
+                if model.project.captions.segments.isEmpty {
+                    Label("Ducking finds speech from captions. Add captions to hear it.", systemImage: "info.circle")
+                        .font(.caption).foregroundStyle(Theme.secondaryText)
+                        .accessibilityIdentifier("duck.needsCaptions")
                 }
             }
         }
@@ -437,7 +535,7 @@ struct TextPanel: View {
     }
 
     var body: some View {
-        PanelContainer(title: "Text", onDone: { focused = false; model.panel = nil }) {
+        PanelContainer(title: "Text", onDone: { focused = false; model.panel = nil }, swipeAnywhere: false) {
             if let overlay {
                 ScrollView {
                 VStack(spacing: 12) {
@@ -487,56 +585,28 @@ struct TextPanel: View {
 struct MusicPanel: View {
     @Bindable var model: EditorModel
     @State private var videoItem: PhotosPickerItem?
-    var selectedAudio: AudioClip? {
-        if case .audio(let id) = model.session.selection { return model.project.audioClips.first { $0.id == id } }
-        return nil
-    }
 
     var body: some View {
         PanelContainer(title: "Music", onDone: { model.panel = nil }) {
             VStack(spacing: 10) {
-                if let audio = selectedAudio {
-                    LabeledSlider(title: "Volume", value: Binding(get: { audio.volume }, set: { v in
-                        model.editCoalescing("Music volume", key: "mv-\(audio.id)") { $0.updateAudio(audio.id) { $0.volume = v } }
-                    }), range: 0...1.5, format: { String(format: "%.0f%%", $0 * 100) })
-                    LabeledSlider(title: "Fade out", value: Binding(get: { audio.fadeOut.seconds }, set: { v in
-                        model.editCoalescing("Fade", key: "fo-\(audio.id)") { $0.updateAudio(audio.id) { $0.fadeOut = MediaTime(seconds: v) } }
-                    }), range: 0...5, format: { String(format: "%.1fs", $0) })
-                    Toggle("Auto-duck under speech", isOn: Binding(get: { audio.autoDuck }, set: { v in
-                        model.edit("Auto duck") { $0.updateAudio(audio.id) { $0.autoDuck = v } }
-                    })).tint(Theme.accent).font(.subheadline)
-                } else {
-                    HStack(spacing: 8) {
-                        sourceButton("Files", "folder") { model.openFiles(for: .music) }
-                        PhotosPicker(selection: $videoItem, matching: .videos) {
-                            MusicSourceLabel(title: "From Video", icon: "film")
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("music.source.video")
+                HStack(spacing: 8) {
+                    sourceButton("Audio Tracks", "music.note", id: "music.source.files") { model.openFiles(for: .music) }
+                    PhotosPicker(selection: $videoItem, matching: .videos) {
+                        MusicSourceLabel(title: "From Video", icon: "film")
                     }
-                    Text("Built-in tracks").font(.caption).foregroundStyle(Theme.secondaryText)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    ForEach(SampleMedia.library) { track in
-                        HStack {
-                            Image(systemName: "music.note").frame(width: 36, height: 36)
-                                .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: 8))
-                            VStack(alignment: .leading) {
-                                Text(track.name).font(.subheadline.weight(.semibold))
-                                Text("\(track.mood) · \(Int(track.bpm)) BPM").font(.caption).foregroundStyle(Theme.secondaryText)
-                            }
-                            Spacer()
-                            Button("Use") { model.addMusic(track); model.panel = nil }
-                                .font(.subheadline.weight(.semibold))
-                                .padding(.horizontal, 14).padding(.vertical, 6)
-                                .background(Theme.accent, in: Capsule())
-                                .buttonStyle(.plain)
-                                .accessibilityIdentifier("music.use.\(track.id)")
-                        }
-                    }
-                    Text("Royalty-free · generated on device").font(.caption2).foregroundStyle(Theme.secondaryText)
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("music.source.video")
+                }
+                if !model.recentTracks.isEmpty { recentList }
+                // Built-in tracks were removed from the app (MUS-1). UI tests and demos
+                // (-sampleMedia / -demoMedia) still get them, like "Sample Clips" in the Add
+                // menu, because the simulator can't drive the Files picker.
+                if LaunchOptions.useSampleMedia || LaunchOptions.demoMediaFolder != nil {
+                    sampleTracks
                 }
             }
         }
+        .onAppear { model.loadRecentTracks() }
         .onChange(of: videoItem) { _, item in
             guard let item else { return }
             videoItem = nil
@@ -551,10 +621,63 @@ struct MusicPanel: View {
         }
     }
 
-    private func sourceButton(_ title: String, _ icon: String, action: @escaping () -> Void) -> some View {
+    /// MUS-10: the last 5 audio tracks used in any project. Tap one to add it again.
+    @ViewBuilder private var recentList: some View {
+        Text("Recent").font(.caption).foregroundStyle(Theme.secondaryText)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        ForEach(Array(model.recentTracks.enumerated()), id: \.element.id) { i, entry in
+            Button {
+                model.addRecentTrack(entry)
+                model.panel = nil
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "music.note").font(.system(size: 15, weight: .semibold))
+                        .frame(width: 36, height: 36)
+                        .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: 8))
+                    Text(entry.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                    Spacer()
+                    Text(Self.clock(entry.duration)).font(.caption.monospacedDigit()).foregroundStyle(Theme.secondaryText)
+                    Image(systemName: "plus.circle.fill").font(.system(size: 20)).foregroundStyle(Theme.accent)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("music.recent.\(i)")
+        }
+    }
+
+    /// m:ss
+    static func clock(_ t: MediaTime) -> String {
+        let s = Int(t.seconds.rounded())
+        return String(format: "%d:%02d", s / 60, s % 60)
+    }
+
+    @ViewBuilder private var sampleTracks: some View {
+        Text("Sample tracks (testing)").font(.caption).foregroundStyle(Theme.secondaryText)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        ForEach(SampleMedia.library) { track in
+            HStack {
+                Image(systemName: "music.note").frame(width: 36, height: 36)
+                    .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: 8))
+                VStack(alignment: .leading) {
+                    Text(track.name).font(.subheadline.weight(.semibold))
+                    Text("\(track.mood) · \(Int(track.bpm)) BPM").font(.caption).foregroundStyle(Theme.secondaryText)
+                }
+                Spacer()
+                Button("Use") { model.addMusic(track); model.panel = nil }
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 14).padding(.vertical, 6)
+                    .background(Theme.accent, in: Capsule())
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("music.use.\(track.id)")
+            }
+        }
+    }
+
+    private func sourceButton(_ title: String, _ icon: String, id: String? = nil, action: @escaping () -> Void) -> some View {
         Button(action: action) { MusicSourceLabel(title: title, icon: icon) }
             .buttonStyle(.plain)
-            .accessibilityIdentifier("music.source.\(title.lowercased())")
+            .accessibilityIdentifier(id ?? "music.source.\(title.lowercased())")
     }
 }
 
@@ -565,7 +688,7 @@ struct CaptionsPanel: View {
     private var track: CaptionTrack { model.project.captions }
 
     var body: some View {
-        PanelContainer(title: "Captions", onDone: { model.panel = nil }) {
+        PanelContainer(title: "Captions", onDone: { model.panel = nil }, swipeAnywhere: false) {
             VStack(spacing: 12) {
                 if track.segments.isEmpty {
                     VStack(spacing: 8) {
@@ -589,24 +712,6 @@ struct CaptionsPanel: View {
                     LabeledSlider(title: "Position", value: Binding(get: { track.positionY }, set: { v in
                         model.editCoalescing("Caption position", key: "cp") { $0.captions.positionY = v }
                     }), range: 0.1...0.92, format: { String(format: "%.0f%%", $0 * 100) })
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 6) {
-                            ForEach(Array(track.segments.enumerated()), id: \.element.id) { i, seg in
-                                HStack(alignment: .top) {
-                                    Text(seg.range.start.timecode).font(.caption.monospacedDigit()).foregroundStyle(Theme.secondaryText)
-                                        .frame(width: 48, alignment: .leading)
-                                    TextField("", text: Binding(get: { seg.text }, set: { v in
-                                        model.editCoalescing("Edit caption", key: "cap-\(seg.id)") { p in
-                                            guard i < p.captions.segments.count else { return }
-                                            p.captions.segments[i].words = Self.retime(v, like: p.captions.segments[i])
-                                        }
-                                    }))
-                                    .font(.subheadline)
-                                    .accessibilityIdentifier("caption.field.\(i)")
-                                }
-                            }
-                        }
-                    }.frame(maxHeight: 110)
                 }
             }
         }
@@ -622,6 +727,112 @@ struct CaptionsPanel: View {
             CaptionWord(text: w, range: MediaTimeRange(start: range.start + MediaTime(seconds: Double(i) * each),
                                                        duration: MediaTime(seconds: each)))
         }
+    }
+}
+
+/// Full-screen caption text editor. Typing only changes a draft; Done saves every change at
+/// once (one undo step), Cancel throws the draft away. Opens on the caption under the playhead.
+struct CaptionTextEditor: View {
+    @Bindable var model: EditorModel
+    @State private var drafts: [UUID: String] = [:]
+    @FocusState private var focused: UUID?
+    @State private var segments: [CaptionSegment] = []
+
+    var body: some View {
+        NavigationStack {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 10) {
+                        ForEach(Array(segments.enumerated()), id: \.element.id) { i, seg in
+                            row(i, seg).id(seg.id)
+                        }
+                    }
+                    .padding(16)
+                }
+                .scrollDismissesKeyboard(.never)
+                .onAppear {
+                    segments = model.project.captions.segments
+                    drafts = Dictionary(uniqueKeysWithValues: segments.map { ($0.id, $0.text) })
+                    guard let current = currentSegmentID else { return }
+                    proxy.scrollTo(current, anchor: .center)
+                    // Focus once the cover has finished sliding in, so the keyboard comes up with it.
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(450))
+                        focused = current
+                    }
+                }
+                .onChange(of: focused) { _, id in
+                    // Keep the line being typed in visible above the keyboard.
+                    guard let id else { return }
+                    withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(id, anchor: .center) }
+                }
+            }
+            .background(Theme.background.ignoresSafeArea())
+            .navigationTitle("Edit Captions")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { model.panel = nil }
+                        .accessibilityIdentifier("captionEditor.cancel")
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { save() }
+                        .fontWeight(.semibold)
+                        .accessibilityIdentifier("captionEditor.done")
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private func row(_ i: Int, _ seg: CaptionSegment) -> some View {
+        let isFocused = focused == seg.id
+        return VStack(alignment: .leading, spacing: 6) {
+            Button {
+                focused = seg.id
+                model.seek(to: seg.range.start)
+            } label: {
+                Text("\(seg.range.start.timecode) – \(seg.range.end.timecode)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(isFocused ? Theme.accent : Theme.secondaryText)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("caption.time.\(i)")
+            TextField("Caption", text: Binding(get: { drafts[seg.id] ?? seg.text }, set: { drafts[seg.id] = $0 }),
+                      axis: .vertical)
+                .font(.body)
+                .focused($focused, equals: seg.id)
+                .submitLabel(.next)
+                .onSubmit { focusNext(after: i) }
+                .padding(12)
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(isFocused ? Theme.accent : .clear, lineWidth: 1.5))
+                .accessibilityIdentifier("caption.field.\(i)")
+        }
+    }
+
+    /// The caption showing at the playhead, else the last one before it, else the first.
+    private var currentSegmentID: UUID? {
+        let t = model.currentTime
+        return (segments.first { $0.range.contains(t) } ?? segments.last { $0.range.start <= t } ?? segments.first)?.id
+    }
+
+    private func focusNext(after i: Int) {
+        focused = i + 1 < segments.count ? segments[i + 1].id : nil
+    }
+
+    private func save() {
+        focused = nil
+        let changed = segments.filter { (drafts[$0.id] ?? $0.text) != $0.text }
+        if !changed.isEmpty {
+            model.edit("Edit captions") { p in
+                for seg in changed {
+                    guard let k = p.captions.segments.firstIndex(where: { $0.id == seg.id }), let text = drafts[seg.id] else { continue }
+                    p.captions.segments[k].words = CaptionsPanel.retime(text, like: p.captions.segments[k])
+                }
+            }
+        }
+        model.panel = nil
     }
 }
 
@@ -678,7 +889,7 @@ struct PhotoMotionPanel: View {
     private var motion: PhotoMotion { clip?.photoMotion ?? .none }
 
     var body: some View {
-        PanelContainer(title: "Animate", onDone: { model.panel = nil }) {
+        PanelContainer(title: "Animate", onDone: { model.panel = nil }, swipeAnywhere: false) {
             VStack(spacing: 10) {
                 Picker("", selection: $tab) {
                     ForEach(tabs) { Text($0.rawValue).tag($0) }
@@ -851,245 +1062,14 @@ struct MusicSourceLabel: View {
     let title: String
     let icon: String
     var body: some View {
-        VStack(spacing: 4) {
-            Image(systemName: icon).font(.system(size: 17, weight: .semibold))
-            Text(title).font(.caption.weight(.medium))
+        VStack(spacing: 8) {
+            Image(systemName: icon).font(.system(size: 26, weight: .semibold))
+            Text(title).font(.subheadline.weight(.semibold))
         }
-        .frame(maxWidth: .infinity).padding(.vertical, 10)
-        .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
+        .frame(maxWidth: .infinity, minHeight: 88).padding(.vertical, 12)
+        .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 14))
+        .contentShape(RoundedRectangle(cornerRadius: 14))
         .foregroundStyle(.white)
-    }
-}
-
-// MARK: - Audio trim
-
-/// Single range slider over the whole song: two handles pick the section, the
-/// middle can be dragged to move it, ▶︎ previews the section with a cursor line,
-/// Trim applies it. ✓ saves (applying an untrimmed change) and closes.
-struct AudioTrimPanel: View {
-    @Bindable var model: EditorModel
-    let audioID: UUID
-    @State private var selStart: Double = 0
-    @State private var selEnd: Double = 1
-    @State private var loaded = false
-    @State private var preview = AudioPreview()
-
-    private var clip: AudioClip? { model.project.audioClips.first { $0.id == audioID } }
-    private var media: MediaItem? { clip.flatMap { model.project.mediaItem($0.mediaID) } }
-    private var songLength: Double { max(media?.duration.seconds ?? 1, 0.5) }
-    private var changed: Bool {
-        guard let clip else { return false }
-        return abs(clip.sourceRange.start.seconds - selStart) > 0.02 || abs(clip.sourceRange.end.seconds - selEnd) > 0.02
-    }
-
-    var body: some View {
-        PanelContainer(title: "Trim Audio", onDone: save,
-                       onUndo: { preview.stop(); model.undo(); loadFromClip() }, canUndo: model.session.canUndo) {
-            VStack(spacing: 12) {
-                HStack(spacing: 12) {
-                    Button { togglePreview() } label: {
-                        Image(systemName: preview.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 18, weight: .bold))
-                            .frame(width: 44, height: 44)
-                            .background(Theme.surfaceRaised, in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("audioTrim.play")
-                    VStack(spacing: 4) {
-                        RangeTrimSlider(peaks: media.flatMap { model.waveforms[$0.id] } ?? [],
-                                        total: songLength, start: $selStart, end: $selEnd,
-                                        cursor: preview.isPlaying ? preview.position : nil,
-                                        onScrubBegan: { preview.stop() })
-                            .frame(height: 54)
-                        HStack {
-                            Text(Self.time(selStart)).accessibilityIdentifier("audioTrim.startTime")
-                            Spacer()
-                            Text("\(Self.time(selEnd - selStart)) selected").foregroundStyle(Theme.secondaryText)
-                            Spacer()
-                            Text(Self.time(selEnd)).accessibilityIdentifier("audioTrim.endTime")
-                        }
-                        .font(.caption.monospacedDigit())
-                    }
-                }
-                HStack(spacing: 10) {
-                    Button { applyTrim() } label: {
-                        Label("Trim", systemImage: "scissors").font(.subheadline.weight(.semibold))
-                            .frame(maxWidth: .infinity).padding(.vertical, 10)
-                            .background(changed ? Theme.accent : Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!changed)
-                    .accessibilityIdentifier("audioTrim.trim")
-                    if let clip {
-                        Toggle("Match video", isOn: Binding(get: { clip.followsVideo }, set: { v in
-                            model.edit("Match video length") { p in p.updateAudio(audioID) { $0.fitsVideo = v } }
-                            loadFromClip()
-                        }))
-                        .tint(Theme.accent).font(.subheadline).fixedSize()
-                        .accessibilityIdentifier("audioTrim.matchVideo")
-                    }
-                }
-                Text(clip.map { "Plays \(Self.time($0.sourceRange.start.seconds)) – \(Self.time($0.sourceRange.end.seconds)) of the song" } ?? "")
-                    .font(.caption2).foregroundStyle(Theme.secondaryText)
-                    .accessibilityIdentifier("audioTrim.summary")
-            }
-        }
-        .onAppear {
-            model.pause()
-            loadFromClip()
-            if let media { preview.load(model.resolver.url(for: media)) }
-        }
-        .onDisappear { preview.stop() }
-    }
-
-    private func loadFromClip() {
-        guard let clip else { return }
-        selStart = clip.sourceRange.start.seconds
-        selEnd = clip.sourceRange.end.seconds
-        loaded = true
-    }
-
-    private func togglePreview() {
-        if preview.isPlaying { preview.stop() } else { model.pause(); preview.play(from: selStart, to: selEnd) }
-    }
-
-    private func applyTrim() {
-        preview.stop()
-        let range = MediaTimeRange(start: MediaTime(seconds: selStart), end: MediaTime(seconds: selEnd))
-        model.edit("Trim audio") { p in try p.setAudioSourceRange(audioID, range) }
-        loadFromClip()
-        model.showToast("Trimmed to \(Self.time(selEnd - selStart))", systemImage: "scissors")
-    }
-
-    private func save() {
-        if changed { applyTrim() }
-        preview.stop()
-        model.panel = nil
-    }
-
-    static func time(_ v: Double) -> String {
-        let t = max(v, 0)
-        return String(format: "%d:%04.1f", Int(t) / 60, t.truncatingRemainder(dividingBy: 60))
-    }
-}
-
-/// Two-handle range slider over a waveform, with an optional playback cursor.
-struct RangeTrimSlider: View {
-    let peaks: [Float]
-    let total: Double
-    @Binding var start: Double
-    @Binding var end: Double
-    var cursor: Double?
-    var onScrubBegan: () -> Void = {}
-    @State private var dragOrigin: (start: Double, end: Double)?
-    private let minGap = 0.5
-    private let handleWidth: CGFloat = 16
-
-    var body: some View {
-        GeometryReader { geo in
-            let w = max(geo.size.width - handleWidth * 2, 1)
-            let x = { (t: Double) -> CGFloat in handleWidth + CGFloat(t / max(total, 0.001)) * w }
-            let toTime = { (dx: CGFloat) -> Double in Double(dx / w) * total }
-            ZStack(alignment: .topLeading) {
-                // Waveform across the whole song.
-                Canvas { ctx, size in
-                    guard !peaks.isEmpty else { return }
-                    let barW = w / CGFloat(peaks.count)
-                    for (i, p) in peaks.enumerated() {
-                        let h = max(2, CGFloat(p) * (size.height - 10))
-                        let r = CGRect(x: handleWidth + CGFloat(i) * barW, y: (size.height - h) / 2, width: max(1, barW - 0.5), height: h)
-                        ctx.fill(Path(r), with: .color(Theme.clipAudio.opacity(0.85)))
-                    }
-                }
-                // Dim outside the selection.
-                Rectangle().fill(Color.black.opacity(0.55))
-                    .frame(width: max(0, x(start) - handleWidth)).offset(x: handleWidth)
-                Rectangle().fill(Color.black.opacity(0.55))
-                    .frame(width: max(0, handleWidth + w - x(end))).offset(x: x(end))
-                // Selection frame (drag to move the section).
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(Color.white, lineWidth: 2.5)
-                    .background(Color.white.opacity(0.001))
-                    .frame(width: max(2, x(end) - x(start)))
-                    .offset(x: x(start))
-                    .gesture(DragGesture(minimumDistance: 2).onChanged { v in
-                        if dragOrigin == nil { dragOrigin = (start, end); onScrubBegan() }
-                        guard let o = dragOrigin else { return }
-                        let len = o.end - o.start
-                        let s = min(max(0, o.start + toTime(v.translation.width)), total - len)
-                        start = s; end = s + len
-                    }.onEnded { _ in dragOrigin = nil })
-                    .accessibilityIdentifier("audioTrim.section")
-                handle(at: x(start) - handleWidth, id: "audioTrim.startHandle") { dx in
-                    if dragOrigin == nil { dragOrigin = (start, end); onScrubBegan() }
-                    guard let o = dragOrigin else { return }
-                    start = min(max(0, o.start + toTime(dx)), end - minGap)
-                }
-                handle(at: x(end), id: "audioTrim.endHandle") { dx in
-                    if dragOrigin == nil { dragOrigin = (start, end); onScrubBegan() }
-                    guard let o = dragOrigin else { return }
-                    end = max(min(total, o.end + toTime(dx)), start + minGap)
-                }
-                if let cursor {
-                    Rectangle().fill(Color.white).frame(width: 2).offset(x: x(cursor) - 1)
-                        .allowsHitTesting(false)
-                        .accessibilityIdentifier("audioTrim.cursor")
-                }
-            }
-            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
-            .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 6))
-        }
-    }
-
-    private func handle(at offset: CGFloat, id: String, onDrag: @escaping (CGFloat) -> Void) -> some View {
-        RoundedRectangle(cornerRadius: 4)
-            .fill(Color.white)
-            .overlay(Capsule().fill(Color.black.opacity(0.45)).frame(width: 2, height: 18))
-            .frame(width: handleWidth)
-            .offset(x: offset)
-            .gesture(DragGesture(minimumDistance: 1)
-                .onChanged { v in onDrag(v.translation.width) }
-                .onEnded { _ in dragOrigin = nil })
-            .accessibilityIdentifier(id)
-    }
-}
-
-/// Plays one section of a song for the trim preview (separate from the edit preview).
-@Observable
-final class AudioPreview {
-    private(set) var isPlaying = false
-    private(set) var position: Double = 0
-    @ObservationIgnored private var player: AVPlayer?
-    @ObservationIgnored private var timeObserver: Any?
-    @ObservationIgnored private var endTime: Double = 0
-
-    func load(_ url: URL) {
-        player = AVPlayer(url: url)
-        player?.automaticallyWaitsToMinimizeStalling = false
-    }
-
-    func play(from start: Double, to end: Double) {
-        guard let player else { return }
-        stop()
-        endTime = end
-        position = start
-        player.seek(to: CMTime(seconds: start, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
-        timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 30), queue: .main) { [weak self] t in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.position = t.seconds
-                if t.seconds >= self.endTime - 0.02 { self.stop() }
-            }
-        }
-        player.play()
-        isPlaying = true
-    }
-
-    func stop() {
-        player?.pause()
-        if let timeObserver { player?.removeTimeObserver(timeObserver) }
-        timeObserver = nil
-        isPlaying = false
     }
 }
 
@@ -1149,7 +1129,7 @@ struct TextAnimatePanel: View {
     private var anim: ClipAnimation { overlay?.animation ?? ClipAnimation() }
 
     var body: some View {
-        PanelContainer(title: "Animate Text", onDone: { model.panel = nil }) {
+        PanelContainer(title: "Animate Text", onDone: { model.panel = nil }, swipeAnywhere: false) {
             VStack(spacing: 10) {
                 Picker("", selection: $tab) { ForEach(Tab.allCases) { Text($0.rawValue).tag($0) } }
                     .pickerStyle(.segmented)
@@ -1380,7 +1360,8 @@ struct TitleCardPanel: View {
     private var name: String { placement == .opening ? "Opening Slide" : "Closing Slide" }
 
     var body: some View {
-        PanelContainer(title: name, onDone: save) {
+        // Swiping down closes without adding or saving the slide (only ✓ does that).
+        PanelContainer(title: name, onDone: save, onSwipeDown: { model.panel = nil }) {
             if let card = draft {
                 VStack(spacing: 10) {
                     TextField("Title", text: Binding(get: { card.title }, set: { draft?.title = $0 }))

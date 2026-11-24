@@ -688,3 +688,322 @@ struct ExportEstimateTests {
         #expect(ExportSettings().estimatedBytes(duration: .zero) == 0)
     }
 }
+
+@Suite("Audio sections render")
+struct AudioSectionRenderTests {
+    @Test func deletedSectionShortensTheMix() async throws {
+        var fx = try Fixture()
+        defer { fx.cleanup() }
+        try await fx.addVideo("v", duration: 6, draw: SampleMedia.solid(.black))
+        let url = fx.store.mediaDirectory(for: fx.project.id).appendingPathComponent("tone.m4a")
+        try SampleMedia.renderTonePattern([(true, 6)], to: url)
+        let song = try await MediaImporter.probeAudio(url, fileName: "tone.m4a")
+        fx.project.media.append(song)
+        let clip = AudioClip(mediaID: song.id, role: .music, sourceRange: MediaTimeRange(start: .zero, duration: MediaTime(seconds: 6)), start: .zero)
+        fx.project.addAudio(clip)
+        try fx.project.addAudioMarker(clip.id, at: MediaTime(seconds: 2))
+        try fx.project.addAudioMarker(clip.id, at: MediaTime(seconds: 4))
+        try fx.project.setAudioSectionDeleted(clip.id, index: 1, true)
+        let built = try await CompositionBuilder().build(project: fx.project, resolver: fx.resolver,
+                                                         renderSize: CGSize(width: 64, height: 64))
+        let tracks = try await built.composition.loadTracks(withMediaType: .audio)
+        var musicEnd = 0.0
+        for t in tracks {
+            let r = try await t.load(.timeRange)
+            musicEnd = max(musicEnd, r.end.seconds)
+        }
+        #expect(abs(musicEnd - 4) < 0.1, "4 s of music after cutting 2 s out, got \(musicEnd)")
+    }
+}
+
+@Suite("Smooth slow motion")
+struct SlowMotionBlendTests {
+    @Test func phaseWeight() {
+        #expect(LayerGeometry.blendWeight(fileTime: 1.0, fps: 30) < 0.001)
+        #expect(abs(LayerGeometry.blendWeight(fileTime: 1.0 + 0.5 / 30, fps: 30) - 0.5) < 1e-6)
+    }
+
+    /// Alternating black / white frames at 30 fps, played at 0.5×: half-way between
+    /// two source frames the blended picture is grey instead of jumping.
+    @Test func slowClipBlendsNeighbouringFrames() async throws {
+        var fx = try Fixture()
+        defer { fx.cleanup() }
+        try await fx.addVideo("flicker", duration: 2, size: CGSize(width: 64, height: 64)) { ctx, size, t in
+            let frame = Int((t * 30).rounded())
+            ctx.setFillColor(CGColor(gray: frame % 2 == 0 ? 0 : 1, alpha: 1))
+            ctx.fill(CGRect(origin: .zero, size: size))
+        }
+        try fx.project.setSpeed(0.5, clipID: fx.project.clips[0].id)
+        try fx.project.updateClip(fx.project.clips[0].id) { $0.transform.fit = .fill }
+        let built = try await CompositionBuilder().build(project: fx.project, resolver: fx.resolver,
+                                                         renderSize: CGSize(width: 64, height: 64))
+        let videoTracks = try await built.composition.loadTracks(withMediaType: .video)
+        #expect(videoTracks.count >= 4, "base + A/B + a blend track for the slow clip")
+        // Timeline 1/30 s at 0.5× = source 1/60 s: exactly between frame 0 (black) and 1 (white).
+        let mid = averageColor(try await renderFrame(built, at: 1.0 / 30)).x
+        #expect(mid > 0.3 && mid < 0.7, "blended frame should be grey, got \(mid)")
+    }
+}
+
+
+@Suite("Auto-duck level")
+struct DuckLevelTests {
+    private func t(_ x: Double) -> MediaTime { MediaTime(seconds: x) }
+
+    @Test func defaultsTo25PercentAndOldClipsLoad() throws {
+        let clip = AudioClip(mediaID: UUID(), role: .music, sourceRange: MediaTimeRange(start: .zero, duration: t(10)), start: .zero)
+        #expect(clip.duckLevel == nil && clip.resolvedDuckLevel == 0.25)
+        let decoded = try JSONDecoder().decode(AudioClip.self, from: JSONEncoder().encode(clip))
+        #expect(decoded.resolvedDuckLevel == 0.25)
+    }
+
+    @Test func musicDropsToTheChosenLevelUnderSpeech() {
+        var clip = AudioClip(mediaID: UUID(), role: .music, sourceRange: MediaTimeRange(start: .zero, duration: t(10)), start: .zero)
+        clip.volume = 0.8
+        clip.duckLevel = 0.5
+        let p = AVMutableAudioMixInputParameters()
+        CompositionBuilder.applyEnvelope(to: p, clip: clip, playedDuration: t(10),
+                                         speech: [MediaTimeRange(start: t(3), end: t(6))], duckLevel: clip.resolvedDuckLevel)
+        var start: Float = 0, end: Float = 0
+        var range = CMTimeRange()
+        #expect(p.getVolumeRamp(for: t(4.5).cmTime, startVolume: &start, endVolume: &end, timeRange: &range))
+        #expect(abs(start - 0.4) < 1e-6 && abs(end - 0.4) < 1e-6, "80% music ducked to half = 40%")
+    }
+}
+
+
+@Suite("Noise reduction")
+struct NoiseReductionTests {
+    /// Speech-like test signal: 0.5 s of steady hiss, then 0.5 s of a 300 Hz tone over the same hiss, repeated.
+    private func signal(seconds: Double, sampleRate: Double = 48_000) -> (mix: [Float], hissOnly: Range<Int>, toneRange: Range<Int>) {
+        var seed: UInt32 = 12345
+        func noise() -> Float { seed = seed &* 1_664_525 &+ 1_013_904_223; return Float(seed) / Float(UInt32.max) * 2 - 1 }
+        let count = Int(seconds * sampleRate)
+        var out = [Float](repeating: 0, count: count)
+        let block = Int(0.5 * sampleRate)
+        for i in 0..<count {
+            let hiss = 0.03 * noise()
+            let toneOn = (i / block) % 2 == 1
+            let tone: Float = toneOn ? 0.3 * sin(2 * .pi * 300 * Float(i) / Float(sampleRate)) : 0
+            out[i] = hiss + tone
+        }
+        // Middle of the 3rd hiss block and the 4th tone block (away from edges).
+        return (out, (2 * block + block / 4)..<(2 * block + 3 * block / 4), (3 * block + block / 4)..<(3 * block + 3 * block / 4))
+    }
+
+    private func rmsDB(_ x: ArraySlice<Float>) -> Float {
+        let rms = (x.reduce(0) { $0 + $1 * $1 } / Float(x.count)).squareRoot()
+        return 20 * log10(max(rms, 1e-9))
+    }
+
+    @Test(arguments: NoiseReduction.allCases)
+    func hissDropsAndTheToneStays(level: NoiseReduction) {
+        let (mix, hiss, tone) = signal(seconds: 4)
+        let out = NoiseReducer.reduce(channels: [mix], level: level)[0]
+        #expect(out.count == mix.count)
+        let hissDrop = rmsDB(mix[hiss]) - rmsDB(out[hiss])
+        let toneChange = abs(rmsDB(mix[tone]) - rmsDB(out[tone]))
+        #expect(hissDrop > 8, "hiss reduced by \(hissDrop) dB at \(level)")
+        #expect(toneChange < 1.5, "tone changed by \(toneChange) dB at \(level)")
+    }
+
+    @Test func strongerLevelsRemoveMore() {
+        let (mix, hiss, _) = signal(seconds: 4)
+        let drops = NoiseReduction.allCases.map { level -> Float in
+            let out = NoiseReducer.reduce(channels: [mix], level: level)[0]
+            return rmsDB(mix[hiss]) - rmsDB(out[hiss])
+        }
+        print("NOISE hiss reduction dB (low, medium, high): \(drops)")
+        #expect(drops[0] < drops[1] && drops[1] < drops[2], "\(drops)")
+    }
+
+    @Test func fileKeepsChannelsLengthAndTiming() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let (mix, _, _) = signal(seconds: 3)
+        let source = dir.appendingPathComponent("in.caf")
+        let format = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2)!
+        do {
+            let file = try AVAudioFile(forWriting: source, settings: format.settings)
+            let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(mix.count))!
+            buffer.frameLength = AVAudioFrameCount(mix.count)
+            for c in 0..<2 { for i in mix.indices { buffer.floatChannelData![c][i] = mix[i] } }
+            try file.write(from: buffer)
+        }
+        let destination = dir.appendingPathComponent("out.m4a")
+        try await NoiseReducer.process(source: source, destination: destination, level: .medium)
+        let out = try AVAudioFile(forReading: destination)
+        #expect(out.processingFormat.channelCount == 2)
+        #expect(abs(Int(out.length) - mix.count) < 100, "length \(out.length) vs \(mix.count)")
+        // The tone starts at 0.5 s in the original; it must start there in the cleaned copy too.
+        let buffer = AVAudioPCMBuffer(pcmFormat: out.processingFormat, frameCapacity: AVAudioFrameCount(out.length))!
+        try out.read(into: buffer)
+        let ch = Array(UnsafeBufferPointer(start: buffer.floatChannelData![0], count: Int(buffer.frameLength)))
+        let onset = ch.indices.first { i in i > 12_000 && abs(ch[i]) > 0.15 } ?? 0
+        #expect(abs(Double(onset) / 48_000 - 0.5) < 0.02, "tone starts at \(Double(onset) / 48_000) s")
+    }
+
+    /// DNS-6 (IMPLEMENTATION §9.4): a quiet start (0.5 s of silence, then 0.5 s at 0.1×) used to
+    /// fill the quietest 10% of frames, so the fingerprint was ~0 and nothing was removed.
+    @Test(arguments: NoiseReduction.allCases)
+    func DNS_6_quietStartDoesNotStopNoiseRemoval(level: NoiseReduction) {
+        let (signal, hiss, tone) = signal(seconds: 4)
+        let lead = [Float](repeating: 0, count: 24_000) + signal[0..<24_000].map { $0 * 0.1 }
+        let mix = lead + signal
+        let out = NoiseReducer.reduce(channels: [mix], level: level)[0]
+        let shift = lead.count
+        let h = (hiss.lowerBound + shift)..<(hiss.upperBound + shift), t = (tone.lowerBound + shift)..<(tone.upperBound + shift)
+        let hissDrop = rmsDB(mix[h]) - rmsDB(out[h])
+        let toneChange = abs(rmsDB(mix[t]) - rmsDB(out[t]))
+        #expect(hissDrop > 8, "hiss reduced by \(hissDrop) dB at \(level) after a quiet start")
+        #expect(toneChange < 1.5, "tone changed by \(toneChange) dB at \(level) after a quiet start")
+    }
+
+    /// DNS-6: the fingerprint never uses the zero padding or digitally silent frames.
+    @Test func DNS_6_fingerprintSkipsPaddingAndSilence() {
+        let length = 48_000 * 3
+        let frames = (length + 2 * NoiseReducer.frameSize + NoiseReducer.hop - NoiseReducer.frameSize) / NoiseReducer.hop + 1
+        // Padding frames and the first second are silent; the rest sits at the floor (1.0) or above.
+        let energies = (0..<frames).map { f -> Float in
+            let inside = f >= NoiseReducer.frameSize / NoiseReducer.hop && f <= length / NoiseReducer.hop
+            guard inside, f > 98 else { return 0 }
+            return f % 7 == 0 ? 1 : 50
+        }
+        let picked = NoiseReducer.noiseFrames(energies: energies, length: length)
+        #expect(!picked.isEmpty)
+        #expect(picked.allSatisfy { energies[$0] == 1 }, "picked \(picked.map { energies[$0] })")
+    }
+
+    /// DNS-3 + DNS-6: files from before the fix (`nr-…`) are not reused; new ones are `nr2-…`.
+    @Test func DNS_3_onlyCurrentFilesAreReused() {
+        #expect(NoiseReducer.fileName(level: .medium, base: "A1B2") == "nr2-medium-A1B2.m4a")
+        #expect(NoiseReducer.isCurrent(fileName: NoiseReducer.fileName(level: .high, base: "x")))
+        #expect(!NoiseReducer.isCurrent(fileName: "nr-medium-A1B2.m4a"))
+    }
+
+    /// DNS-2 / DNS-4 / DNS-6: a noisy video clip (AAC sound, like a phone recording) that starts
+    /// quietly is cleaned, and the preview / export composition plays the cleaned sound.
+    @Test func DNS_4_compositionPlaysTheCleanedSound() async throws {
+        var fx = try Fixture()
+        defer { fx.cleanup() }
+        let dir = fx.store.mediaDirectory(for: fx.project.id)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let videoOnly = dir.appendingPathComponent("noisy-v.mov")
+        try await SampleMedia.makeVideo(url: videoOnly, size: CGSize(width: 160, height: 120), duration: 4,
+                                        draw: SampleMedia.solid(.black))
+        let audio = dir.appendingPathComponent("noisy-a.m4a")
+        var seed: UInt32 = 777
+        try SampleMedia.makeAudio(url: audio, duration: 4) { s, sr in
+            for i in s.indices {
+                seed = seed &* 1_664_525 &+ 1_013_904_223
+                let hiss = 0.03 * (Float(seed) / Float(UInt32.max) * 2 - 1)
+                let t = Double(i) / sr
+                let toneOn = Int(t / 0.5) % 2 == 1
+                // A quiet start, like a fade-in or the mic starting up: silence, then 0.1×.
+                let gain: Float = t < 0.5 ? 0 : t < 1 ? 0.1 : 1
+                s[i] = gain * (hiss + (toneOn ? 0.3 * sin(2 * .pi * 300 * Float(t)) : 0))
+            }
+        }
+        try await SampleMedia.mux(video: videoOnly, audio: audio, to: dir.appendingPathComponent("noisy.mov"))
+        var item = try await MediaImporter.probeVideo(dir.appendingPathComponent("noisy.mov"), fileName: "noisy.mov")
+        try await NoiseReducer.process(source: fx.resolver.url(for: item),
+                                       destination: dir.appendingPathComponent("nr-medium-noisy.m4a"), level: .medium)
+        item.denoisedFileNames = [.medium: "nr-medium-noisy.m4a"]
+        fx.project.appendClip(for: item)
+
+        func rendered(_ project: Project) async throws -> [Float] {
+            let built = try await CompositionBuilder().build(project: project, resolver: fx.resolver,
+                                                             renderSize: CGSize(width: 64, height: 64))
+            let tracks = try await built.composition.loadTracks(withMediaType: .audio)
+            return try Waveform.readMixedMono(asset: built.composition, tracks: tracks, audioMix: built.audioMix,
+                                              sampleRate: 48_000)
+        }
+        let original = try await rendered(fx.project)
+        fx.project.setNoiseReduction(.medium)
+        let cleaned = try await rendered(fx.project)
+        // Hiss alone: 2.1–2.4 s. Tone + hiss: 2.6–2.9 s.
+        let hiss = 100_800..<115_200, tone = 124_800..<139_200
+        #expect(cleaned.count >= tone.upperBound && original.count >= tone.upperBound)
+        let hissDrop = rmsDB(original[hiss]) - rmsDB(cleaned[hiss])
+        let toneChange = abs(rmsDB(original[tone]) - rmsDB(cleaned[tone]))
+        #expect(hissDrop > 8, "hiss reduced by \(hissDrop) dB in the composition")
+        #expect(toneChange < 1.5, "tone changed by \(toneChange) dB in the composition")
+    }
+
+    /// DNS-1 / DNS-4 / DNS-8: one setting for the whole video; picking it (or Off) replaces older per-clip values.
+    @Test func DNS_1_oneSettingForTheWholeVideo() {
+        var p = Project(name: "P")
+        let a = MediaItem(kind: .video, fileName: "a.mov", naturalSize: CGSize(width: 10, height: 10), duration: MediaTime(seconds: 4), hasAudio: true)
+        let b = MediaItem(kind: .video, fileName: "b.mov", naturalSize: CGSize(width: 10, height: 10), duration: MediaTime(seconds: 4), hasAudio: false)
+        let photo = MediaItem(kind: .photo, fileName: "c.png", naturalSize: CGSize(width: 10, height: 10), duration: .zero, hasAudio: false)
+        p.appendClip(for: a); p.appendClip(for: b); p.appendClip(for: photo); p.appendClip(for: a)
+        // Only videos with sound are cleaned, each once.
+        #expect(p.denoiseSources.map(\.id) == [a.id])
+        // An older project: per-clip values play while the project setting is nil.
+        p.clips[0].noiseReduction = .low
+        #expect(p.noiseReduction(for: p.clips[0]) == .low)
+        #expect(p.noiseReduction(for: p.clips[3]) == nil)
+        p.setNoiseReduction(.high, files: [a.id: "nr2-high-a.m4a"])
+        #expect(p.noiseReduction == .high)
+        #expect(p.clips.allSatisfy { $0.noiseReduction == nil })
+        #expect(p.clips.allSatisfy { p.noiseReduction(for: $0) == .high })
+        #expect(p.mediaItem(a.id)?.denoisedFileNames?[.high] == "nr2-high-a.m4a")
+        p.setNoiseReduction(nil)
+        #expect(p.clips.allSatisfy { p.noiseReduction(for: $0) == nil })
+        // The cleaned file stays recorded, so turning it back on is instant (DNS-3).
+        #expect(p.mediaItem(a.id)?.denoisedFileNames?[.high] == "nr2-high-a.m4a")
+    }
+
+    @Test func DNS_1_projectsSavedWithoutTheFieldLoadWithDenoiseOff() throws {
+        let p = Project(name: "P")
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(p)) as! [String: Any]
+        json["noiseReduction"] = nil
+        let decoded = try JSONDecoder().decode(Project.self, from: JSONSerialization.data(withJSONObject: json))
+        #expect(decoded.noiseReduction == nil)
+        var on = p
+        on.noiseReduction = .medium
+        #expect(try JSONDecoder().decode(Project.self, from: JSONEncoder().encode(on)).noiseReduction == .medium)
+    }
+
+    @Test func clipsSavedWithoutTheFieldLoadWithNoiseReductionOff() throws {
+        let c = VideoClip(mediaID: UUID(), kind: .video, sourceRange: MediaTimeRange(start: .zero, duration: MediaTime(seconds: 2)))
+        let decoded = try JSONDecoder().decode(VideoClip.self, from: JSONEncoder().encode(c))
+        #expect(decoded.noiseReduction == nil)
+        var item = MediaItem(kind: .video, fileName: "v.mov", naturalSize: .zero, duration: MediaTime(seconds: 2), hasAudio: true)
+        item.denoisedFileNames = [.medium: "nr-medium-v.m4a"]
+        let back = try JSONDecoder().decode(MediaItem.self, from: JSONEncoder().encode(item))
+        #expect(back.denoisedFileNames?[.medium] == "nr-medium-v.m4a")
+    }
+}
+
+@Suite("PRV-8 Preview plays music past the video")
+struct PreviewPastVideoEndTests {
+    @Test func previewRunsToTheEndOfTheMusicExportStopsAtTheVideo() async throws {
+        var fx = try Fixture()
+        defer { fx.cleanup() }
+        try await fx.addVideo("v", duration: 2, draw: SampleMedia.solid(.black))
+        let url = fx.store.mediaDirectory(for: fx.project.id).appendingPathComponent("tone.m4a")
+        try SampleMedia.renderTonePattern([(true, 6)], to: url)
+        let song = try await MediaImporter.probeAudio(url, fileName: "tone.m4a")
+        fx.project.media.append(song)
+        fx.project.addAudio(AudioClip(mediaID: song.id, role: .music,
+                                      sourceRange: MediaTimeRange(start: .zero, duration: song.duration), start: .zero))
+        let size = CGSize(width: 64, height: 64)
+        // Export (and the default build): the video's length.
+        let export = try await CompositionBuilder().build(project: fx.project, resolver: fx.resolver, renderSize: size)
+        #expect(abs(export.composition.duration.seconds - 2) < 0.05)
+        // Preview: to the end of the music, with the song's audio all the way.
+        let preview = try await CompositionBuilder().build(project: fx.project, resolver: fx.resolver, renderSize: size,
+                                                           minimumLength: fx.project.timelineDuration)
+        #expect(abs(preview.composition.duration.seconds - song.duration.seconds) < 0.1)
+        var musicEnd = 0.0
+        for t in try await preview.composition.loadTracks(withMediaType: .audio) {
+            musicEnd = max(musicEnd, try await t.load(.timeRange).end.seconds)
+        }
+        #expect(abs(musicEnd - song.duration.seconds) < 0.1, "music plays to its end in the preview, got \(musicEnd)")
+        // The instructions still cover the whole (longer) preview.
+        let last = try #require(preview.videoComposition.instructions.last)
+        #expect(abs(last.timeRange.end.seconds - preview.composition.duration.seconds) < 0.01)
+    }
+}
