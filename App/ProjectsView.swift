@@ -6,6 +6,8 @@ struct RootView: View {
     @State private var editor: EditorModel?
     /// The editor was opened from New Project: show the Photos library straight away (LIB-1).
     @State private var startWithPhotos = false
+    @State private var updates = UpdateChecker()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack {
@@ -21,14 +23,32 @@ struct RootView: View {
                 }
                 .transition(.move(edge: .trailing))
             } else {
-                ProjectsView(app: app, onOpen: { project in open(project) },
+                ProjectsView(app: app, updates: updates, onOpen: { project in open(project) },
                              onCreate: { project in open(project, startWithPhotos: true) })
                     .transition(.opacity)
+                    // Only offered on the library screen, never in the middle of an edit.
+                    .alert("Update available", isPresented: $updates.showsPrompt) {
+                        Button("Update") { updates.openAppStore() }
+                        Button("Not Now", role: .cancel) { updates.skipAvailableVersion() }
+                    } message: {
+                        if let version = updates.availableVersion {
+                            Text("Cut & Weld \(version) is on the App Store. You have \(updates.currentVersion).")
+                        }
+                    }
             }
         }
         .animation(.easeInOut(duration: 0.25), value: editor == nil)
         .preferredColorScheme(.dark)
         .tint(Theme.accent)
+        // App Store update check: at most once a day, on launch and when coming back to the app.
+        .task {
+            guard !LaunchOptions.isUITesting else { return }
+            await updates.check()
+        }
+        .onChange(of: scenePhase) { old, phase in
+            guard phase == .active, old == .background, !LaunchOptions.isUITesting else { return }
+            Task { await updates.check() }
+        }
     }
 
     private func open(_ project: Project, startWithPhotos: Bool = false) {
@@ -40,6 +60,7 @@ struct RootView: View {
 
 struct ProjectsView: View {
     let app: AppModel
+    let updates: UpdateChecker
     let onOpen: (Project) -> Void
     /// A new project was created (opens the editor with the Photos library).
     let onCreate: (Project) -> Void
@@ -62,6 +83,18 @@ struct ProjectsView: View {
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
             .background(Theme.background.ignoresSafeArea())
             .navigationTitle("Cut & Weld")
+            .toolbar {
+                if let version = updates.availableVersion {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            updates.openAppStore()
+                        } label: {
+                            Label("Update to \(version)", systemImage: "arrow.down.circle")
+                        }
+                        .accessibilityLabel("Update to \(version) on the App Store")
+                    }
+                }
+            }
             .alert("Rename project", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
                 TextField("Name", text: $newName)
                 Button("Save") { if let p = renaming { app.rename(p, to: newName) }; renaming = nil }

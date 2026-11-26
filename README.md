@@ -90,6 +90,11 @@ A fast, private video editor for iPhone and iPad. It's built natively in Swift, 
 - An estimated file size before export, and the real size after it.
 - Save to Photos, or **Export & Share** straight to WhatsApp, Instagram, Messages and other apps.
 
+### Updates
+
+- At most once a day (on launch or when coming back to the app), Cut & Weld asks Apple's App Store lookup service for the latest version, sending only the app ID and country code. This is the app's only network request.
+- If a newer version can run on the device, an **Update available** alert appears on the project library (never while editing), with **Update** (opens the App Store page) and **Not Now** (skips that version). An update button stays in the library's top-right corner until you update.
+
 ## Open in Xcode
 
 Requires **Xcode 26** or newer.

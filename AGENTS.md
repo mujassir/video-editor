@@ -13,5 +13,5 @@ Cutline will ship on iOS (this repo, the reference), then Android, macOS and Win
 1. **The spec decides.** If code and spec disagree, raise it; don't silently pick one. Change the spec first, then the code.
 2. **Removed features stay removed.** See *Decisions and removed features* in FEATURES.md before adding a control, for example music volume, video Volume, Mute, or the Minimal or Neon caption styles.
 3. **Model changes are additive.** New fields are optional, so older projects and other platforms still open them. Regenerate `project.sample.json` (delete it and run the contract test) and commit it.
-4. **On-device only.** No network, no server AI fallback, no third-party SDKs that phone home.
+4. **On-device only.** No network, no server AI fallback, no third-party SDKs that phone home. The one exception is `App/UpdateChecker.swift`: at most once a day it asks Apple's App Store lookup service for the latest version (app ID and country code only) to offer an update. Don't send anything else, and don't add other requests.
 5. **Put the feature ID** in test names and pull request titles, and update the parity table in FEATURES.md.

@@ -39,7 +39,7 @@ Apple's message also listed these common issues to check: bugs and crashes on re
 | Permission prompts explain their use | 5.1.1 | OK. Photos, Photos (add) and Speech Recognition strings are clear and specific |
 | No unused permissions | 5.1.1 | OK. No camera, microphone or location use in the code |
 | Privacy manifest | 5.1.2 | OK. No tracking and no data collected. The app uses no required-reason APIs (`attributesOfItem` reads only `.size`) |
-| No network, SDKs or server AI | 2.5.2, 5.1 | OK. No URLSession or third-party code. Speech is forced on-device |
+| No network, SDKs or server AI | 2.5.2, 5.1 | OK. The only URLSession call is the App Store update check (`App/UpdateChecker.swift`, app ID and country code). No third-party code. Speech is forced on-device |
 | Encryption declaration | Export | OK. `ITSAppUsesNonExemptEncryption = NO` |
 | No in-app purchases or ads | 3.1.1 | OK. Free with nothing to buy |
 | Availability | — | OK. 147 regions (no China mainland or EU), iPhone and iPad only, Mac and Vision Pro off |

@@ -19,7 +19,7 @@ d) Tap Music, then Audio Tracks to add a song from Files, or From Video to use t
 e) Tap Export, choose resolution and frame rate, then Export Video to save to Photos, or Export & Share.
 
 4. EXTERNAL SERVICES
-None. Cut & Weld makes no network requests and includes no third-party SDKs, analytics, advertising, accounts, payments or server-side AI. Every feature runs on the device using Apple frameworks: AVFoundation (editing and export), Core Image and Metal (filters and effects), Vision (background removal and face-following reframe) and Speech (captions, with on-device recognition only). On first use of captions, iOS may download its on-device speech model from Apple; the app itself sends nothing anywhere.
+None. The only network request is an update check to Apple's App Store lookup service (itunes.apple.com/lookup, app ID and country code only), at most once a day, which shows an "Update available" alert on the project library (never during editing) linking to the App Store. Cut & Weld includes no third-party SDKs, analytics, advertising, accounts, payments or server-side AI. Every feature runs on the device using Apple frameworks: AVFoundation (editing and export), Core Image and Metal (filters and effects), Vision (background removal and face-following reframe) and Speech (captions, with on-device recognition only). On first use of captions, iOS may download its on-device speech model from Apple; the app itself sends none of the user's data anywhere.
 
 5. REGIONAL DIFFERENCES
 None. The app works the same in every region where it is available. Caption generation depends on iOS supporting on-device speech recognition for the device's language; if it doesn't, the app shows a message and every other feature still works.

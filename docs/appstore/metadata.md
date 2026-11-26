@@ -90,7 +90,7 @@ Not shown for the first version.
 
 ## App Privacy
 
-Answer **"No, we do not collect data from this app."** That gives the "Data Not Collected" label. It's accurate: the app has no network code, no analytics and no third-party SDKs (AGENTS.md rule 4), and `App/PrivacyInfo.xcprivacy` declares no tracking and no collected data.
+Answer **"No, we do not collect data from this app."** That gives the "Data Not Collected" label. It's accurate: the only network code is the App Store update check (app ID and country code, no user data), and there are no analytics or third-party SDKs (AGENTS.md rule 4), and `App/PrivacyInfo.xcprivacy` declares no tracking and no collected data.
 
 ## Privacy policy (to host)
 
