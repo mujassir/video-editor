@@ -74,11 +74,12 @@ No trademarked app names (Guideline 2.3.7): `tiktok`, `reels` and `shorts` were 
 
 | Field | Value |
 |---|---|
-| Support URL | https://mujassir.github.io/video-editor/ (set) |
-| Marketing URL | Not used |
-| Privacy Policy URL | https://mujassir.github.io/video-editor/privacy.html (set, on the App Privacy page) |
+| Support URL | https://mujassir.com/cutnweld/ |
+| Marketing URL | https://mujassir.com/cutnweld/ |
+| Privacy Policy URL | https://mujassir.com/cutnweld/privacy/ |
+| Terms of Use URL | https://mujassir.com/cutnweld/terms/ |
 
-Both pages are GitHub Pages served from the `gh-pages` branch. Their source is in `docs/appstore/site/`. To update them, change the files there and push them to `gh-pages` again.
+Canonical pages live on mujassir.com (`docs/cutnweld/` in the mujassir/mujassir repo). The older `docs/appstore/site/` files on `gh-pages` can redirect or be retired once App Store Connect points at the new URLs.
 
 ### Copyright
 
